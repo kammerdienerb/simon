@@ -2,17 +2,23 @@
 #define __FILE_H__
 
 #include "internal.h"
-
-#define FILE_PATH_MAX (4096)
+#include "strings.h"
 
 typedef struct {
-    char  path[FILE_PATH_MAX];
-    char *buff;
-    char *cursor;
-    u64   len;
-    int   free_buff;
+    string_id  path_id;
+    char      *buff;
+    char      *end;
+    char      *cursor;
+    u64        len;
+    int        free_buff;
 } file_t;
 
+#define FILE_NO_ERR  (0)
+#define FILE_ERR_NOF (1)
+#define FILE_ERR_DIR (2)
+#define FILE_ERR_PER (3)
+#define FILE_ERR_MAP (4)
+#define FILE_ERR_UNK (5)
 
 int checked_open_FILE(const char *path, const char *mode, FILE **f, u64 *file_size);
 int copy_file_into_memory(const char *path, file_t *file);

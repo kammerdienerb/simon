@@ -1,0 +1,44 @@
+square = proc (x, _ = type(x)) { x * x }
+
+square(1)
+square(1.23)
+
+square(8, string) ; hmmm...
+
+array = module {
+    Array = struct {
+        data_type,
+        data_ptr,
+        used,
+        capacity
+    }
+    
+    make = proc (T) {
+        return Array {
+            data_type = T,
+            data_ptr  = malloc(8 * sizeof(T)),
+            used      = 0,
+            capacity  = 8,
+        }
+    }
+    
+    _grow = proc (a, elem_T = a.data_type) {
+        a.capacity *= 2
+        a.data_ptr  = realloc(a.data_ptr, a.capacity)
+    }
+    
+    push = proc (a, elem_T = a.data_type, item) {
+        if a.used == a.capacity { _grow(a) }
+        a.data_ptr[a.used] = item
+        a.used += 1
+    }
+    
+    item = proc (a, elem_T = a.data_type, idx) {
+        return a.data_ptr[idx]
+    }
+} ; module array
+
+
+my_array = array.make(float)
+array.push(my_array, 1.23)
+array.item(my_array, 0)

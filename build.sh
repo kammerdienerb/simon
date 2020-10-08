@@ -4,7 +4,8 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 cd ${DIR}
 
-C_FLAGS="-DSIMON_DO_ASSERTIONS -O0 -Wall -Werror"
+C_FLAGS="-DSIMON_DO_ASSERTIONS -O0 -g -Wall -Werror"
+# C_FLAGS="-O3 -Wall -Werror"
 LD_FLAGS="-lpthread -lm"
 
 echo "Building Simon compiler.."

@@ -7,8 +7,13 @@
 #include <stdint.h>
 #include <math.h>
 #include <errno.h>
+
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <alloca.h>
+
 
 #define likely(x)   (__builtin_expect(!!(x), 1))
 #define unlikely(x) (__builtin_expect(!!(x), 0))
@@ -58,6 +63,15 @@ do { if (unlikely(!(cond))) {                          \
 #define i16 SINT(16)
 #define i32 SINT(32)
 #define i64 SINT(64)
+
+#define ALIGN(x, align)      ((__typeof(x))((((u64)(x)) + (((u64)align) - 1ULL)) & ~(((u64)align) - 1ULL)))
+#define IS_ALIGNED(x, align) (!(((u64)(x)) & (((u64)align) - 1ULL)))
+#define IS_POWER_OF_TWO(x)   ((x) != 0 && IS_ALIGNED((x), (x)))
+
+#define KB(x) ((x) * 1024ULL)
+#define MB(x) ((x) * 1024ULL * KB(1ULL))
+#define GB(x) ((x) * 1024ULL * MB(1ULL))
+#define TB(x) ((x) * 1024ULL * GB(1ULL))
 
 u64 next_power_of_2(u64 x);
 char *pretty_bytes(u64 n_bytes);

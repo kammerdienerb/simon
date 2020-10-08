@@ -1,0 +1,2 @@
+set builder-build-command './build.sh'
+vimish-bind normal ctrl-t CMD sh 'build/bin/simon' 'test.si'

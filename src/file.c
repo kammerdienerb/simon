@@ -1,12 +1,5 @@
 #include "file.h"
 
-#define FILE_NO_ERR  (0)
-#define FILE_ERR_NOF (1)
-#define FILE_ERR_DIR (2)
-#define FILE_ERR_PER (3)
-#define FILE_ERR_MAP (4)
-#define FILE_ERR_UNK (5)
-
 int checked_open_FILE(const char *path, const char *mode, FILE **f, u64 *file_size) {
     struct stat fs;
     int         fd;
@@ -49,9 +42,18 @@ int copy_file_into_memory(const char *path, file_t *file) {
     FILE *f;
     int   fd;
     void *file_data;
+    int   i;
+
+    file->path_id = get_string_id(path);
 
     status = checked_open_FILE(path, "r", &f, &file->len);
     if (status) { goto out; }
+
+    if (file->len == 0) {
+        file->buff = file->end = file->cursor = NULL;
+        file->free_buff = 0;
+        goto out_fclose;
+    }
 
     fd        = fileno(f);
     file_data = mmap(NULL, file->len, PROT_READ, MAP_SHARED, fd, 0);
@@ -61,16 +63,31 @@ int copy_file_into_memory(const char *path, file_t *file) {
         goto out;
     }
 
-    file->buff      = malloc(file->len);
+    /*
+     * About the ALIGN:
+     * It can be beneficial for our file buffers to be aligned of 4 byte
+     * boundaries for some parsing optimizations (like checking for 4
+     * spaces at a time).
+     * So, we just allocate a few extra bytes if needed and fill them with
+     * zeros.
+     * In the map_file_into_readonly_memory() version of this function,
+     * this isn't necessary because mappings are page-aligned and zero-filled.
+     */
+    file->buff      = malloc(ALIGN(file->len, 4));
     file->free_buff = 1;
+    file->end       = file->buff + file->len;
     file->cursor    = file->buff;
+
+    for (i = 0; i < ALIGN(file->len, 4) - file->len; i += 1) {
+        *(file->end + i) = 0;
+    }
 
     memcpy(file->buff, file_data, file->len);
 
     munmap(file_data, file->len);
-    fclose(f);
 
-    strcpy(file->path, path);
+out_fclose:
+    fclose(f);
 
 out:
     return status;
@@ -81,8 +98,16 @@ int map_file_into_readonly_memory(const char *path, file_t *file) {
     FILE *f;
     int   fd;
 
+    file->path_id = get_string_id(path);
+
     status = checked_open_FILE(path, "r", &f, &file->len);
     if (status) { goto out; }
+
+    if (file->len == 0) {
+        file->buff = file->end = file->cursor = NULL;
+        file->free_buff = 0;
+        goto out_fclose;
+    }
 
     fd         = fileno(f);
     file->buff = mmap(NULL, file->len, PROT_READ, MAP_SHARED, fd, 0);
@@ -93,11 +118,11 @@ int map_file_into_readonly_memory(const char *path, file_t *file) {
     }
 
     file->free_buff = 0;
+    file->end       = file->buff + file->len;
     file->cursor    = file->buff;
 
+out_fclose:
     fclose(f);
-
-    strcpy(file->path, path);
 
 out:
     return status;

@@ -6,6 +6,7 @@
 typedef struct {
     int     help;
     array_t input_files;
+    int     n_threads;
 } options_t;
 
 extern options_t options;
