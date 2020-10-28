@@ -6,13 +6,15 @@
 #include "ui.h"
 #include "src_range.h"
 #include "ast.h"
+#include "tls.h"
 
 typedef struct {
-    file_t      file;
-    src_range_t cur_range;
-    src_range_t just_cleaned_range;
-    u64         n_lines;
-    u64         n_blank_lines;
+    tls_t       *tls;
+    file_t       file;
+    src_range_t  cur_range;
+    src_range_t  just_cleaned_range;
+    u64          n_lines;
+    u64          n_blank_lines;
 } parse_context_t;
 
 #define IS_SPACE(c)      (((c) >= 9 && (c) <= 13) || (c) == 32)
@@ -167,9 +169,13 @@ static int parse_char(parse_context_t *cxt, char c) {
 
 #define EXPECT_IDENT(cxt, id_ptr, msg) \
     EXPECT((cxt), parse_identifier((cxt), (id_ptr)), (msg))
+#define OPTIONAL_IDENT(cxt, id_ptr) \
+    OPTIONAL((cxt), parse_identifier((cxt), (id_ptr)))
 
 #define EXPECT_CHAR(cxt, c, msg) \
     EXPECT((cxt), parse_char((cxt), (c)), (msg))
+#define OPTIONAL_CHAR(cxt, c) \
+    OPTIONAL((cxt), parse_char((cxt), (c)))
 
 static void remove_trailing_whitespace(parse_context_t *cxt) {
     while (cxt->file.end != cxt->file.buff
@@ -185,15 +191,29 @@ static void remove_trailing_whitespace(parse_context_t *cxt) {
     }
 }
 
+#define AST_ALLOC(cxt, t) \
+    (bump_alloc(&(cxt)->tls->bump_alloc, sizeof(t)))
+
 static ast_t * parse_assign(parse_context_t *cxt) {
-    ast_assign_t node;
+    src_range_t   loc;
+    string_id     name;
+    ast_assign_t *result;
 
-    BEGIN_RANGE(cxt, node.ast.loc);
+    BEGIN_RANGE(cxt, loc);
 
-    return NULL;
+    if (!OPTIONAL_IDENT(cxt, &name)) { return NULL; }
+    if (!OPTIONAL_CHAR(cxt, '='))    { return NULL; }
+
+    result          = AST_ALLOC(cxt, ast_assign_t);
+    result->ast.loc = loc;
+    result->name    = name;
+
+    return &(result->ast);
 }
 
 static void setup_cxt(parse_context_t *cxt) {
+    cxt->tls = get_tls();
+
     cxt->cur_range.path_id      = cxt->file.path_id;
     cxt->cur_range.beg.line     = 1;
     cxt->cur_range.beg.col      = 1;
@@ -214,8 +234,9 @@ static void parse(parse_context_t *cxt) {
     clean(cxt, 0);
 
     while (cxt->file.cursor < cxt->file.end) {
-        EXPECT_IDENT(cxt, NULL, "expected identifier");
-        EXPECT_CHAR(cxt, '=',   "expected '='");
+        if (!parse_assign(cxt)) {
+            report_vague_err("expected assignment");
+        }
         clean(cxt, 0);
     }
 }

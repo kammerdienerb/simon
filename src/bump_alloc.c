@@ -37,7 +37,7 @@ void *bump_alloc(bump_alloc_t *ba, u64 size) {
         ba->head    = block;
     }
 
-    ASSERT(block->cursor + size >= block->end, "size larger than block");
+    ASSERT(block->cursor + size < block->end, "size larger than block");
 
     mem            = block->cursor;
     block->cursor += size;

@@ -3,6 +3,7 @@
 #include "options.h"
 #include "strings.h"
 #include "parse.h"
+#include "tls.h"
 
 int do_options(int argc, char **argv);
 void do_init(void);
@@ -29,6 +30,7 @@ int do_options(int argc, char **argv) {
 
 void do_init(void) {
     tp = tp_make(options.n_threads);
+    init_tls();
     init_strings();
 }
 

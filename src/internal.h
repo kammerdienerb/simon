@@ -10,6 +10,7 @@
 
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/sysinfo.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <alloca.h>
