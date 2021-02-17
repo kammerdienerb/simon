@@ -1,0 +1,4 @@
+; doubleextern.si
+
+extern sprintf(char*, char*, ...) : int
+extern sprintf(char*, char*, ...) : int

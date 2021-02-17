@@ -1,4 +1,5 @@
 #include "options.h"
+#include "platform.h"
 
 options_t options;
 
@@ -8,8 +9,14 @@ void print_usage(void) {
 "\n"
 "options:\n"
 "\n"
+"--verbose, -v\n"
+"    Print additional information about the compilation.\n"
+"--dump-symbols\n"
+"    Print a textual representation of the symbol tables.\n"
 "--threads=NUM\n"
 "    Run compilation with NUM threads.\n"
+"--output=NAME, -o NAME\n"
+"    Output to file NAME.\n"
 "--help\n"
 "    Show this information.\n"
 "\n"
@@ -20,16 +27,31 @@ void print_usage(void) {
 int parse_options(int argc, char **argv) {
     int i;
 
-    options.input_files = array_make(char*);
-    options.n_threads   = 1; /* @tmp -- should use # of cores available */
+    options.input_files  = array_make(char*);
+    options.verbose      = 0;
+    options.dump_symbols = 0;
+    options.n_threads    = platform_get_num_hw_threads();
+    options.output_name  = NULL;
 
     for (i = 1; i < argc; i += 1) {
         if (strcmp(argv[i], "--help") == 0) {
             options.help = 1;
+        } else if (strcmp(argv[i], "--verbose") == 0) {
+            options.verbose = 1;
+        } else if (strcmp(argv[i], "-v") == 0) {
+            options.verbose = 1;
+        } else if (strcmp(argv[i], "--dump-symbols") == 0) {
+            options.dump_symbols = 1;
         } else if (strncmp(argv[i], "--threads=", 10) == 0) {
             if (sscanf(argv[i] + 10, "%d", &options.n_threads) != 1) {
                 return 1;
             }
+        } else if (strncmp(argv[i], "--output=", 9) == 0) {
+            options.output_name = strdup(argv[i] + 9);
+        } else if (strcmp(argv[i], "-o") == 0) {
+            i += 1;
+            if (i == argc) { return 1; }
+            options.output_name = strdup(argv[i]);
         } else if (strncmp(argv[i], "-", 1) == 0 || strncmp(argv[i], "--", 2) == 0) {
             return 1;
         } else {

@@ -1,0 +1,26 @@
+; none.si
+
+main()
+
+proc p(arg : none) : none {
+    return nothing
+}
+
+proc option(arg : char*) : (char* | none) {
+    return nothing
+}
+
+proc main() {
+    n := nothing
+    
+    print "%, %", sizeof none, sizeof (none, none, none)
+
+    p(n)
+
+    if s : char* = option("a string") {
+        print "%", s
+    }
+    if nn : none = option("a string") {
+        print "got nothing back"
+    }
+}

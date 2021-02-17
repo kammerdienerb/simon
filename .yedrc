@@ -1,2 +1,8 @@
-set builder-build-command './build.sh'
-vimish-bind normal ctrl-t CMD sh 'build/bin/simon' 'test.si'
+set builder-build-command           './build.sh'
+vimish-bind normal ctrl-y           'builder-start'
+vimish-bind normal ctrl-t           multi          \
+    "shell-run tests/runtests.sh"                  \
+    "special-buffer-prepare-unfocus *shell-output"
+set use-ctags                       'yes'
+set ctags-enable-extra-highlighting 'yes'
+set ctags-flags                     '-R src'

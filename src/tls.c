@@ -1,18 +1,40 @@
 #include "tls.h"
 #include "platform.h"
+#include "ui.h"
 
+static void init_tls_data(tls_t *tls) {
+    bump_alloc_make(&tls->bump_alloc);
+    tls->is_initialized = 1;
+}
+
+#if TLS_METHOD == TLS_PER_OS_THREAD
+static __thread tls_t local_tls;
+
+void init_tls(void) {
+    verb_message("TLS_METHOD = TLS_PER_OS_THREAD\n");
+}
+
+tls_t * get_tls(void) {
+    tls_t *local = &local_tls;
+
+    if (unlikely(!local->is_initialized)) {
+        init_tls_data(local);
+    }
+
+    return local;
+}
+
+#endif
+#if TLS_METHOD == TLS_PER_HW_THREAD
 static tls_entry_t           tls_entry_array[MAX_NUM_TLS];
 static pthread_mutex_t       tls_entry_array_lock;
 static u32                   num_threads;
 static __thread tls_entry_t *local_tls_entry;
 
 void init_tls(void) {
+    verb_message("TLS_METHOD = TLS_PER_HW_THREAD\n");
     pthread_mutex_init(&tls_entry_array_lock, NULL);
     num_threads = platform_get_num_hw_threads() + 1;
-}
-
-void init_tls_data(tls_t *tls) {
-    bump_alloc_make(&tls->bump_alloc);
 }
 
 static void dec_tls_entry_ref(void *_tls_entry) {
@@ -86,3 +108,4 @@ tls_t * get_tls(void) {
 
     return &local_tls_entry->tls;
 }
+#endif

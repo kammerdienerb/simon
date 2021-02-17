@@ -1,0 +1,4 @@
+; import.si
+
+import "c/io.si"
+fprintf(stdout(), "oh, no!")

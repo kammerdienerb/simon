@@ -1,0 +1,8 @@
+; scinot.si
+
+main()
+
+proc main() {
+    f := 1.23e10
+    print "%", f
+}

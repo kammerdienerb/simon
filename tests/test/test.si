@@ -1,0 +1,85 @@
+; test.si
+
+test = module {
+    square = proc (x, _ = typeof(x)) { x * x }
+
+    test_square = proc () {
+        square(1)
+        square(1.23)
+
+        square(8, string) ; hmmm...
+    }
+
+    my_struct = struct { x, y, z }
+
+    p = proc (x, y) {
+        foozle = 0xDEADBEEF
+        foo    = 123_000_000 + (0x4 + -42) * 3 / (foozle.field)
+        zag    = foozle and *&foozle
+
+        return
+    }
+
+    [[ barzle ]]
+    [[ thinger ]]
+    bar = 42
+
+    baz = module {
+        thinger = proc (a, b, ...) {
+            thinger(abc = 123)
+        }
+    }
+}
+
+array = module {
+    Array = struct {
+        data_type,
+        data_ptr,
+        used,
+        capacity
+    }
+
+    make = proc (T) {
+        return Array(
+            data_type = T,
+            data_ptr  = malloc(8 * sizeof(T)),
+            used      = 0,
+            capacity  = 8
+        )
+    }
+
+    _grow = proc (a, elem_T = a.data_type) {
+        a.capacity *= 2
+        a.data_ptr  = realloc(a.data_ptr, a.capacity)
+    }
+
+    push = proc (a, elem_T = a.data_type, item) {
+        if a.used == a.capacity { _grow(a) }
+        a.data_ptr[a.used] = item
+        a.used += 1
+    }
+
+    item = proc (a, elem_T = a.data_type, idx) {
+        return a.data_ptr[idx]
+    }
+
+    free = proc (a) {
+        free(a.data_ptr)
+    }
+} ; module array
+
+my_proc = proc () {
+    my_array = array.make(float)
+        defer array.free(my_array)
+    array.push(my_array, 1.23)
+    one_two_three = array.item(my_array, 0)
+}
+
+my_data = cast(pointer(my_type), malloc(sizeof(my_type)))
+heap_alloc = proc (T) {
+    return cast(pointer(T),
+                heap_alloc_size(sizeof(T)))
+}
+my_data = malloc(sizeof(my_type))
+my_data = heap_alloc(my_type)
+sz = sizeof(pointer(char))

@@ -31,6 +31,8 @@ u64 next_power_of_2(u64 x) {
     return x;
 }
 
+static __thread char pretty_bytes_buff[64];
+
 char * pretty_bytes(u64 n_bytes) {
     u64         s;
     double      count;
@@ -46,7 +48,8 @@ char * pretty_bytes(u64 n_bytes) {
         count /= 1024;
     }
 
-    r = calloc(64, 1);
+    r    = pretty_bytes_buff;
+    r[0] = 0;
 
     if (count - floor(count) == 0.0) {
         sprintf(r, "%d", (int)count);
@@ -57,4 +60,20 @@ char * pretty_bytes(u64 n_bytes) {
     strcat(r, suffixes[s]);
 
     return r;
+}
+
+u64 measure_time_now_ms(void) {
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+
+    return 1000ULL * tv.tv_sec + (tv.tv_usec / 1000ULL);
+}
+
+u64 measure_time_now_us(void) {
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+
+    return 1000000ULL * tv.tv_sec + (tv.tv_usec);
 }

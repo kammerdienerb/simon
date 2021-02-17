@@ -4,9 +4,36 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 cd ${DIR}
 
-C_FLAGS="-DSIMON_DO_ASSERTIONS -O0 -g -Wall -Werror"
-# C_FLAGS="-O3 -Wall -Werror"
-LD_FLAGS="-lpthread -lm"
+
+
+DEBUG=yes
+
+# SHOULD_USE_LIBC_MALLOC="-DUSE_LIBC_MALLOC"
+
+WHICH_STRING_INTERN_STRUCTURE="-DSTRING_INTERN_STRUCTURE=STRING_HASH_TABLE"
+# WHICH_STRING_INTERN_STRUCTURE="-DSTRING_INTERN_STRUCTURE=STRING_RB_TREE"
+
+# WHICH_TLS_METHOD="-DTLS_METHOD=TLS_PER_HW_THREAD"
+WHICH_TLS_METHOD="-DTLS_METHOD=TLS_PER_OS_THREAD"
+
+TLS_MODEL="-ftls-model=local-exec"
+
+if [ ${DEBUG} = "yes" ]; then
+    SHOULD_DO_ASSERTIONS="-DSIMON_DO_ASSERTIONS"
+    OPT="-O0"
+    DEBUG_SYMBOLS="-g"
+else
+    OPT="-O3"
+    LTO="-flto"
+    MARCH="-march=native"
+fi
+
+
+C_FLAGS="${SHOULD_DO_ASSERTIONS} ${SHOULD_USE_LIBC_MALLOC}    \
+         ${WHICH_STRING_INTERN_STRUCTURE} ${WHICH_TLS_METHOD} \
+         ${MARCH} ${TLS_MODEL} ${OPT} ${LTO} ${DEBUG_SYMBOLS} \
+         -Wall -Werror"
+LD_FLAGS="${MARCH} ${TLS_MODEL} ${OPT} ${LTO} ${DEBUG_SYMBOLS} -lpthread -lm"
 
 echo "Building Simon compiler.."
 rm -rf build

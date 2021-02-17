@@ -5,16 +5,19 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <math.h>
 #include <errno.h>
 
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/sysinfo.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <alloca.h>
 
+typedef struct {} empty_t;
 
 #define likely(x)   (__builtin_expect(!!(x), 1))
 #define unlikely(x) (__builtin_expect(!!(x), 0))
@@ -32,7 +35,7 @@ do { if (unlikely(!(cond))) {                          \
     simon_assert_fail(msg, __FILE__, __LINE__, #cond); \
 } } while (0)
 #else
-#define ASSERT(cond, mst) ;
+#define ASSERT(cond, mst) ((void)(cond));
 #endif
 
 #define _XSTR(x) #x
@@ -76,5 +79,7 @@ do { if (unlikely(!(cond))) {                          \
 
 u64 next_power_of_2(u64 x);
 char *pretty_bytes(u64 n_bytes);
+u64 measure_time_now_ms(void);
+u64 measure_time_now_us(void);
 
 #endif

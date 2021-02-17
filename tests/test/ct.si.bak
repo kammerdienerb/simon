@@ -1,0 +1,9 @@
+; ct.si
+
+\ct {
+    type T{
+        proc create() {
+            print "T.create"     
+        }     
+    }    
+}

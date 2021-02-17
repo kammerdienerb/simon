@@ -11,8 +11,8 @@
 #define _HASH_TABLE_H_
 
 #include <stdint.h>
-#include <stdlib.h> /* malloc, free */
-#include <string.h> /* memcpy, memset */
+#include <stdlib.h> /* malloc, calloc, free */
+#include <string.h> /* memcpy */
 
 #define hash_table_make(K_T, V_T, HASH) (CAT2(hash_table(K_T, V_T), _make)((HASH), NULL))
 #define hash_table_make_e(K_T, V_T, HASH, EQU) (CAT2(hash_table(K_T, V_T), _make)((HASH), (EQU)))
@@ -66,7 +66,7 @@
 #define _HASH_TABLE_EQU(t_ptr, l, r) \
     ((t_ptr)->_equ ? (t_ptr)->_equ((l), (r)) : (l) == (r))
 
-#define DEFAULT_START_SIZE_IDX (3)
+#define DEFAULT_START_SIZE_IDX (8)
 
 static uint64_t ht_prime_sizes[] = {
   5ULL,
@@ -224,8 +224,7 @@ static uint64_t ht_prime_sizes[] = {
         old_data      = t->_data;                                                            \
         t->_size_idx += 1;                                                                   \
         new_data_size = sizeof(hash_table_slot(K_T, V_T)) * ht_prime_sizes[t->_size_idx];    \
-        t->_data      = malloc(new_data_size);                                               \
-        memset(t->_data, 0, new_data_size);                                                  \
+        t->_data      = calloc(new_data_size, 1);                                            \
                                                                                              \
         for (int i = 0; i < old_size; i += 1) {                                              \
             slot_ptr = old_data + i;                                                         \
@@ -362,9 +361,7 @@ static uint64_t ht_prime_sizes[] = {
                                                                                              \
         uint64_t data_size                                                                   \
             = ht_prime_sizes[DEFAULT_START_SIZE_IDX] * sizeof(hash_table_slot(K_T, V_T));    \
-        hash_table_slot(K_T, V_T) *the_data = malloc(data_size);                             \
-                                                                                             \
-        memset(the_data, 0, data_size);                                                      \
+        hash_table_slot(K_T, V_T) *the_data = calloc(data_size, 1);                          \
                                                                                              \
         struct _hash_table(K_T, V_T)                                                         \
             init = {._size_idx = DEFAULT_START_SIZE_IDX,                                     \

@@ -1,0 +1,9 @@
+; math.si
+
+using import "math.si"
+
+main()
+
+proc main() {
+    print "%", floor(3.14159)
+}

@@ -11,3 +11,7 @@ u64 str_hash(const char *s) {
 }
 
 int str_equ(const char *a, const char *b) { return strcmp(a, b) == 0; }
+
+u64 str_id_hash(string_id id) {
+    return (u64)id;
+}

@@ -4,9 +4,12 @@
 #include "array.h"
 
 typedef struct {
-    int     help;
-    array_t input_files;
-    int     n_threads;
+    int         help;
+    array_t     input_files;
+    int         verbose;
+    int         dump_symbols;
+    int         n_threads;
+    const char *output_name;
 } options_t;
 
 extern options_t options;

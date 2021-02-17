@@ -1,0 +1,17 @@
+; oldterminatorbug.si
+
+p = proc () {
+    if 1 == not false {
+        if 0 == not not true {
+             return 1
+        } else {
+            return 2
+        }
+    }
+    return 0
+}
+
+[[ program_entry ]]
+main = proc () {
+    print("%", p())
+}

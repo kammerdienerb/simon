@@ -1,4 +1,75 @@
 #include "file.h"
+#include "memory.h"
+#include "strings.h"
+#include "hash_table.h"
+#include "ui.h"
+#include "hash_table.h"
+#include "hash_utilities.h"
+
+use_hash_table(string_id, file_t);
+
+
+static hash_table(string_id, file_t) file_table;
+
+void init_file_table(void) {
+    file_table = hash_table_make(string_id, file_t, str_id_hash);
+}
+
+file_t * add_file_readonly(string_id path_id) {
+    file_t *f;
+    int     err;
+    file_t  new;
+
+    f = hash_table_get_val(file_table, path_id);
+
+    if (f != NULL) {
+        return f->free_buff
+                ? NULL
+                : f;
+    }
+
+    err = map_file_into_readonly_memory(get_string(path_id), &new);
+
+    if (err) { report_file_err(&new, err); }
+
+    hash_table_insert(file_table, path_id, new);
+
+    f = hash_table_get_val(file_table, path_id);
+
+    ASSERT(f != NULL, "didn't insert file");
+
+    return f;
+}
+
+file_t * add_file_rw(string_id path_id) {
+    file_t *f;
+    int     err;
+    file_t  new;
+
+    f = hash_table_get_val(file_table, path_id);
+
+    if (f != NULL) {
+        return f->free_buff
+                ? NULL
+                : f;
+    }
+
+    err = copy_file_into_memory(get_string(path_id), &new);
+
+    if (err) { report_file_err(&new, err); }
+
+    hash_table_insert(file_table, path_id, new);
+
+    f = hash_table_get_val(file_table, path_id);
+
+    ASSERT(f != NULL, "didn't insert file");
+
+    return f;
+}
+
+file_t * get_file(string_id path_id) {
+    return hash_table_get_val(file_table, path_id);
+}
 
 int checked_open_FILE(const char *path, const char *mode, FILE **f, u64 *file_size) {
     struct stat fs;
@@ -50,7 +121,7 @@ int copy_file_into_memory(const char *path, file_t *file) {
     if (status) { goto out; }
 
     if (file->len == 0) {
-        file->buff = file->end = file->cursor = NULL;
+        file->buff = file->end = NULL;
         file->free_buff = 0;
         goto out_fclose;
     }
@@ -73,10 +144,9 @@ int copy_file_into_memory(const char *path, file_t *file) {
      * In the map_file_into_readonly_memory() version of this function,
      * this isn't necessary because mappings are page-aligned and zero-filled.
      */
-    file->buff      = malloc(ALIGN(file->len, 4));
+    file->buff      = mem_alloc(ALIGN(file->len, 4));
     file->free_buff = 1;
     file->end       = file->buff + file->len;
-    file->cursor    = file->buff;
 
     for (i = 0; i < ALIGN(file->len, 4) - file->len; i += 1) {
         *(file->end + i) = 0;
@@ -104,7 +174,7 @@ int map_file_into_readonly_memory(const char *path, file_t *file) {
     if (status) { goto out; }
 
     if (file->len == 0) {
-        file->buff = file->end = file->cursor = NULL;
+        file->buff = file->end = NULL;
         file->free_buff = 0;
         goto out_fclose;
     }
@@ -119,7 +189,6 @@ int map_file_into_readonly_memory(const char *path, file_t *file) {
 
     file->free_buff = 0;
     file->end       = file->buff + file->len;
-    file->cursor    = file->buff;
 
 out_fclose:
     fclose(f);

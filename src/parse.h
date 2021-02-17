@@ -3,7 +3,9 @@
 
 #include "internal.h"
 
+void parse_file(const char *path);
+void start_parsing_file_async(const char *path);
 void start_parsing_file(const char *path);
-void wait_for_parsing(void);
+void wait_for_parsing_async(void);
 
 #endif
