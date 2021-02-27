@@ -1,4 +1,5 @@
 #include "scope.h"
+#include "ui.h"
 
 scope_t create_scope(scope_t *parent, int kind, ast_t *node) {
     scope_t scope;
@@ -14,6 +15,40 @@ scope_t create_scope(scope_t *parent, int kind, ast_t *node) {
 }
 
 void add_symbol(scope_t *scope, string_id name_id, ast_t *node) {
+    string_id *sym;
+    int        i;
+    ast_t     *existing_node;
+
+    if (scope->kind == AST_INVALID
+    ||  scope->kind == AST_MACRO
+    ||  scope->kind == AST_STRUCT) {
+
+        i = 0;
+        array_traverse(scope->symbols, sym) {
+            if (name_id == *sym) {
+                existing_node = *(ast_t**)array_item(scope->nodes, i);
+                report_range_err_no_exit(&node->loc, "redeclaration of '%s'", get_string(name_id));
+                report_range_info(&existing_node->loc, "competing declaration here:");
+                return;
+            }
+            i += 1;
+        }
+    } else if (node->kind == AST_PROC_PARAM && scope->kind == AST_PROC) {
+
+        i = 0;
+        array_traverse(scope->symbols, sym) {
+            if (name_id == *sym) {
+                existing_node = *(ast_t**)array_item(scope->nodes, i);
+                if (existing_node->kind == AST_PROC_PARAM) {
+                    report_range_err_no_exit(&node->loc, "redeclaration of '%s'", get_string(name_id));
+                    report_range_info(&existing_node->loc, "competing declaration here:");
+                    return;
+                }
+            }
+            i += 1;
+        }
+    }
+
     array_push(scope->symbols, name_id);
     array_push(scope->nodes,   node);
 }

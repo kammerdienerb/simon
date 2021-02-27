@@ -11,11 +11,21 @@
 
 #include <sys/stat.h>
 #include <sys/mman.h>
-#include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <alloca.h>
+
+#ifdef __APPLE__
+#include <sys/param.h>
+#include <sys/sysctl.h>
+/* Really, Apple? */
+#undef MAX
+#undef MIN
+#undef ALIGN
+#else
+#include <sys/sysinfo.h>
+#endif
 
 typedef struct {} empty_t;
 

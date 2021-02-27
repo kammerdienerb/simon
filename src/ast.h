@@ -28,6 +28,8 @@
     X(AST_ASSIGN_STRUCT)     \
     X(AST_ASSIGN_MACRO)      \
     X(AST_ASSIGN_MODULE)     \
+    X(AST_PROC_PARAM)        \
+    X(AST_STRUCT_FIELD)      \
     X(AST_INT)               \
     X(AST_STRING)            \
     X(AST_BOOL)              \
@@ -93,11 +95,12 @@ AST_DEFINE(module,
     array_t children;
 );
 
-typedef struct {
+AST_DEFINE(proc_param,
     string_id  name;
     ast_t     *val;
     int        vargs;
-} param_t;
+    int        polymorph;
+);
 
 AST_DEFINE(block,
     array_t stmts;
@@ -106,6 +109,11 @@ AST_DEFINE(block,
 AST_DEFINE(proc,
     array_t  params;
     ast_t   *block;
+);
+
+AST_DEFINE(struct_field,
+    string_id name;
+    int       polymorph;
 );
 
 AST_DEFINE(struct,
@@ -169,11 +177,11 @@ AST_DEFINE(loop,
     ast_t *block;
 );
 
-AST_DEFINE(return,
-    ast_t *expr;
+AST_DEFINE(defer,
+    ast_t *block;
 );
 
-AST_DEFINE(defer,
+AST_DEFINE(return,
     ast_t *expr;
 );
 

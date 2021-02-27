@@ -1004,20 +1004,32 @@ static ast_t * parse_expr(parse_context_t *cxt) {
 static ast_t * parse_assign(parse_context_t *cxt);
 
 static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
-    ast_struct_t *result;
-    string_id     field;
+    ast_struct_t       *result;
+    ast_struct_field_t *field;
 
     result                = AST_ALLOC(cxt, ast_struct_t);
     ASTP(result)->kind    = AST_STRUCT;
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
-    result->fields        = array_make(string_id);
+    result->fields        = array_make(ast_t*);
 
     EXPECT_CHAR(cxt, '{', "expected '{' to open struct '%s'", get_string(name));
 
     SCOPE_PUSH(cxt, AST_STRUCT, ASTP(result));
 
     while (!OPTIONAL_CHAR(cxt, '}')) {
-        EXPECT_IDENT(cxt, &field, "expected field name in struct '%s'", get_string(name));
+        field                = AST_ALLOC(cxt, ast_struct_field_t);
+        ASTP(field)->kind    = AST_STRUCT_FIELD;
+        ASTP(field)->loc.beg = GET_BEG_POINT(cxt);
+        field->name          = STRING_ID_NULL;
+        field->polymorph     = 0;
+
+        if (OPTIONAL_CHAR(cxt, '%')) { field->polymorph = 1; }
+        EXPECT_IDENT(cxt, &field->name, "expected field name in struct '%s'", get_string(name));
+
+        ASTP(field)->loc.end = GET_END_POINT(cxt);
+
+        INSTALL(cxt, field->name, ASTP(field));
+
         array_push(result->fields, field);
 
         if (!OPTIONAL_CHAR(cxt, ',')) {
@@ -1235,9 +1247,9 @@ static ast_t *parse_defer(parse_context_t *cxt) {
 
     ASTP(result)->loc.end = GET_END_POINT(cxt);
 
-    result->expr = parse_expr(cxt);
-    if (result->expr == NULL) {
-        report_loc_err(GET_BEG_POINT(cxt), "expected valid expression in 'defer' statement");
+    result->block = parse_block(cxt);
+    if (result->block == NULL) {
+        report_loc_err(GET_BEG_POINT(cxt), "expected '{' to open 'defer' statement");
         return NULL;
     }
 
@@ -1294,14 +1306,14 @@ out:;
 }
 
 static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_parse_block) {
-    ast_proc_t *result;
-    int         seen_vargs;
-    param_t     param;
+    ast_proc_t       *result;
+    int               seen_vargs;
+    ast_proc_param_t *param;
 
     result                = AST_ALLOC(cxt, ast_proc_t);
     ASTP(result)->kind    = AST_PROC;
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
-    result->params        = array_make(param_t);
+    result->params        = array_make(ast_t*);
 
     EXPECT_CHAR(cxt, '(', "expected '(' to open the parameter list for proc '%s'", get_string(name));
 
@@ -1314,25 +1326,37 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
                            "parameters following a variadic argument list are not allowed");
         }
 
-        param.name = STRING_ID_NULL;
-        param.val  = NULL;
+        param                = AST_ALLOC(cxt, ast_proc_param_t);
+        ASTP(param)->kind    = AST_PROC_PARAM;
+        ASTP(param)->loc.beg = GET_BEG_POINT(cxt);
+        param->name          = STRING_ID_NULL;
+        param->val           = NULL;
 
         if (OPTIONAL_LIT(cxt, "...")) {
-            seen_vargs = param.vargs = 1;
-        } else {
-            param.vargs = 0;
+            seen_vargs = param->vargs = 1;
 
-            EXPECT_IDENT(cxt, &param.name, "expected parameter name");
-            param.val = NULL;
+            ASTP(param)->loc.end = GET_END_POINT(cxt);
+        } else {
+            param->vargs     = 0;
+            param->polymorph = 0;
+
+            if (OPTIONAL_CHAR(cxt, '%')) { param->polymorph = 1; }
+
+            EXPECT_IDENT(cxt, &param->name, "expected parameter name");
+            param->val = NULL;
             if (OPTIONAL_CHAR(cxt, '=')) {
-                param.val = parse_expr(cxt);
-                if (param.val == NULL) {
+                param->val = parse_expr(cxt);
+                if (param->val == NULL) {
                     report_loc_err(GET_BEG_POINT(cxt),
                                 "expected valid expression as default value for parameter '%s'",
-                                get_string(param.name));
+                                get_string(param->name));
                     return NULL;
                 }
             }
+
+            ASTP(param)->loc.end = GET_END_POINT(cxt);
+
+            INSTALL(cxt, param->name, ASTP(param));
         }
 
         array_push(result->params, param);

@@ -194,7 +194,7 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
     C(TERM_RESET);
 }
 
-void report_loc_err(src_point_t pt, const char *fmt, ...) {
+void _report_loc_err(int should_exit, src_point_t pt, const char *fmt, ...) {
     src_range_t range;
     va_list     va;
 
@@ -216,11 +216,15 @@ void report_loc_err(src_point_t pt, const char *fmt, ...) {
 
     print_range(&range, RANGE_COLOR, ERR_COLOR);
     printf("\n");
-    common_exit(1);
+
+    if (should_exit) {
+        common_exit(1);
+    }
+
     UNLOCK_OUTPUT();
 }
 
-void report_loc_info(src_point_t pt, const char *fmt, ...) {
+void _report_loc_info(int should_exit, src_point_t pt, const char *fmt, ...) {
     src_range_t range;
     va_list     va;
 
@@ -243,10 +247,15 @@ void report_loc_info(src_point_t pt, const char *fmt, ...) {
 
     print_range(&range, RANGE_COLOR, INFO_COLOR);
     printf("\n");
+
+    if (should_exit) {
+        common_exit(1);
+    }
+
     UNLOCK_OUTPUT();
 }
 
-void report_range_err(src_range_t *range, const char *fmt, ...) {
+void _report_range_err(int should_exit, src_range_t *range, const char *fmt, ...) {
     va_list va;
 
     validate_range(range);
@@ -264,12 +273,16 @@ void report_range_err(src_range_t *range, const char *fmt, ...) {
     printf("\n");
 
     print_range(range, RANGE_COLOR, ERR_COLOR);
-    common_exit(1);
     printf("\n");
+
+    if (should_exit) {
+        common_exit(1);
+    }
+
     UNLOCK_OUTPUT();
 }
 
-void report_range_info(src_range_t *range, const char *fmt, ...) {
+void _report_range_info(int should_exit, src_range_t *range, const char *fmt, ...) {
     va_list va;
 
     validate_range(range);
@@ -288,6 +301,11 @@ void report_range_info(src_range_t *range, const char *fmt, ...) {
 
     print_range(range, RANGE_COLOR, INFO_COLOR);
     printf("\n");
+
+    if (should_exit) {
+        common_exit(1);
+    }
+
     UNLOCK_OUTPUT();
 }
 

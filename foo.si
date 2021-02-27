@@ -1,0 +1,8 @@
+; foo.si
+
+foo = struct {
+    x,
+}
+
+bar = proc (x, x) {
+}
