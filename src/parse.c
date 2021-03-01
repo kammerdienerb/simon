@@ -511,9 +511,9 @@ do {                                                            \
     array_push((_cxt)->scope_stack, _new_scope);                \
 } while (0)
 
-#define INSTALL(_cxt, _name_id, _node)                          \
+#define INSTALL_IF_NEW(_cxt, _name_id, _node)                   \
 do {                                                            \
-    add_symbol(SCOPE((_cxt)), (_name_id), (_node));             \
+    add_symbol_if_new(SCOPE((_cxt)), (_name_id), (_node));      \
 } while (0)
 
 
@@ -1028,7 +1028,7 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
 
         ASTP(field)->loc.end = GET_END_POINT(cxt);
 
-        INSTALL(cxt, field->name, ASTP(field));
+        INSTALL_IF_NEW(cxt, field->name, ASTP(field));
 
         array_push(result->fields, field);
 
@@ -1356,7 +1356,7 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
 
             ASTP(param)->loc.end = GET_END_POINT(cxt);
 
-            INSTALL(cxt, param->name, ASTP(param));
+            INSTALL_IF_NEW(cxt, param->name, ASTP(param));
         }
 
         array_push(result->params, param);
@@ -1451,7 +1451,7 @@ static ast_t * parse_assign(parse_context_t *cxt) {
     ASTP(result)->loc  = loc;
     result->name       = name;
 
-    INSTALL(cxt, name, ASTP(result));
+    INSTALL_IF_NEW(cxt, name, ASTP(result));
 
     return ASTP(result);
 }
@@ -1525,7 +1525,7 @@ static void parse(parse_context_t *cxt) {
     GS_LOCK(); {
         i = 0;
         array_traverse(cxt->global_scope.symbols, name_it) {
-            add_symbol(&global_scope, *name_it, *(ast_t**)array_item(cxt->global_scope.nodes, i));
+            add_symbol_if_new(&global_scope, *name_it, *(ast_t**)array_item(cxt->global_scope.nodes, i));
             i += 1;
         }
         array_traverse(cxt->global_scope.subscopes, subscope_it) {

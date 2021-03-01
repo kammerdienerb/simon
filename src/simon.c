@@ -9,10 +9,12 @@
 #include "array.h"
 #include "ast.h"
 #include "memory.h"
+#include "scope.h"
 
 int do_options(int argc, char **argv);
 void do_init(void);
 void do_parse(void);
+void do_resolve_symbols(void);
 
 int main(int argc, char **argv) {
     u64 start_us;
@@ -28,6 +30,7 @@ int main(int argc, char **argv) {
     }
 
     do_parse();
+    do_resolve_symbols();
 
     if (options.dump_symbols) {
         show_scope(&global_scope);
@@ -100,4 +103,8 @@ void do_parse(void) {
 
     verb_message("total lines: %lu\n", n_lines);
     verb_message("parsing took %lu us\n", measure_time_now_us() - start_us);
+}
+
+void do_resolve_symbols(void) {
+    scope_remove_assigns(&global_scope);
 }

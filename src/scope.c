@@ -14,39 +14,61 @@ scope_t create_scope(scope_t *parent, int kind, ast_t *node) {
     return scope;
 }
 
-void add_symbol(scope_t *scope, string_id name_id, ast_t *node) {
-    string_id *sym;
-    int        i;
+ast_t *find_in_scope(scope_t *scope, string_id name_id, ast_t *node) {
     ast_t     *existing_node;
+    int        i;
+    string_id *sym;
 
-    if (scope->kind == AST_INVALID
-    ||  scope->kind == AST_MACRO
-    ||  scope->kind == AST_STRUCT) {
+    existing_node = NULL;
+    i             = 0;
+    array_traverse(scope->symbols, sym) {
+        if (name_id == *sym) {
+            existing_node = *(ast_t**)array_item(scope->nodes, i);
+            return existing_node;
+        }
+        i += 1;
+    }
 
-        i = 0;
-        array_traverse(scope->symbols, sym) {
-            if (name_id == *sym) {
-                existing_node = *(ast_t**)array_item(scope->nodes, i);
+    return NULL;
+}
+
+ast_t *search_up_scopes(scope_t *scope, string_id name_id, ast_t *node) {
+    ast_t *existing_node;
+
+    existing_node = find_in_scope(scope, name_id, node);
+
+    if (existing_node == NULL && scope->parent != NULL) {
+        existing_node = search_up_scopes(scope->parent, name_id, node);
+    }
+
+    return existing_node;
+}
+
+void add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node) {
+    ast_t *existing_node;
+
+    switch (scope->kind) {
+        case AST_INVALID: /* global scope */
+        case AST_MODULE:
+            existing_node = find_in_scope(scope, name_id, node);
+            if (existing_node != NULL) {
                 report_range_err_no_exit(&node->loc, "redeclaration of '%s'", get_string(name_id));
                 report_range_info(&existing_node->loc, "competing declaration here:");
                 return;
             }
-            i += 1;
-        }
-    } else if (node->kind == AST_PROC_PARAM && scope->kind == AST_PROC) {
-
-        i = 0;
-        array_traverse(scope->symbols, sym) {
-            if (name_id == *sym) {
-                existing_node = *(ast_t**)array_item(scope->nodes, i);
-                if (existing_node->kind == AST_PROC_PARAM) {
-                    report_range_err_no_exit(&node->loc, "redeclaration of '%s'", get_string(name_id));
-                    report_range_info(&existing_node->loc, "competing declaration here:");
-                    return;
-                }
+            break;
+        case AST_STRUCT:
+            existing_node = find_in_scope(scope, name_id, node);
+            if (existing_node != NULL) {
+                report_range_err_no_exit(&node->loc, "redeclaration of struct field '%s'", get_string(name_id));
+                report_range_info(&existing_node->loc, "competing declaration here:");
+                return;
             }
-            i += 1;
-        }
+            break;
+        case AST_PROC:
+            existing_node = search_up_scopes(scope, name_id, node);
+            if (existing_node != NULL) { return; }
+            break;
     }
 
     array_push(scope->symbols, name_id);
@@ -79,6 +101,24 @@ void free_scope_no_recurse(scope_t *scope) {
     array_free(scope->subscopes);
 }
 
+void scope_remove_assigns(scope_t *scope) {
+/*     int       i; */
+    ast_t   **node_p;
+    ast_t    *node;
+    scope_t  *subscope;
+
+/*     i = 0; */
+    array_traverse(scope->nodes, node_p) {
+        node = *node_p;
+        if (node->kind == AST_ASSIGN_EXPR) {
+        }
+    }
+
+    array_traverse(scope->subscopes, subscope) {
+        scope_remove_assigns(subscope);
+    }
+}
+
 void _show_scope(scope_t *scope, int level) {
     string_id  *symbol_it;
     int         n;
@@ -95,7 +135,7 @@ void _show_scope(scope_t *scope, int level) {
             printf("  ");
         }
         node_it = array_item(scope->nodes, n);
-        printf("%s: %s\n", AST_STR((*node_it)->kind), get_string(*symbol_it));
+        printf("%s: %s\n", get_string(*symbol_it), AST_STR((*node_it)->kind));
 
         opening_node = *node_it;
         switch (opening_node->kind) {
