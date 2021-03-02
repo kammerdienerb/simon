@@ -45,19 +45,35 @@
     X(AST_BREAK)             \
     X(AST_CONTINUE)
 
+#define X_AST_ASSIGNS        \
+    X(AST_ASSIGN_EXPR)       \
+    X(AST_ASSIGN_PROC)       \
+    X(AST_ASSIGN_STRUCT)     \
+    X(AST_ASSIGN_MACRO)      \
+    X(AST_ASSIGN_MODULE)
+
+
 enum {
 #define X(kind) kind,
 X_AST
 #undef X
 };
 
+int ast_kind_is_assign(int kind);
+int ast_kind_can_be_symbol_origin(int kind);
 const char *ast_get_kind_str(int kind);
 #define AST_STR(kind) (ast_get_kind_str((kind)))
 
 typedef struct {
-    int         kind;
     src_range_t loc;
+    u32         type;
+    u8          kind;
+    u8          checked;
 } ast_t;
+
+struct scope;
+typedef struct scope scope_t;
+
 
 #define AST_DEFINE(name, ...) \
 typedef struct {              \
@@ -126,6 +142,8 @@ AST_DEFINE(macro,
 AST_DEFINE(assign,
     string_id  name;
     ast_t     *val;
+    array_t    tags;
+    int        is_origin;
 );
 
 AST_DEFINE(int,
@@ -141,7 +159,8 @@ AST_DEFINE(bool,
 );
 
 AST_DEFINE(ident,
-    string_id str_rep;
+    string_id  str_rep;
+    ast_t     *resolved_node;
 );
 
 AST_DEFINE(unary_expr,
@@ -187,5 +206,7 @@ AST_DEFINE(return,
 
 AST_DEFINE(break);
 AST_DEFINE(continue);
+
+void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign);
 
 #endif

@@ -9,19 +9,21 @@
 #include "tls.h"
 #include "array.h"
 #include "scope.h"
+#include "type.h"
 
 typedef struct {
-    tls_t       *tls;
-    file_t      *file;
-    char        *end;
-    char        *cursor;
-    src_point_t  cur_point;
-    src_point_t  pre_clean_point;
-    u64          n_lines;
-    u64          n_blank_lines;
-    array_t      top_level_nodes;
-    scope_t      global_scope;
-    array_t      scope_stack;
+    tls_t        *tls;
+    file_t       *file;
+    char         *end;
+    char         *cursor;
+    src_point_t   cur_point;
+    src_point_t   pre_clean_point;
+    u64           n_lines;
+    u64           n_blank_lines;
+    array_t       top_level_nodes;
+    scope_t       global_scope;
+    array_t       scope_stack;
+    ast_assign_t *program_entry;
 } parse_context_t;
 
 
@@ -102,6 +104,13 @@ const char * op_str_table[] = {
 };
 #define OP_STR(_op)       (op_str_table[(_op)])
 #define OP_STRLEN(_op)    (strlen(OP_STR((_op))))
+
+
+
+void multiple_entry_error(ast_assign_t *new, ast_assign_t *old) {
+    report_range_err_no_exit(&ASTP(new)->loc, "only one procedure can be delcared as 'program_entry'");
+    report_range_info(&ASTP(old)->loc, "another 'program_entry' procedure defined here:");
+}
 
 
 
@@ -498,22 +507,29 @@ static int parse_string_literal(parse_context_t *cxt, string_id *string_out) {
 
 #define SCOPE(_cxt) (*(scope_t**)array_last((_cxt)->scope_stack))
 
-#define SCOPE_POP(_cxt)                                         \
-do {                                                            \
-    array_pop((_cxt)->scope_stack);                             \
-    ASSERT(array_len((_cxt)->scope_stack), "scope mismatch");   \
+#define SCOPE_POP(_cxt)                                                           \
+do {                                                                              \
+    array_pop((_cxt)->scope_stack);                                               \
+    ASSERT(array_len((_cxt)->scope_stack), "scope mismatch");                     \
 } while (0)
 
-#define SCOPE_PUSH(_cxt, _kind, _node)                          \
-do {                                                            \
-    scope_t *_new_scope;                                        \
-    _new_scope = add_subscope(SCOPE((_cxt)), (_kind), (_node)); \
-    array_push((_cxt)->scope_stack, _new_scope);                \
+#define SCOPE_PUSH(_cxt, _kind, _node)                                            \
+do {                                                                              \
+    scope_t *_new_scope;                                                          \
+    _new_scope = add_subscope(SCOPE((_cxt)), (_kind), (_node));                   \
+    array_push((_cxt)->scope_stack, _new_scope);                                  \
 } while (0)
 
-#define INSTALL_IF_NEW(_cxt, _name_id, _node)                   \
-do {                                                            \
-    add_symbol_if_new(SCOPE((_cxt)), (_name_id), (_node));      \
+#define SCOPE_PUSH_NAMED(_cxt, _kind, _node, _name_id)                            \
+do {                                                                              \
+    scope_t *_new_scope;                                                          \
+    _new_scope = add_named_subscope(SCOPE((_cxt)), (_kind), (_node), (_name_id)); \
+    array_push((_cxt)->scope_stack, _new_scope);                                  \
+} while (0)
+
+#define INSTALL_IF_NEW(_cxt, _name_id, _node)                                     \
+do {                                                                              \
+    add_symbol_if_new(SCOPE((_cxt)), (_name_id), (_node));                        \
 } while (0)
 
 
@@ -805,16 +821,19 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
         ((ast_int_t*)result)->str_rep = str_rep;
     } else if (OPTIONAL_WORD(cxt, "true")) {
         result                         = AST_ALLOC(cxt, ast_bool_t);
+        result->type                   = TY_BOOL;
         result->kind                   = AST_BOOL;
         ((ast_bool_t*)result)->is_true = 1;
     } else if (OPTIONAL_WORD(cxt, "false")) {
         result                         = AST_ALLOC(cxt, ast_bool_t);
+        result->type                   = TY_BOOL;
         result->kind                   = AST_BOOL;
         ((ast_bool_t*)result)->is_true = 0;
     } else if (OPTIONAL_IDENT(cxt, &str_rep)) {
-        result                          = AST_ALLOC(cxt, ast_ident_t);
-        result->kind                    = AST_IDENT;
-        ((ast_ident_t*)result)->str_rep = str_rep;
+        result                                = AST_ALLOC(cxt, ast_ident_t);
+        result->kind                          = AST_IDENT;
+        ((ast_ident_t*)result)->str_rep       = str_rep;
+        ((ast_ident_t*)result)->resolved_node = NULL;
     } else if (OPTIONAL_STR_LIT(cxt, &str_rep)) {
         result                           = AST_ALLOC(cxt, ast_string_t);
         result->kind                     = AST_STRING;
@@ -977,6 +996,7 @@ static ast_t * parse_expr_more(parse_context_t *cxt, ast_t *left, int min_prec) 
         bin_result                = (ast_bin_expr_t*)result;
         bin_result->left          = left;
         bin_result->right         = right;
+        ASTP(bin_result)->kind    = AST_BIN_EXPR;
         ASTP(bin_result)->loc.beg = left->loc.beg;
         ASTP(bin_result)->loc.end = (split ? split_end : right->loc.end);
 
@@ -1008,13 +1028,12 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
     ast_struct_field_t *field;
 
     result                = AST_ALLOC(cxt, ast_struct_t);
+    ASTP(result)->type    = TY_TYPE;
     ASTP(result)->kind    = AST_STRUCT;
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
     result->fields        = array_make(ast_t*);
 
     EXPECT_CHAR(cxt, '{', "expected '{' to open struct '%s'", get_string(name));
-
-    SCOPE_PUSH(cxt, AST_STRUCT, ASTP(result));
 
     while (!OPTIONAL_CHAR(cxt, '}')) {
         field                = AST_ALLOC(cxt, ast_struct_field_t);
@@ -1028,8 +1047,6 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
 
         ASTP(field)->loc.end = GET_END_POINT(cxt);
 
-        INSTALL_IF_NEW(cxt, field->name, ASTP(field));
-
         array_push(result->fields, field);
 
         if (!OPTIONAL_CHAR(cxt, ',')) {
@@ -1037,8 +1054,6 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
             break;
         }
     }
-
-    SCOPE_POP(cxt);
 
     ASTP(result)->loc.end = GET_END_POINT(cxt);
 
@@ -1050,13 +1065,14 @@ static ast_t * parse_module_body(parse_context_t *cxt, string_id name) {
     ast_t        *child;
 
     result                = AST_ALLOC(cxt, ast_module_t);
+    ASTP(result)->type    = TY_MODULE;
     ASTP(result)->kind    = AST_MODULE;
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
     result->children      = array_make(ast_t*);
 
     EXPECT_CHAR(cxt, '{', "expected '{' to open module '%s'", get_string(name));
 
-    SCOPE_PUSH(cxt, AST_MODULE, ASTP(result));
+    SCOPE_PUSH_NAMED(cxt, AST_MODULE, ASTP(result), name);
 
     while (!OPTIONAL_CHAR(cxt, '}')) {
         child = parse_assign(cxt);
@@ -1312,12 +1328,13 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
 
     result                = AST_ALLOC(cxt, ast_proc_t);
     ASTP(result)->kind    = AST_PROC;
+    ASTP(result)->type    = TY_PROC;
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
     result->params        = array_make(ast_t*);
 
     EXPECT_CHAR(cxt, '(', "expected '(' to open the parameter list for proc '%s'", get_string(name));
 
-    SCOPE_PUSH(cxt, AST_PROC, ASTP(result));
+    SCOPE_PUSH_NAMED(cxt, AST_PROC, ASTP(result), name);
 
     seen_vargs = 0;
     while (!OPTIONAL_CHAR(cxt, ')')) {
@@ -1385,21 +1402,28 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
 }
 
 static ast_t * parse_assign(parse_context_t *cxt) {
-    src_range_t   loc;
+    array_t       tags;
     string_id     tag;
     int           has_tags;
+    src_range_t   loc;
     int           is_extern;
+    int           is_program_entry;
     string_id     name;
     int           kind;
     ast_assign_t *result;
 
-    has_tags  = 0;
-    is_extern = 0;
+    tags             = array_make(string_id);
+    has_tags         = 0;
+    is_extern        = 0;
+    is_program_entry = 0;
     while (OPTIONAL_LIT(cxt, "[[")) {
         EXPECT_IDENT(cxt, &tag, "expected assignment tag");
         EXPECT_LIT(cxt, "]]", "expected ']]'");
+        array_push(tags, tag);
         if (tag == get_string_id("extern")) {
             is_extern = 1;
+        } else if (tag == get_string_id("program_entry")) {
+            is_program_entry = 1;
         }
         has_tags = 1;
     }
@@ -1419,20 +1443,27 @@ static ast_t * parse_assign(parse_context_t *cxt) {
     ASSERT(OPTIONAL_IDENT(cxt, &name), "parse_identifier_assign must be wrong");
     ASSERT(OPTIONAL_CHAR(cxt, '='), "parse_identifier_assign must be wrong");
 
-    result      = AST_ALLOC(cxt, ast_assign_t);
-    result->val = NULL;
+    result = AST_ALLOC(cxt, ast_assign_t);
+
+    if (has_tags) {
+        result->tags = tags;
+    }
 
     if        (OPTIONAL_LIT(cxt, "proc"))       { kind = AST_ASSIGN_PROC;
-        loc.end     = GET_END_POINT(cxt);
-        result->val = parse_proc_body(cxt, name, !is_extern);
+        loc.end            = GET_END_POINT(cxt);
+        result->val        = parse_proc_body(cxt, name, !is_extern);
+        ASTP(result)->type = TY_PROC;
     } else if (OPTIONAL_LIT(cxt, "struct"))     { kind = AST_ASSIGN_STRUCT;
-        loc.end     = GET_END_POINT(cxt);
-        result->val = parse_struct_body(cxt, name);
+        loc.end            = GET_END_POINT(cxt);
+        result->val        = parse_struct_body(cxt, name);
+        ASTP(result)->type = TY_TYPE;
     } else if (OPTIONAL_LIT(cxt, "macro"))      { kind = AST_ASSIGN_MACRO;
-        loc.end = GET_END_POINT(cxt);
+        loc.end            = GET_END_POINT(cxt);
+        ASTP(result)->type = TY_MACRO;
     } else if (OPTIONAL_LIT(cxt, "module"))     { kind = AST_ASSIGN_MODULE;
-        loc.end     = GET_END_POINT(cxt);
-        result->val = parse_module_body(cxt, name);
+        loc.end            = GET_END_POINT(cxt);
+        result->val        = parse_module_body(cxt, name);
+        ASTP(result)->type = TY_MODULE;
     } else if ((result->val = parse_expr(cxt))) { kind = AST_ASSIGN_EXPR;
         loc.end = result->val->loc.end;
     } else {
@@ -1450,6 +1481,20 @@ static ast_t * parse_assign(parse_context_t *cxt) {
     ASTP(result)->kind = kind;
     ASTP(result)->loc  = loc;
     result->name       = name;
+
+    if (is_program_entry) {
+        if (kind != AST_ASSIGN_PROC) {
+            report_range_err(&ASTP(result)->loc, "'%s' is tagged 'program_entry', but is not a procedure", get_string(name));
+            return NULL;
+        }
+
+        if (cxt->program_entry != NULL) {
+            multiple_entry_error(result, cxt->program_entry);
+            return NULL;
+        }
+
+        cxt->program_entry = result;
+    }
 
     INSTALL_IF_NEW(cxt, name, ASTP(result));
 
@@ -1470,8 +1515,9 @@ static void setup_cxt(parse_context_t *cxt) {
     cxt->pre_clean_point    = cxt->cur_point;
     cxt->n_lines            = cxt->n_blank_lines = 0;
     cxt->top_level_nodes    = array_make(ast_t*);
-    cxt->global_scope       = create_scope(NULL, AST_INVALID, NULL);
+    cxt->global_scope       = create_named_scope(NULL, AST_INVALID, NULL, get_string_id("<global scope>"));
     cxt->scope_stack        = array_make(scope_t*);
+    cxt->program_entry      = NULL;
 
     gs = &cxt->global_scope;
     array_push(cxt->scope_stack, gs);
@@ -1539,6 +1585,15 @@ static void parse(parse_context_t *cxt) {
         n_lines       += cxt->n_lines;
         n_blank_lines += cxt->n_blank_lines;
     } LINES_UNLOCK();
+
+    if (cxt->program_entry) {
+        PROGRAM_ENTRY_LOCK(); {
+            if (program_entry != NULL) {
+                multiple_entry_error(cxt->program_entry, program_entry);
+            }
+            program_entry = cxt->program_entry;
+        } PROGRAM_ENTRY_UNLOCK();
+    }
 }
 
 static void parse_file_thread(void *_path) {

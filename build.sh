@@ -25,7 +25,7 @@ if [ ${DEBUG} = "yes" ]; then
 else
     OPT="-O3"
     LTO="-flto"
-    MARCH="-march=native"
+    MARCH="-march=native -mtune=native"
 fi
 
 
@@ -38,6 +38,7 @@ LD_FLAGS="${MARCH} ${TLS_MODEL} ${OPT} ${LTO} ${DEBUG_SYMBOLS} -lpthread -lm"
 echo "Building Simon compiler.."
 rm -rf build
 mkdir -p build
+mkdir -p build/pp
 mkdir -p build/obj
 mkdir -p build/bin
 
@@ -45,6 +46,7 @@ pids=()
 
 for f in src/*.c; do
     echo "  $f"
+    gcc -E ${C_FLAGS} $f -o build/pp/$(basename $f .c).c &
     gcc -c ${C_FLAGS} $f -o build/obj/$(basename $f .c).o &
     pids+=($!)
 done

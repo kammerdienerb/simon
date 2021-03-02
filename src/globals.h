@@ -6,6 +6,7 @@
 #include "array.h"
 #include "options.h"
 #include "scope.h"
+#include "ast.h"
 
 extern tp_t            *tp;
 extern pthread_mutex_t  roots_mtx;
@@ -59,5 +60,23 @@ do {                                             \
         pthread_mutex_unlock(&lines_mtx);        \
     }                                            \
 } while (0)
+
+extern pthread_mutex_t  program_entry_mtx;
+extern ast_assign_t    *program_entry;
+
+#define PROGRAM_ENTRY_LOCK()                     \
+do {                                             \
+    if (tp != NULL) {                            \
+        pthread_mutex_lock(&program_entry_mtx);  \
+    }                                            \
+} while (0)
+
+#define PROGRAM_ENTRY_UNLOCK()                   \
+do {                                             \
+    if (tp != NULL) {                            \
+        pthread_mutex_unlock(&program_entry_mtx);\
+    }                                            \
+} while (0)
+
 
 #endif

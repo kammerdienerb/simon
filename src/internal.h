@@ -42,6 +42,7 @@ do {                                                  \
 void simon_assert_fail(const char *msg, const char *fname, int line, const char *cond_str);
 #define ASSERT(cond, msg)                              \
 do { if (unlikely(!(cond))) {                          \
+    fflush(stdout);                                    \
     simon_assert_fail(msg, __FILE__, __LINE__, #cond); \
 } } while (0)
 #else

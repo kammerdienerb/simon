@@ -10,11 +10,13 @@
 #include "ast.h"
 #include "memory.h"
 #include "scope.h"
+#include "type.h"
 
 int do_options(int argc, char **argv);
 void do_init(void);
 void do_parse(void);
 void do_resolve_symbols(void);
+void do_check(void);
 
 int main(int argc, char **argv) {
     u64 start_us;
@@ -22,6 +24,8 @@ int main(int argc, char **argv) {
     start_us = measure_time_now_us();
 
     if (do_options(argc, argv)) { return 1; }
+    if (options.help)           { return 0; }
+
     do_init();
 
     if (array_len(options.input_files) == 0) {
@@ -31,6 +35,7 @@ int main(int argc, char **argv) {
 
     do_parse();
     do_resolve_symbols();
+    do_check();
 
     if (options.dump_symbols) {
         show_scope(&global_scope);
@@ -75,9 +80,10 @@ void do_init(void) {
     init_strings();
     init_ui();
     init_file_table();
+    init_types();
 
     roots        = array_make(ast_t*);
-    global_scope = create_scope(NULL, AST_INVALID, NULL);
+    global_scope = create_named_scope(NULL, AST_INVALID, NULL, get_string_id("<global scope>"));
 
     verb_message("init took %lu us\n", measure_time_now_us() - start_us);
 }
@@ -106,5 +112,37 @@ void do_parse(void) {
 }
 
 void do_resolve_symbols(void) {
-    scope_remove_assigns(&global_scope);
+    u64 start_us;
+
+    start_us = measure_time_now_us();
+
+    scopes_find_origins(&global_scope);
+
+    verb_message("symbol origin resolution took %lu us\n", measure_time_now_us() - start_us);
+}
+
+void do_check(void) {
+    u64 start_us;
+    scope_t *entry_scope;
+
+    start_us = measure_time_now_us();
+
+    if (program_entry == NULL) {
+        report_vague_err("at least one procedure must be tagged as 'program_entry'");
+        return;
+    }
+
+    entry_scope = get_subscope_from_node(&global_scope, program_entry->val);
+    if (entry_scope         == NULL
+    ||  entry_scope->parent == NULL
+    ||  entry_scope->parent != &global_scope) {
+
+        report_range_err(&ASTP(program_entry)->loc,
+                         "'program_entry' procedure must be in global scope");
+        return;
+    }
+
+    check_node(ASTP(program_entry), &global_scope, NULL);
+
+    verb_message("type-checking and semantic analysis took %lu us\n", measure_time_now_us() - start_us);
 }
