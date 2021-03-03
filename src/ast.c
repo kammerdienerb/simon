@@ -55,7 +55,7 @@ static void check_assign(ast_assign_t *assign, scope_t *scope) {
 
     ASSERT(assign->val != NULL, "assignment has no value");
 
-    if (!assign->is_origin) {
+    if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) {
         existing_node = search_up_scopes_stop_at_module(scope, assign->name);
         if (existing_node == NULL) {
             undeclared_error(assign->name, ASTP(assign));
@@ -65,7 +65,7 @@ static void check_assign(ast_assign_t *assign, scope_t *scope) {
         ASSERT(ASTP(assign) != existing_node, "assign search found itself");
 #ifdef SIMON_DO_ASSERTIONS
         if (ast_kind_is_assign(existing_node->kind)) {
-            ASSERT(((ast_assign_t*)existing_node)->is_origin, "existing node isn't an origin");
+            ASSERT(existing_node->flags & AST_FLAG_ORIGIN, "existing node isn't an origin");
         }
 #endif
     }
@@ -79,7 +79,7 @@ static void check_assign(ast_assign_t *assign, scope_t *scope) {
             return;
         }
 
-        if (!assign->is_origin) {
+        if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) {
             if (type_has_compile_time_only_values(existing_node->type)) {
                 switch (existing_node->type) {
                     case TY_MODULE: which = "module";    break;
@@ -99,11 +99,9 @@ static void check_assign(ast_assign_t *assign, scope_t *scope) {
 
             typecheck_assign(assign, existing_node, scope);
         }
-    } else {
-        if (!assign->is_origin) {
-            redecl_error(assign->name, ASTP(assign), existing_node);
-            return;
-        }
+    } else if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) {
+        redecl_error(assign->name, ASTP(assign), existing_node);
+        return;
     }
 }
 
@@ -121,13 +119,25 @@ static void check_proc(ast_proc_t *proc, scope_t *scope) {
 }
 
 static void check_proc_param(ast_proc_param_t *param, scope_t *scope) {
-    ast_t *existing_node;
+    ast_t                     *existing_node;
+    ast_polymorph_type_name_t *poly;
 
-    if (scope->parent != NULL) {
-        existing_node = search_up_scopes_stop_at_module(scope->parent, param->name);
+    ASSERT(scope->parent != NULL, "proc param in global scope??");
+
+    existing_node = search_up_scopes_stop_at_module(scope->parent, param->name);
+
+    if (existing_node != NULL) {
+        redecl_error(param->name, ASTP(param), existing_node);
+        return;
+    }
+
+    if (param->type_expr_or_polymorph_type_name->kind == AST_POLYMORPH_TYPE_NAME) {
+        poly = (ast_polymorph_type_name_t*)param->type_expr_or_polymorph_type_name;
+
+        existing_node = search_up_scopes_stop_at_module(scope->parent, poly->name);
 
         if (existing_node != NULL) {
-            redecl_error(param->name, ASTP(param), existing_node);
+            redecl_error(poly->name, ASTP(poly), existing_node);
             return;
         }
     }
@@ -169,7 +179,7 @@ static void check_struct(ast_struct_t *st, scope_t *scope, ast_assign_t *parent_
 void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
     ast_t **it;
 
-    if (node->checked) { return; }
+    if (node->flags & AST_FLAG_CHECKED) { return; }
 
     switch (node->kind) {
 #define X(_kind) case _kind:
@@ -226,5 +236,5 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
 
     ASSERT(node->type != TY_UNKNOWN, "did not resolve type");
 
-    node->checked = 1;
+    node->flags |= AST_FLAG_CHECKED;
 }

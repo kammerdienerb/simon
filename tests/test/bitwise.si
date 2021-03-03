@@ -1,16 +1,16 @@
-; bitwise.bjou
+# bitwise.bjou
 
 [[ program_entry ]]
 main = proc () {
-    a = 1431655765
-    b = ~a
+    a = 1431655765;
+    b = ~a;
 
-    print(b)
-    print(a & b)
-    print(a | b)
-    print(a ^ 253)
-    print(a >> 3)
-    print(b << 5)
-    print(cast(u64, b) << 5)
-    print(~cast(u64, b) << 5)
+    print(b);
+    print(a & b);
+    print(a | b);
+    print(a ^ 253);
+    print(a >> 3);
+    print(b << 5);
+    print(cast(u64, b) << 5);
+    print(~cast(u64, b) << 5);
 }

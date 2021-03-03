@@ -165,7 +165,9 @@ again:;
         node = *node_p;
 
         /* Proc parameters _must_ be origins. */
-        if (node->kind == AST_PROC_PARAM) { goto next; }
+        if (node->kind == AST_PROC_PARAM)          { goto next; }
+        /* So must polymorphic type names. */
+        if (node->kind == AST_POLYMORPH_TYPE_NAME) { goto next; }
 
 #ifdef SIMON_DO_ASSERTIONS
         if (!ast_kind_can_be_symbol_origin(node->kind)) {
@@ -197,7 +199,7 @@ again:;
             }
         }
 
-        ((ast_assign_t*)node)->is_origin = 1;
+        node->flags |= AST_FLAG_ORIGIN;
 
 next:;
         i += 1;
@@ -223,7 +225,7 @@ void scopes_find_origins(scope_t *scope) {
             ASSERT(0, "node can't be the origin of a symbol");
         }
 #endif
-        ((ast_assign_t*)*node_p)->is_origin = 1;
+        (*node_p)->flags |= AST_FLAG_ORIGIN;
     }
 
     if (tp == NULL) {

@@ -1,39 +1,39 @@
-; breakcontinue.si
+# breakcontinue.si
 
 [[ program_entry ]]
 main = proc () {
-    i = 0
+    i = 0;
 
-    print("break 1")
+    print("break 1");
 
-    loop : i < 10 : {
-        print(i)
-        if i == 5 { break }
-        i += 1
+    loop ; i < 10 ; {
+        print(i);
+        if i == 5 { break; }
+        i += 1;
     }
 
-    print("break 2")
-    loop : true : { break }
+    print("break 2");
+    loop ; true ; { break; }
 
-    print("break 3")
-    loop i = 0 : i < 10 : i += 1 {
-        if i > 5 { break }
-        print(i)
+    print("break 3");
+    loop i = 0 ; i < 10 ; i += 1 {
+        if i > 5 { break; }
+        print(i);
     }
 
-    print("continue 1")
+    print("continue 1");
 
-    i = 0
-    loop : i < 10 : {
-        i += 1
-        if i - 1 < 5 { continue }
-        print(i - 1)
+    i = 0;
+    loop ; i < 10 ; {
+        i += 1;
+        if i - 1 < 5 { continue; }
+        print(i - 1);
     }
 
-    print("continue 2")
+    print("continue 2");
 
-    loop i = 0 : i < 10 : i += 1 {
-        if i % 2 != 0 { continue }
-        print(i)
+    loop i = 0 ; i < 10 ; i += 1 {
+        if i % 2 != 0 { continue; }
+        print(i);
     }
 }

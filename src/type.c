@@ -17,7 +17,6 @@ static u32 insert_new_type(type_t t) {
     u32 id;
     array_push(type_table, t);
     id = array_len(type_table) - 1;
-    printf("created '%s'\n", get_string(get_type_string_id(id)));
     return id;
 }
 

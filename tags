@@ -9,9 +9,14 @@ ALIGN	src/internal.h	/^#undef ALIGN$/;"	d
 ALIGNMENT	src/memory.h	/^#define ALIGNMENT /;"	d
 ARRAY_DEFAULT_CAP	src/array.h	/^#define ARRAY_DEFAULT_CAP /;"	d
 ASSERT	src/internal.h	/^#define ASSERT(/;"	d
+ASSIGNMENT_PREC	src/parse.c	/^#define ASSIGNMENT_PREC /;"	d	file:
 ASTP	src/ast.h	/^#define ASTP(/;"	d
 AST_ALLOC	src/parse.c	/^#define AST_ALLOC(/;"	d	file:
 AST_DEFINE	src/ast.h	/^#define AST_DEFINE(/;"	d
+AST_FLAG_CHECKED	src/ast.h	/^#define AST_FLAG_CHECKED /;"	d
+AST_FLAG_ORIGIN	src/ast.h	/^#define AST_FLAG_ORIGIN /;"	d
+AST_FLAG_POLYMORPH	src/ast.h	/^#define AST_FLAG_POLYMORPH /;"	d
+AST_FLAG_VARARGS	src/ast.h	/^#define AST_FLAG_VARARGS /;"	d
 AST_STR	src/ast.h	/^#define AST_STR(/;"	d
 C	src/ui.c	/^#define C(/;"	d	file:
 CAT2	src/hash_table.h	/^#define CAT2(/;"	d
@@ -269,7 +274,6 @@ check_node	src/ast.c	/^void check_node(ast_t *node, scope_t *scope, ast_assign_t
 check_proc	src/ast.c	/^static void check_proc(ast_proc_t *proc, scope_t *scope) {$/;"	f	file:
 check_proc_param	src/ast.c	/^static void check_proc_param(ast_proc_param_t *param, scope_t *scope) {$/;"	f	file:
 check_struct	src/ast.c	/^static void check_struct(ast_struct_t *st, scope_t *scope, ast_assign_t *parent_assign) {$/;"	f	file:
-checked	src/ast.h	/^    u8          checked;$/;"	m	struct:__anon3
 checked_open_FILE	src/file.c	/^int checked_open_FILE(const char *path, const char *mode, FILE **f, u64 *file_size) {$/;"	f
 clean	src/parse.c	/^static int clean(parse_context_t *cxt, int passalong_len) {$/;"	f	file:
 col	src/src_range.h	/^    u32        col;$/;"	m	struct:__anon11
@@ -305,6 +309,7 @@ file	src/parse.c	/^    file_t       *file;$/;"	m	struct:__anon9	file:
 file_t	src/file.h	/^} file_t;$/;"	t	typeref:struct:__anon5
 find_in_scope	src/scope.c	/^ast_t *find_in_scope(scope_t *scope, string_id name_id) {$/;"	f
 find_tls_entry	src/tls.c	/^static tls_entry_t * find_tls_entry(void) {$/;"	f	file:
+flags	src/ast.h	/^    u8          flags;$/;"	m	struct:__anon3
 flags	src/type.h	/^    u32 flags;$/;"	m	struct:type
 fn	src/threadpool.h	/^    tp_task_fn_t    fn;$/;"	m	struct:tp_task
 free	src/memory.h	/^#define free /;"	d

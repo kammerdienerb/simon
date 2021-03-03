@@ -1,21 +1,21 @@
-; namedargs.si
+# namedargs.si
 
 a = proc () {
-    print("a()")
+    print("a()");
 }
 
 b = proc (arg) {
-    print("b(arg: %)", arg)
+    print("b(arg: %)", arg);
 }
 
 c = proc (arg1, arg2) {
-    print("c(arg1: %, arg2: %)", arg1, arg2)
+    print("c(arg1: %, arg2: %)", arg1, arg2);
 }
 
 [[ program_entry ]]
 main = proc () {
-    a()
-    b(arg = 123)
-    c(arg1 = 432, arg2 = false)
-    c(arg2 = false, arg1 = 432)
+    a();
+    b(arg = 123);
+    c(arg1 = 432, arg2 = false);
+    c(arg2 = false, arg1 = 432);
 }

@@ -1,9 +1,11 @@
-; foo.si
+# foo.si
+
+T = struct {}
+
+foo = proc (%i: %T) {
+}
 
 [[ program_entry ]]
 main = proc() {
-    types = module {
-        T = struct {
-        }
-    }
+    foo(123);
 }

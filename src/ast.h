@@ -8,48 +8,49 @@
 
 #define ASTP(_x) (&((_x)->ast))
 
-#define X_AST                \
-    X(AST_INVALID)           \
-                             \
-    X(AST_STATIC_IF)         \
-    X(AST_STATIC_IF_BUILTIN) \
-    X(AST_STATIC_ELIF)       \
-    X(AST_STATIC_ELSE)       \
-    X(AST_STATIC_ENDIF)      \
-    X(AST_STATIC_ASSERT)     \
-    X(AST_STATIC_COMMENT)    \
-    X(AST_STATIC_ERROR)      \
-    X(AST_MODULE)            \
-    X(AST_PROC)              \
-    X(AST_STRUCT)            \
-    X(AST_MACRO)             \
-    X(AST_ASSIGN_EXPR)       \
-    X(AST_ASSIGN_PROC)       \
-    X(AST_ASSIGN_STRUCT)     \
-    X(AST_ASSIGN_MACRO)      \
-    X(AST_ASSIGN_MODULE)     \
-    X(AST_PROC_PARAM)        \
-    X(AST_STRUCT_FIELD)      \
-    X(AST_INT)               \
-    X(AST_STRING)            \
-    X(AST_BOOL)              \
-    X(AST_IDENT)             \
-    X(AST_UNARY_EXPR)        \
-    X(AST_BIN_EXPR)          \
-    X(AST_BLOCK)             \
-    X(AST_ARG_LIST)          \
-    X(AST_IF)                \
-    X(AST_LOOP)              \
-    X(AST_RETURN)            \
-    X(AST_DEFER)             \
-    X(AST_BREAK)             \
+#define X_AST                  \
+    X(AST_INVALID)             \
+                               \
+    X(AST_STATIC_IF)           \
+    X(AST_STATIC_IF_BUILTIN)   \
+    X(AST_STATIC_ELIF)         \
+    X(AST_STATIC_ELSE)         \
+    X(AST_STATIC_ENDIF)        \
+    X(AST_STATIC_ASSERT)       \
+    X(AST_STATIC_COMMENT)      \
+    X(AST_STATIC_ERROR)        \
+    X(AST_MODULE)              \
+    X(AST_PROC)                \
+    X(AST_STRUCT)              \
+    X(AST_MACRO)               \
+    X(AST_ASSIGN_EXPR)         \
+    X(AST_ASSIGN_PROC)         \
+    X(AST_ASSIGN_STRUCT)       \
+    X(AST_ASSIGN_MACRO)        \
+    X(AST_ASSIGN_MODULE)       \
+    X(AST_POLYMORPH_TYPE_NAME) \
+    X(AST_PROC_PARAM)          \
+    X(AST_STRUCT_FIELD)        \
+    X(AST_INT)                 \
+    X(AST_STRING)              \
+    X(AST_BOOL)                \
+    X(AST_IDENT)               \
+    X(AST_UNARY_EXPR)          \
+    X(AST_BIN_EXPR)            \
+    X(AST_BLOCK)               \
+    X(AST_ARG_LIST)            \
+    X(AST_IF)                  \
+    X(AST_LOOP)                \
+    X(AST_RETURN)              \
+    X(AST_DEFER)               \
+    X(AST_BREAK)               \
     X(AST_CONTINUE)
 
-#define X_AST_ASSIGNS        \
-    X(AST_ASSIGN_EXPR)       \
-    X(AST_ASSIGN_PROC)       \
-    X(AST_ASSIGN_STRUCT)     \
-    X(AST_ASSIGN_MACRO)      \
+#define X_AST_ASSIGNS          \
+    X(AST_ASSIGN_EXPR)         \
+    X(AST_ASSIGN_PROC)         \
+    X(AST_ASSIGN_STRUCT)       \
+    X(AST_ASSIGN_MACRO)        \
     X(AST_ASSIGN_MODULE)
 
 
@@ -64,11 +65,16 @@ int ast_kind_can_be_symbol_origin(int kind);
 const char *ast_get_kind_str(int kind);
 #define AST_STR(kind) (ast_get_kind_str((kind)))
 
+#define AST_FLAG_CHECKED              (1 << 0)
+#define AST_FLAG_POLYMORPH            (1 << 1)
+#define AST_FLAG_VARARGS              (1 << 2)
+#define AST_FLAG_ORIGIN               (1 << 3)
+
 typedef struct {
     src_range_t loc;
     u32         type;
     u8          kind;
-    u8          checked;
+    u8          flags;
 } ast_t;
 
 struct scope;
@@ -111,11 +117,14 @@ AST_DEFINE(module,
     array_t children;
 );
 
+AST_DEFINE(polymorph_type_name,
+    string_id name;
+);
+
 AST_DEFINE(proc_param,
     string_id  name;
+    ast_t     *type_expr_or_polymorph_type_name;
     ast_t     *val;
-    int        vargs;
-    int        polymorph;
 );
 
 AST_DEFINE(block,
@@ -129,7 +138,6 @@ AST_DEFINE(proc,
 
 AST_DEFINE(struct_field,
     string_id name;
-    int       polymorph;
 );
 
 AST_DEFINE(struct,
@@ -143,7 +151,6 @@ AST_DEFINE(assign,
     string_id  name;
     ast_t     *val;
     array_t    tags;
-    int        is_origin;
 );
 
 AST_DEFINE(int,
