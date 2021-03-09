@@ -15,6 +15,7 @@ typedef const char *string_t;
 typedef u64         string_id;
 
 #define STRING_ID_NULL (0)
+extern string_id UNDERSCORE_ID;
 
 void        init_strings(void);
 string_id   get_string_id(const char *string);

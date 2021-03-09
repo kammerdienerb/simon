@@ -6,10 +6,14 @@
 #include "strings.h"
 #include "array.h"
 
+#define MAX_PARAMS_OR_ARGS (128)
+
 #define ASTP(_x) (&((_x)->ast))
 
 #define X_AST                  \
     X(AST_INVALID)             \
+                               \
+    X(AST_BUILTIN)             \
                                \
     X(AST_STATIC_IF)           \
     X(AST_STATIC_IF_BUILTIN)   \
@@ -60,22 +64,37 @@ X_AST
 #undef X
 };
 
+#define AST_FLAG_CHECKED   (1 << 0)
+#define AST_FLAG_POLYMORPH (1 << 1)
+#define AST_FLAG_VARARGS   (1 << 2)
+#define AST_FLAG_ORIGIN    (1 << 3)
+
+typedef union {
+    u64        u;
+    i64        i;
+    double     f;
+    string_id  s;
+    void      *v;
+    u32        t;
+} value_t;
+
+typedef struct {
+    src_range_t loc;   /*        48 bytes                  */
+    u32         type;  /*        +4 bytes                  */
+    u16         kind;  /*        +2 bytes                  */
+    u16         flags; /*        +2 bytes                  */
+    value_t     value; /*        +8 bytes                  */
+                       /* Total: 64 bytes (one cache line) */
+} ast_t;
+
+
 int ast_kind_is_assign(int kind);
 int ast_kind_can_be_symbol_origin(int kind);
 const char *ast_get_kind_str(int kind);
 #define AST_STR(kind) (ast_get_kind_str((kind)))
 
-#define AST_FLAG_CHECKED              (1 << 0)
-#define AST_FLAG_POLYMORPH            (1 << 1)
-#define AST_FLAG_VARARGS              (1 << 2)
-#define AST_FLAG_ORIGIN               (1 << 3)
 
-typedef struct {
-    src_range_t loc;
-    u32         type;
-    u8          kind;
-    u8          flags;
-} ast_t;
+
 
 struct scope;
 typedef struct scope scope_t;
@@ -86,6 +105,10 @@ typedef struct {              \
     ast_t ast;                \
     __VA_ARGS__               \
 } ast_##name##_t
+
+AST_DEFINE(builtin,
+    string_id name;
+);
 
 AST_DEFINE(static_if,
     ast_t *expr;
@@ -133,6 +156,7 @@ AST_DEFINE(block,
 
 AST_DEFINE(proc,
     array_t  params;
+    ast_t   *ret_type_expr;
     ast_t   *block;
 );
 
@@ -178,7 +202,7 @@ AST_DEFINE(unary_expr,
 AST_DEFINE(bin_expr,
     ast_t *left;
     ast_t *right;
-    int    op;
+    int      op;
 );
 
 typedef struct {

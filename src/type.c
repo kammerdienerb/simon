@@ -2,8 +2,10 @@
 #include "array.h"
 #include "scope.h"
 #include "ui.h"
+#include "memory.h"
 
 static array_t type_table;
+static u32     empty_type_list;
 
 static int type_kind_has_under(u32 kind) {
     return
@@ -14,15 +16,56 @@ static int type_kind_has_under(u32 kind) {
 }
 
 static u32 insert_new_type(type_t t) {
-    u32 id;
+    u32  id;
+    u32 *id_list;
+
+    if (t.kind == _TY_TYPE_LIST) {
+        id_list = mem_alloc(sizeof(u32) * t.list_len);
+        memcpy(id_list, t.id_list, sizeof(u32) * t.list_len);
+        t.id_list = id_list;
+    }
+
     array_push(type_table, t);
     id = array_len(type_table) - 1;
+    return id;
+}
+
+static u32 get_or_insert_type_list(type_t t) {
+    u32     id;
+    type_t *it;
+    int     i;
+
+    if (t.list_len == 0) {
+        return empty_type_list;
+    }
+
+    id = *t.id_list;
+
+    array_traverse_from(type_table, it, id) {
+        if (it->kind     == _TY_TYPE_LIST
+        &&  it->list_len == t.list_len) {
+            for (i = 0; i < t.list_len; i += 1) {
+                if (it->id_list[i] != t.id_list[i]) { goto next; }
+            }
+
+            return id;
+
+            next:;
+        }
+    }
+
+    id = insert_new_type(t);
+
     return id;
 }
 
 static u32 get_or_insert_type(type_t t) {
     u32     id;
     type_t *it;
+
+    if (t.kind == _TY_TYPE_LIST) {
+        return get_or_insert_type_list(t);
+    }
 
     if (type_kind_has_under(t.kind)) {
         id = t.under_id + 1;
@@ -60,10 +103,10 @@ ASSERT(id == (ty), "id != " #ty);
 #undef X
 
     /* Add an empty type list type */
-    t.kind     = _TY_TYPE_LIST;
-    t.list_len = 0;
-    t.id_list  = NULL;
-    insert_new_type(t);
+    t.kind          = _TY_TYPE_LIST;
+    t.list_len      = 0;
+    t.id_list       = NULL;
+    empty_type_list = insert_new_type(t);
 
     return 0;
 }
@@ -81,6 +124,8 @@ static type_t * get_type_structure(u32 ty) {
 
     return array_item(type_table, ty);
 }
+
+int type_kind(u32 ty) { return get_type_structure(ty)->kind; }
 
 u32 get_ptr_type(u32 ty, u32 flags) {
     type_t new_t;
@@ -109,7 +154,7 @@ u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope, u32 fla
         name       = get_string(name_id);
 
         if (strlen(scope_name) + strlen(name) + 2 > SCOPE_NAME_BUFF_SIZE) {
-            report_vague_err("INTERNAL ERROR: name too long");
+            report_simple_err("INTERNAL ERROR: name too long");
             ASSERT(0, "name too long");
         }
 
@@ -121,6 +166,53 @@ u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope, u32 fla
     }
 
     return get_or_insert_type(t);
+}
+
+u32 get_proc_type(u32 n_param_types, u32 *param_types, u32 ret_type) {
+    type_t params_t;
+    u32    params_type;
+    type_t t;
+
+    params_t.kind     = _TY_TYPE_LIST;
+    params_t.list_len = n_param_types;
+    params_t.id_list  = param_types;
+
+    params_type = get_or_insert_type(params_t);
+
+    t.kind          = TY_PROC;
+    t.flags         = 0;
+    t.param_list_id = params_type;
+    t.ret_id        = ret_type;
+
+    return get_or_insert_type(t);
+}
+
+u32 get_num_param_types(u32 proc_ty) {
+    type_t *t;
+    type_t *params_t;
+
+    t        = get_type_structure(proc_ty);
+    params_t = get_type_structure(t->param_list_id);
+
+    return params_t->list_len;
+}
+
+u32 get_param_type(u32 proc_ty, u32 idx) {
+    type_t *t;
+    type_t *params_t;
+
+    t        = get_type_structure(proc_ty);
+    params_t = get_type_structure(t->param_list_id);
+
+    return params_t->id_list[idx];
+}
+
+u32 get_ret_type(u32 proc_ty) {
+    type_t *t;
+
+    t = get_type_structure(proc_ty);
+
+    return t->ret_id;
 }
 
 #define TYPE_STRING_BUFF_SIZE (4096)

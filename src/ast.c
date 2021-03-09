@@ -13,7 +13,10 @@ int ast_kind_is_assign(int kind) {
 }
 
 int ast_kind_can_be_symbol_origin(int kind) {
-    return kind == AST_PROC_PARAM || ast_kind_is_assign(kind);
+    return    kind == AST_PROC_PARAM
+           || kind == AST_POLYMORPH_TYPE_NAME
+           || kind == AST_BUILTIN
+           || ast_kind_is_assign(kind);
 }
 
 static const char *ast_kind_to_name[] = {
@@ -27,12 +30,19 @@ const char *ast_get_kind_str(int kind) {
 }
 
 static void redecl_error(string_id name, ast_t *bad, ast_t *existing) {
-    report_range_err_no_exit(&bad->loc,   "redeclaration of '%s'", get_string(name));
-    report_range_info(&existing->loc,     "competing declaration here:");
+    report_range_err_no_exit(&bad->loc, "redeclaration of '%s'", get_string(name));
+    if (existing->kind == AST_BUILTIN) {
+        report_simple_info("'%s' is a compiler builtin", get_string(name));
+    } else {
+        report_range_info(&existing->loc, "competing declaration here:");
+    }
 }
 
 static void undeclared_error(string_id name, ast_t *node) {
     report_range_err(&node->loc, "use of undeclared identifier '%s'", get_string(name));
+}
+
+static void type_builtin(ast_builtin_t *node, scope_t *scope) {
 }
 
 static void typecheck_assign(ast_assign_t *assign, ast_t *origin, scope_t *scope) {
@@ -55,6 +65,12 @@ static void check_assign(ast_assign_t *assign, scope_t *scope) {
     const char *which;
 
     ASSERT(assign->val != NULL, "assignment has no value");
+
+    if (assign->name == UNDERSCORE_ID) {
+        check_node(assign->val, scope, assign);
+        ASTP(assign)->type = assign->val->type;
+        return;
+    }
 
     if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) {
         existing_node = search_up_scopes_stop_at_module(scope, assign->name);
@@ -106,15 +122,43 @@ static void check_assign(ast_assign_t *assign, scope_t *scope) {
     }
 }
 
-static void check_proc(ast_proc_t *proc, scope_t *scope) {
+static void check_proc(ast_proc_t *proc, scope_t *scope, ast_assign_t *parent_assign) {
     ast_t   **it;
     scope_t  *new_scope;
+    u32       n_params;
+    u32      *param_types;
+    int       i;
+    u32       ret_type;
+
+    ASSERT(!(ASTP(proc)->flags & AST_FLAG_POLYMORPH), "TODO");
 
     new_scope = get_subscope_from_node(scope, ASTP(proc));
 
+    n_params    = array_len(proc->params);
+    param_types = alloca(sizeof(u32) * n_params);
+    i           = 0;
     array_traverse(proc->params, it) {
         check_node(*it, new_scope, NULL);
+        param_types[i] = (*it)->type;
+        i += 1;
     }
+
+    if (proc->ret_type_expr != NULL) {
+        check_node(proc->ret_type_expr, new_scope, NULL);
+        if (proc->ret_type_expr->type != TY_TYPE) {
+            report_range_err_no_exit(&proc->ret_type_expr->loc,
+                                "expression must be a type since it declares the return type of procedure '%s'",
+                                get_string(parent_assign->name));
+            report_simple_info("got '%s' instead", get_string(get_type_string_id(proc->ret_type_expr->type)));
+            return;
+        }
+
+        ret_type = proc->ret_type_expr->value.t;
+    } else {
+        ret_type = TY_NOT_TYPED;
+    }
+
+    ASTP(proc)->type = get_proc_type(n_params, param_types, ret_type);
 
     check_node(proc->block, new_scope, NULL);
 }
@@ -145,7 +189,15 @@ static void check_proc_param(ast_proc_param_t *param, scope_t *scope) {
         check_node(param->type_expr_or_polymorph_type_name, scope, NULL);
     } else {
         check_node(param->type_expr_or_polymorph_type_name, scope, NULL);
-        ASTP(param)->type = param->type_expr_or_polymorph_type_name->type;
+        if (param->type_expr_or_polymorph_type_name->type != TY_TYPE) {
+            report_range_err_no_exit(&param->type_expr_or_polymorph_type_name->loc,
+                             "expression must be a type since it declares the type of parameter '%s'",
+                             get_string(param->name));
+            report_simple_info("got '%s' instead", get_string(get_type_string_id(param->type_expr_or_polymorph_type_name->type)));
+            return;
+        }
+
+        ASTP(param)->type = param->type_expr_or_polymorph_type_name->value.t;
     }
 }
 
@@ -153,25 +205,62 @@ static void check_int(ast_int_t *integer, scope_t *scope) {
     ASTP(integer)->type = TY_S64;
 }
 
+static void check_bool(ast_bool_t *b, scope_t *scope) {
+    ASTP(b)->type = TY_BOOL;
+}
+
+static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
+    u32             proc_ty;
+    u32             n_params;
+    ast_arg_list_t *arg_list;
+    u32             n_args;
+    arg_t          *arg_p;
+
+    proc_ty = expr->left->type;
+
+    if (type_kind(proc_ty) != TY_PROC) {
+        report_range_err_no_exit(&ASTP(expr)->loc,
+                                 "attempting to call a value that is not a procedure");
+        report_range_info(&expr->left->loc,
+                          "value has type '%s'",
+                          get_string(get_type_string_id(proc_ty)));
+        return;
+    }
+
+    n_params = get_num_param_types(proc_ty);
+    arg_list = (ast_arg_list_t*)expr->right;
+    n_args   = array_len(arg_list->args);
+
+    if (n_args < n_params) {
+        report_loc_err(expr->right->loc.end, "too few");
+        return;
+    } else if (n_args > n_params) {
+        arg_p = array_item(arg_list->args, n_params);
+        report_range_err(&arg_p->expr->loc, "too many");
+        return;
+    }
+
+    ASTP(expr)->type = get_ret_type(expr->left->type);
+}
+
 static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
     check_node(expr->left, scope, NULL);
     check_node(expr->right, scope, NULL);
 
     if (expr->op == OP_CALL) {
-        if (expr->left->type != TY_PROC) {
-            report_range_err_no_exit(&ASTP(expr)->loc,
-                                     "attempting to call a value that is not a procedure");
-            report_range_info(&expr->left->loc,
-                              "value has type '%s'",
-                              get_string(get_type_string_id(expr->left->type)));
-        }
-        ASTP(expr)->type = TY_NOT_TYPED; /* @tmp */
+        check_call(expr, scope);
     }
 }
 
 static void check_ident(ast_ident_t *ident, scope_t *scope) {
     ast_t   *resolved_node;
     scope_t *resolved_ident_scope;
+
+    if (ident->str_rep == UNDERSCORE_ID) {
+        report_range_err_no_exit(&ASTP(ident)->loc, "'_' can be assigned to, but not referenced");
+        report_simple_info("'_' acts as an assignment sink for values meant to be unreferenceable");
+        return;
+    }
 
     resolved_node = ident->resolved_node;
 
@@ -181,11 +270,13 @@ static void check_ident(ast_ident_t *ident, scope_t *scope) {
         if (resolved_node == NULL) {
             report_range_err(&ASTP(ident)->loc,
                              "use of undeclared identifier '%s'", get_string(ident->str_rep));
+            return;
         }
 
         check_node(resolved_node, resolved_ident_scope, NULL);
 
-        ASTP(ident)->type = resolved_node->type;
+        ASTP(ident)->type  = resolved_node->type;
+        ASTP(ident)->value = resolved_node->value;
     }
 }
 
@@ -194,12 +285,12 @@ static void check_struct(ast_struct_t *st, scope_t *scope, ast_assign_t *parent_
 }
 
 static void check_arg_list(ast_arg_list_t *arg_list, scope_t *scope) {
-    ast_t **node_p;
+    arg_t *arg;
 
     ASTP(arg_list)->type = TY_NOT_TYPED;
 
-    array_traverse(arg_list->args, node_p) {
-        check_node(*node_p, scope, NULL);
+    array_traverse(arg_list->args, arg) {
+        check_node(arg->expr, scope, NULL);
     }
 }
 
@@ -222,7 +313,7 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
             }
             break;
         case AST_PROC:
-            check_proc((ast_proc_t*)node, scope);
+            check_proc((ast_proc_t*)node, scope, parent_assign);
             break;
 
         case AST_PROC_PARAM:
@@ -244,6 +335,9 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
             check_bin_expr((ast_bin_expr_t*)node, scope);
             break;
 
+        case AST_BOOL:
+            check_bool((ast_bool_t*)node, scope);
+            break;
         case AST_INT:
             check_int((ast_int_t*)node, scope);
             break;
@@ -257,6 +351,10 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
 
         case AST_ARG_LIST:
             check_arg_list((ast_arg_list_t*)node, scope);
+            break;
+
+        case AST_BUILTIN:
+            type_builtin((ast_builtin_t*)node, scope);
             break;
 
         default:;

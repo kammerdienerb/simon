@@ -1,6 +1,34 @@
 #include "scope.h"
 #include "ui.h"
 #include "globals.h"
+#include "memory.h"
+#include "type.h"
+
+static void insert_builtin_type(const char *name, u32 type_value) {
+    ast_builtin_t *b;
+
+    b                = mem_alloc(sizeof(*b));
+    ASTP(b)->kind    = AST_BUILTIN;
+    ASTP(b)->type    = TY_TYPE;
+    ASTP(b)->value.t = type_value;
+
+    add_symbol_if_new(&global_scope, get_string_id(name), ASTP(b));
+}
+
+void init_scopes(void) {
+    global_scope = create_named_scope(NULL, AST_INVALID, NULL, get_string_id("<global scope>"));
+
+    insert_builtin_type("bool", TY_BOOL);
+    insert_builtin_type("char", TY_CHAR);
+    insert_builtin_type("u8",   TY_U8);
+    insert_builtin_type("u16",  TY_U16);
+    insert_builtin_type("u32",  TY_U32);
+    insert_builtin_type("u64",  TY_U64);
+    insert_builtin_type("s8",   TY_S8);
+    insert_builtin_type("s16",  TY_S16);
+    insert_builtin_type("s32",  TY_S32);
+    insert_builtin_type("s64",  TY_S64);
+}
 
 scope_t create_scope(scope_t *parent, int kind, ast_t *node) {
     scope_t scope;
@@ -32,7 +60,7 @@ scope_t create_named_scope(scope_t *parent, int kind, ast_t *node, string_id nam
         name        = get_string(name_id);
 
         if (strlen(parent_name) + strlen(name) + 2 > SCOPE_NAME_BUFF_SIZE) {
-            report_vague_err("INTERNAL ERROR: name too long");
+            report_simple_err("INTERNAL ERROR: name too long");
             ASSERT(0, "name too long");
         }
         strncpy(buff, parent_name, SCOPE_NAME_BUFF_SIZE - strlen(buff) - 1);
@@ -104,6 +132,8 @@ ast_t *search_up_scopes_stop_at_module(scope_t *scope, string_id name_id) {
 
 void add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node) {
     ast_t *existing_node;
+
+    if (name_id == UNDERSCORE_ID) { return; }
 
     existing_node = search_up_scopes_stop_at_module(scope, name_id);
     if (existing_node != NULL) { return; }

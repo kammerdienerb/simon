@@ -307,9 +307,11 @@ static int parse_word(parse_context_t *cxt, const char *word) {
 static int parse_int(parse_context_t *cxt, string_id *string_out) {
     char *curs;
     int   len;
+    int   non_underscore;
 
-    len  = 0;
-    curs = cxt->cursor;
+    curs           = cxt->cursor;
+    len            = 0;
+    non_underscore = 0;
 
     if (curs >= cxt->end) { return 0; }
 
@@ -325,6 +327,8 @@ static int parse_int(parse_context_t *cxt, string_id *string_out) {
                 ||  IS_IN_RANGE(*curs, 'A', 'F')
                 ||  *curs == '_')) {
 
+                    non_underscore |= (*curs != '_');
+
                     curs += 1;
 
                     while (curs < cxt->end) {
@@ -338,6 +342,9 @@ static int parse_int(parse_context_t *cxt, string_id *string_out) {
                             }
                             break;
                         }
+
+                        non_underscore |= (*curs != '_');
+
                         curs += 1;
                     }
                 } else {
@@ -351,6 +358,7 @@ static int parse_int(parse_context_t *cxt, string_id *string_out) {
         curs += 1;
 
         if (curs < cxt->end && IS_NUM(*curs)) {
+            non_underscore = 1;
             curs += 1;
         } else {
             return 0;
@@ -366,9 +374,13 @@ get_digits:;
                 }
                 break;
             }
+
+            non_underscore |= (*curs != '_');
             curs += 1;
         }
     }
+
+    if (non_underscore == 0) { return 0; }
 
     len = curs - cxt->cursor;
 
@@ -682,6 +694,13 @@ static ast_t * parse_arg_list(parse_context_t *cxt) {
         array_push(result->args, arg);
 
         if (!OPTIONAL_CHAR(cxt, ',')) { break; }
+    }
+
+    if (array_len(result->args) > MAX_PARAMS_OR_ARGS) {
+        report_range_err(&((arg_t*)array_item(result->args, MAX_PARAMS_OR_ARGS))->expr->loc,
+                         "procedure call has exceeded the maximum number of arguments (%d)",
+                         MAX_PARAMS_OR_ARGS);
+        return NULL;
     }
 
     ASTP(result)->loc.end = GET_END_POINT(cxt);
@@ -1291,7 +1310,7 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
     result->params        = array_make(ast_t*);
 
-    EXPECT_CHAR(cxt, '(', "expected '(' to open the parameter list for proc '%s'", get_string(name));
+    EXPECT_CHAR(cxt, '(', "expected '(' to open the parameter list for procedure '%s'", get_string(name));
 
     SCOPE_PUSH_NAMED(cxt, AST_PROC, ASTP(result), name);
 
@@ -1326,6 +1345,7 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
                 ASTP(poly_ty_name)->kind     = AST_POLYMORPH_TYPE_NAME;
                 ASTP(poly_ty_name)->loc.beg  = GET_BEG_POINT(cxt);
                 ASTP(poly_ty_name)->flags   |= AST_FLAG_POLYMORPH;
+                ASTP(result)->flags         |= AST_FLAG_POLYMORPH;
 
                 EXPECT_IDENT(cxt, &poly_ty_name->name,
                              "expected identifier as polymorph type name for parameter '%s'",
@@ -1363,15 +1383,33 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
         array_push(result->params, param);
 
         if (!OPTIONAL_CHAR(cxt, ',')) {
-            EXPECT_CHAR(cxt, ')', "expected ')' to close the parameter list for proc '%s' or ',' to add more", get_string(name));
+            EXPECT_CHAR(cxt, ')', "expected ')' to close the parameter list for procedure '%s' or ',' to add more", get_string(name));
             break;
+        }
+    }
+
+    if (array_len(result->params) > MAX_PARAMS_OR_ARGS) {
+        report_range_err(&(*(ast_t**)array_item(result->params, MAX_PARAMS_OR_ARGS))->loc,
+                         "procedure '%s' has exceeded the maximum number of parameters (%d)",
+                         get_string(name),
+                         MAX_PARAMS_OR_ARGS);
+        return NULL;
+    }
+
+    if (OPTIONAL_CHAR(cxt, ':')) {
+        result->ret_type_expr = parse_expr(cxt);
+        if (result->ret_type_expr == NULL) {
+            report_loc_err(GET_BEG_POINT(cxt),
+                        "expected valid return type expression for procedure '%s'",
+                        get_string(name));
+            return NULL;
         }
     }
 
     if (do_parse_block) {
         result->block = parse_block(cxt);
         if (result->block == NULL) {
-            report_loc_err(GET_BEG_POINT(cxt), "expected '{' to open proc '%s'", get_string(name));
+            report_loc_err(GET_BEG_POINT(cxt), "expected '{' to open procedure '%s', or ':' to specify its return type", get_string(name));
             return NULL;
         }
         ASTP(result)->loc.end = result->block->loc.end;

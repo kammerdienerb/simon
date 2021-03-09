@@ -91,8 +91,13 @@ typedef struct type {
 
 int init_types(void);
 int type_has_compile_time_only_values(u32 ty);
+int type_kind(u32 ty);
 u32 get_ptr_type(u32 ty, u32 flags);
 u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope, u32 flags);
+u32 get_proc_type(u32 n_param_types, u32 *param_types, u32 ret_type);
+u32 get_num_param_types(u32 proc_ty);
+u32 get_param_type(u32 proc_ty, u32 idx);
+u32 get_ret_type(u32 proc_ty);
 string_id get_type_string_id(u32 ty);
 
 #endif

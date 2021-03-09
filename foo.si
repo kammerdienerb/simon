@@ -1,9 +1,8 @@
 # foo.si
 
 [[ program_entry ]]
-# main = proc() {
-s64 = proc() {
-    # foo(123);
+main = proc() : u32 {
+    foo(123);
 }
 
-# foo = proc(i: s64) { }
+foo = proc(i: s64, b: bool) { }

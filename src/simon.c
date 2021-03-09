@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
     do_init();
 
     if (array_len(options.input_files) == 0) {
-        report_vague_err("no input files");
+        report_simple_err("no input files");
         return 1;
     }
 
@@ -81,9 +81,9 @@ void do_init(void) {
     init_ui();
     init_file_table();
     init_types();
+    init_scopes();
 
-    roots        = array_make(ast_t*);
-    global_scope = create_named_scope(NULL, AST_INVALID, NULL, get_string_id("<global scope>"));
+    roots = array_make(ast_t*);
 
     verb_message("init took %lu us\n", measure_time_now_us() - start_us);
 }
@@ -128,7 +128,7 @@ void do_check(void) {
     start_us = measure_time_now_us();
 
     if (program_entry == NULL) {
-        report_vague_err("at least one procedure must be tagged as 'program_entry'");
+        report_simple_err("at least one procedure must be tagged as 'program_entry'");
         return;
     }
 

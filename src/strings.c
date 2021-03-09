@@ -6,6 +6,8 @@
 #include "ui.h"
 
 
+string_id UNDERSCORE_ID;
+
 static char *cstr_dup(const char *str) {
     u64   len;
     char *dup;
@@ -85,6 +87,8 @@ void init_strings(void) {
         kwd_id = get_string_id(kwds[i]);
         array_push(kwd_ids, kwd_id);
     }
+
+    UNDERSCORE_ID = get_string_id("_");
 }
 
 string_id get_string_id(const char *string) {

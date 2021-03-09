@@ -19,6 +19,7 @@ static pthread_mutex_t output_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 #define ERR_COLOR   TERM_RED
 #define INFO_COLOR  TERM_YELLOW
+#define LOC_COLOR   TERM_BLUE
 #define RANGE_COLOR TERM_RESET
 
 #define N_CONTEXT_LINES (2)
@@ -50,7 +51,7 @@ static void common_exit(int status) {
     exit(status);
 }
 
-void report_vague_err(const char *fmt, ...) {
+void _report_simple_err(int should_exit, const char *fmt, ...) {
     va_list va;
 
     LOCK_OUTPUT();
@@ -64,7 +65,29 @@ void report_vague_err(const char *fmt, ...) {
     va_end(va);
     printf("\n");
 
-    common_exit(1);
+    if (should_exit) {
+        common_exit(1);
+    }
+    UNLOCK_OUTPUT();
+}
+
+void _report_simple_info(int should_exit, const char *fmt, ...) {
+    va_list va;
+
+    LOCK_OUTPUT();
+    C(INFO_COLOR);
+    printf("info");
+    C(TERM_RESET);
+
+    printf(": ");
+    va_start(va, fmt);
+    vprintf(fmt, va);
+    va_end(va);
+    printf("\n");
+
+    if (should_exit) {
+        common_exit(1);
+    }
     UNLOCK_OUTPUT();
 }
 
@@ -80,7 +103,7 @@ static int n_digits(u64 num) {
     return digits;
 }
 
-static void print_range(src_range_t *range, const char *all_color, const char *range_color) {
+static void print_range(src_range_t *range, const char *all_color, const char *range_color, const char *loc_color) {
     file_t *f;
     int     n_nl;
     char   *context_start;
@@ -130,9 +153,13 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
                 printf("%*d", line_nr_digits, line_nr);
                 C(all_color);
             } else {
+                C(loc_color);
                 printf("%*d", line_nr_digits, line_nr);
+                C(all_color);
             }
+            C(loc_color);
             printf(" │ ");
+            C(all_color);
         }
 
         if (p == range->beg.buff_ptr) {
@@ -203,7 +230,10 @@ void _report_loc_err(int should_exit, src_point_t pt, const char *fmt, ...) {
     range.end.buff_ptr    += 1;
 
     LOCK_OUTPUT();
-    printf("%s:%d:%d: ", get_string(pt.path_id), pt.line, pt.col);
+    C(LOC_COLOR);
+    printf("%s:%d:%d", get_string(pt.path_id), pt.line, pt.col);
+    C(TERM_RESET);
+    printf(": ");
     C(ERR_COLOR);
     printf("error");
     C(TERM_RESET);
@@ -214,7 +244,7 @@ void _report_loc_err(int should_exit, src_point_t pt, const char *fmt, ...) {
     va_end(va);
     printf("\n");
 
-    print_range(&range, RANGE_COLOR, ERR_COLOR);
+    print_range(&range, RANGE_COLOR, ERR_COLOR, LOC_COLOR);
     printf("\n");
 
     if (should_exit) {
@@ -234,7 +264,10 @@ void _report_loc_info(int should_exit, src_point_t pt, const char *fmt, ...) {
 
 
     LOCK_OUTPUT();
-    printf("%s:%d:%d: ", get_string(pt.path_id), pt.line, pt.col);
+    C(LOC_COLOR);
+    printf("%s:%d:%d", get_string(pt.path_id), pt.line, pt.col);
+    C(TERM_RESET);
+    printf(": ");
     C(INFO_COLOR);
     printf("info");
     C(TERM_RESET);
@@ -245,7 +278,7 @@ void _report_loc_info(int should_exit, src_point_t pt, const char *fmt, ...) {
     va_end(va);
     printf("\n");
 
-    print_range(&range, RANGE_COLOR, INFO_COLOR);
+    print_range(&range, RANGE_COLOR, INFO_COLOR, LOC_COLOR);
     printf("\n");
 
     if (should_exit) {
@@ -261,7 +294,10 @@ void _report_range_err(int should_exit, src_range_t *range, const char *fmt, ...
     validate_range(range);
 
     LOCK_OUTPUT();
-    printf("%s:%d:%d: ", get_string(range->beg.path_id), range->beg.line, range->beg.col);
+    C(LOC_COLOR);
+    printf("%s:%d:%d", get_string(range->beg.path_id), range->beg.line, range->beg.col);
+    C(TERM_RESET);
+    printf(": ");
     C(ERR_COLOR);
     printf("error");
     C(TERM_RESET);
@@ -272,7 +308,7 @@ void _report_range_err(int should_exit, src_range_t *range, const char *fmt, ...
     va_end(va);
     printf("\n");
 
-    print_range(range, RANGE_COLOR, ERR_COLOR);
+    print_range(range, RANGE_COLOR, ERR_COLOR, LOC_COLOR);
     printf("\n");
 
     if (should_exit) {
@@ -288,7 +324,10 @@ void _report_range_info(int should_exit, src_range_t *range, const char *fmt, ..
     validate_range(range);
 
     LOCK_OUTPUT();
-    printf("%s:%d:%d: ", get_string(range->beg.path_id), range->beg.line, range->beg.col);
+    C(LOC_COLOR);
+    printf("%s:%d:%d", get_string(range->beg.path_id), range->beg.line, range->beg.col);
+    C(TERM_RESET);
+    printf(": ");
     C(INFO_COLOR);
     printf("info");
     C(TERM_RESET);
@@ -299,7 +338,7 @@ void _report_range_info(int should_exit, src_range_t *range, const char *fmt, ..
     va_end(va);
     printf("\n");
 
-    print_range(range, RANGE_COLOR, INFO_COLOR);
+    print_range(range, RANGE_COLOR, INFO_COLOR, LOC_COLOR);
     printf("\n");
 
     if (should_exit) {
