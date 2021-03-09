@@ -31,13 +31,7 @@ static u32 get_or_insert_type(type_t t) {
     }
 
     array_traverse_from(type_table, it, id) {
-        if (t.kind  == it->kind
-        &&  t.flags == it->flags
-        &&  t.__64  == it->__64) {
-
-            return id;
-        }
-
+        if (memcmp(&t, it, sizeof(t)) == 0) { return id; }
         id += 1;
     }
 
@@ -58,13 +52,18 @@ int init_types(void) {
 #define X(ty)                     \
 t.kind     = (ty);                \
 t.flags    = 0;                   \
-t.under_id = TY_NONE;             \
-t.len      = 0;                   \
+t.__64     = 0;                   \
 id         = insert_new_type(t);  \
 ASSERT(id == (ty), "id != " #ty);
 
     X_REAL_BUILTIN_TYPES
 #undef X
+
+    /* Add an empty type list type */
+    t.kind     = _TY_TYPE_LIST;
+    t.list_len = 0;
+    t.id_list  = NULL;
+    insert_new_type(t);
 
     return 0;
 }

@@ -1,11 +1,9 @@
 # foo.si
 
-T = struct {}
-
-foo = proc (%i: %T) {
-}
-
 [[ program_entry ]]
-main = proc() {
-    foo(123);
+# main = proc() {
+s64 = proc() {
+    # foo(123);
 }
+
+# foo = proc(i: s64) { }

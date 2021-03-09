@@ -23,6 +23,7 @@
     X(TY_S32)        \
     X(TY_S64)        \
     X(TY_PTR)        \
+    X(_TY_TYPE_LIST) \
     X(TY_STRUCT)
 
 enum {
@@ -62,14 +63,28 @@ enum {
 
 typedef struct type {
     u32 kind;
-    u32 flags;
     union {
+        u32 flags;
+        u32 list_len;
+    };
+    union {
+        /* Generic types with underlying types (like pointers or arrays) */
         struct {
             u32 under_id;
             u32 len;
         };
+        /* Struct type */
         string_id name_id;
-        u64       __64;
+        /* Procedure types */
+        struct {
+            u32 param_list_id;
+            u32 ret_id;
+        };
+        /* Param list types */
+        u32 *id_list;
+
+
+        u64 __64;
     };
 } type_t;
 

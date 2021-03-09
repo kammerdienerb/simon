@@ -2,6 +2,7 @@
 #include "scope.h"
 #include "ui.h"
 #include "type.h"
+#include "parse.h"
 
 int ast_kind_is_assign(int kind) {
     return
@@ -140,6 +141,11 @@ static void check_proc_param(ast_proc_param_t *param, scope_t *scope) {
             redecl_error(poly->name, ASTP(poly), existing_node);
             return;
         }
+
+        check_node(param->type_expr_or_polymorph_type_name, scope, NULL);
+    } else {
+        check_node(param->type_expr_or_polymorph_type_name, scope, NULL);
+        ASTP(param)->type = param->type_expr_or_polymorph_type_name->type;
     }
 }
 
@@ -150,6 +156,17 @@ static void check_int(ast_int_t *integer, scope_t *scope) {
 static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
     check_node(expr->left, scope, NULL);
     check_node(expr->right, scope, NULL);
+
+    if (expr->op == OP_CALL) {
+        if (expr->left->type != TY_PROC) {
+            report_range_err_no_exit(&ASTP(expr)->loc,
+                                     "attempting to call a value that is not a procedure");
+            report_range_info(&expr->left->loc,
+                              "value has type '%s'",
+                              get_string(get_type_string_id(expr->left->type)));
+        }
+        ASTP(expr)->type = TY_NOT_TYPED; /* @tmp */
+    }
 }
 
 static void check_ident(ast_ident_t *ident, scope_t *scope) {
@@ -176,10 +193,21 @@ static void check_struct(ast_struct_t *st, scope_t *scope, ast_assign_t *parent_
     ASTP(st)->type = get_struct_type(st, parent_assign->name, scope, 0);
 }
 
+static void check_arg_list(ast_arg_list_t *arg_list, scope_t *scope) {
+    ast_t **node_p;
+
+    ASTP(arg_list)->type = TY_NOT_TYPED;
+
+    array_traverse(arg_list->args, node_p) {
+        check_node(*node_p, scope, NULL);
+    }
+}
+
 void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
     ast_t **it;
 
     if (node->flags & AST_FLAG_CHECKED) { return; }
+    node->flags |= AST_FLAG_CHECKED;
 
     switch (node->kind) {
 #define X(_kind) case _kind:
@@ -227,6 +255,10 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
             check_ident((ast_ident_t*)node, scope);
             break;
 
+        case AST_ARG_LIST:
+            check_arg_list((ast_arg_list_t*)node, scope);
+            break;
+
         default:;
 #ifdef SIMON_DO_ASSERTIONS
             report_range_err_no_exit(&node->loc, "INTERNAL ERROR: AST_%s unhandled in check_node()", ast_get_kind_str(node->kind));
@@ -235,6 +267,4 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
     }
 
     ASSERT(node->type != TY_UNKNOWN, "did not resolve type");
-
-    node->flags |= AST_FLAG_CHECKED;
 }
