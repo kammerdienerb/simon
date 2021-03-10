@@ -2,7 +2,8 @@
 
 [[ program_entry ]]
 main = proc() : u32 {
-    foo(123);
+    foo(true, false);
 }
 
-foo = proc(i: s64, b: bool) { }
+int = s64;
+foo = proc(i: int, b: bool) { }

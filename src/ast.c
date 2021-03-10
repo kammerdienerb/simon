@@ -88,7 +88,8 @@ static void check_assign(ast_assign_t *assign, scope_t *scope) {
     }
 
     check_node(assign->val, scope, assign);
-    ASTP(assign)->type = assign->val->type;
+    ASTP(assign)->type  = assign->val->type;
+    ASTP(assign)->value = assign->val->value;
 
     if (scope->in_proc) {
         if (assign->val->type == TY_PROC) {
@@ -215,6 +216,9 @@ static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
     ast_arg_list_t *arg_list;
     u32             n_args;
     arg_t          *arg_p;
+    u32             i;
+    u32             param_type;
+    u32             arg_type;
 
     proc_ty = expr->left->type;
 
@@ -231,13 +235,36 @@ static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
     arg_list = (ast_arg_list_t*)expr->right;
     n_args   = array_len(arg_list->args);
 
-    if (n_args < n_params) {
-        report_loc_err(expr->right->loc.end, "too few");
+    if (n_args != n_params) {
+        if (n_args < n_params) {
+            report_loc_err_no_exit(expr->right->loc.end, "too few arguments in procedure call");
+        } else if (n_args > n_params) {
+            arg_p = array_item(arg_list->args, n_params);
+            report_range_err_no_exit(&arg_p->expr->loc, "too many arguments in procedure call");
+        }
+
+        report_simple_info("expected %d, but got %d", n_params, n_args);
+
+        /* @todo -- show definition site if possible */
+
         return;
-    } else if (n_args > n_params) {
-        arg_p = array_item(arg_list->args, n_params);
-        report_range_err(&arg_p->expr->loc, "too many");
-        return;
+    }
+
+    for (i = 0; i < n_params; i += 1) {
+        param_type = get_param_type(proc_ty, i);
+        arg_p      = array_item(arg_list->args, i);
+        arg_type   = arg_p->expr->type;
+
+        if (arg_type != param_type) {
+            report_range_err(&arg_p->expr->loc,
+                             "incorrect argument type: expected '%s', but got '%s'",
+                             get_string(get_type_string_id(param_type)),
+                             get_string(get_type_string_id(arg_type)));
+
+            /* @todo -- show param site if possible */
+
+            return;
+        }
     }
 
     ASTP(expr)->type = get_ret_type(expr->left->type);
