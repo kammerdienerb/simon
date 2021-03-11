@@ -352,6 +352,8 @@ static int parse_int(parse_context_t *cxt, string_id *string_out) {
                 }
             } else if (IS_IDENT_CHAR(*curs)) {
                 return 0;
+            } else {
+                non_underscore = 1;
             }
         }
     } else if (*curs == '-') {
