@@ -22,6 +22,7 @@
     X(TY_S32)        \
     X(TY_S64)        \
     X(TY_PTR)        \
+    X(TY_VARGS)      \
     X(_TY_TYPE_LIST) \
     X(TY_STRUCT)     \
     X(TY_PROC)
@@ -58,7 +59,18 @@ enum {
     X(TY_S64)
 
 #define X_HAVE_UNDER_TYPES \
-    X(TY_PTR)
+    X(TY_PTR)              \
+    X(TY_VARGS)
+
+#define X_INT_TYPES \
+    X(TY_U8)        \
+    X(TY_U16)       \
+    X(TY_U32)       \
+    X(TY_U64)       \
+    X(TY_S8)        \
+    X(TY_S16)       \
+    X(TY_S32)       \
+    X(TY_S64)
 
 typedef struct type {
     u32 kind;
@@ -90,8 +102,12 @@ typedef struct type {
 
 int init_types(void);
 int type_has_compile_time_only_values(u32 ty);
+int type_kind_has_under(u32 kind);
+int type_kind_is_int(u32 kind);
 int type_kind(u32 ty);
 u32 get_ptr_type(u32 ty);
+u32 get_vargs_type(u32 ty);
+u32 get_under_type(u32 ty);
 u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope);
 u32 get_proc_type(u32 n_param_types, u32 *param_types, u32 ret_type);
 u32 get_num_param_types(u32 proc_ty);

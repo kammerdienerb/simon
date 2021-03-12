@@ -7,10 +7,18 @@
 static array_t type_table;
 static u32     empty_type_list;
 
-static int type_kind_has_under(u32 kind) {
+int type_kind_has_under(u32 kind) {
     return
 #define X(k) kind == (k) ||
     X_HAVE_UNDER_TYPES
+#undef X
+    0;
+}
+
+int type_kind_is_int(u32 kind) {
+    return
+#define X(k) kind == (k) ||
+    X_INT_TYPES
 #undef X
     0;
 }
@@ -138,6 +146,23 @@ u32 get_ptr_type(u32 ty) {
     return get_or_insert_type(new_t);
 }
 
+u32 get_vargs_type(u32 ty) {
+    type_t new_t;
+
+    new_t.kind     = TY_VARGS;
+    new_t.flags    = 0;
+    new_t.under_id = ty;
+    new_t.len      = 0;
+
+    return get_or_insert_type(new_t);
+}
+
+u32 get_under_type(u32 ty) {
+    ASSERT(type_kind_has_under(type_kind(ty)), "ty does not have underlying type");
+
+    return get_type_structure(ty)->under_id;
+}
+
 u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope) {
     type_t      t;
     const char *scope_name;
@@ -246,6 +271,7 @@ static void build_type_string(u32 ty, char *buff) {
         case TY_TYPE:      strncat(buff, "type",                TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_PROC:      strncat(buff, "procedure",           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_PTR:       strncat(buff, "*",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_VARGS:     strncat(buff, "...",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_BOOL:      strncat(buff, "bool",                TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_CHAR:      strncat(buff, "char",                TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_U8:        strncat(buff, "u8",                  TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;

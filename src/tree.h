@@ -14,12 +14,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "memory.h"
+
 #ifndef TREE_MALLOC_FN
-#define TREE_MALLOC_FN malloc
+#define TREE_MALLOC_FN tmp_mem_alloc
 #endif
 
 #ifndef TREE_FREE_FN
-#define TREE_FREE_FN free
+#define TREE_FREE_FN tmp_mem_free
 #endif
 
 #define tree_make(K_T, V_T) (CAT2(tree(K_T, V_T), _make)())

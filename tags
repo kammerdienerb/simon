@@ -1,15 +1,11 @@
 !_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
 !_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
-!_TAG_OUTPUT_EXCMD	mixed	/number, pattern, mixed, or combineV2/
-!_TAG_OUTPUT_FILESEP	slash	/slash or backslash/
-!_TAG_OUTPUT_MODE	u-ctags	/u-ctags or e-ctags/
-!_TAG_PATTERN_LENGTH_LIMIT	96	/0 for no limit/
-!_TAG_PROC_CWD	/home/kammerdienerb/projects/simon/	//
-!_TAG_PROGRAM_AUTHOR	Universal Ctags Team	//
-!_TAG_PROGRAM_NAME	Universal Ctags	/Derived from Exuberant Ctags/
-!_TAG_PROGRAM_URL	https://ctags.io/	/official site/
-!_TAG_PROGRAM_VERSION	5.9.0	/p5.9.20210110.0/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.8	//
 ALIGN	src/internal.h	/^#define ALIGN(/;"	d
+ALIGN	src/internal.h	/^#undef ALIGN$/;"	d
 ALIGNMENT	src/memory.h	/^#define ALIGNMENT /;"	d
 ARRAY_DEFAULT_CAP	src/array.h	/^#define ARRAY_DEFAULT_CAP /;"	d
 ASSERT	src/internal.h	/^#define ASSERT(/;"	d
@@ -70,12 +66,15 @@ LINES_UNLOCK	src/globals.h	/^#define LINES_UNLOCK(/;"	d
 LOCK_OUTPUT	src/ui.c	/^#define LOCK_OUTPUT(/;"	d	file:
 LOC_COLOR	src/ui.c	/^#define LOC_COLOR /;"	d	file:
 MAX	src/internal.h	/^#define MAX(/;"	d
+MAX	src/internal.h	/^#undef MAX$/;"	d
 MAX_BUMP_ALLOC_SIZE	src/memory.h	/^#define MAX_BUMP_ALLOC_SIZE /;"	d
 MAX_NUM_TLS	src/tls.h	/^#define MAX_NUM_TLS /;"	d
 MAX_PARAMS_OR_ARGS	src/ast.h	/^#define MAX_PARAMS_OR_ARGS /;"	d
 MB	src/internal.h	/^#define MB(/;"	d
 MIN	src/internal.h	/^#define MIN(/;"	d
+MIN	src/internal.h	/^#undef MIN$/;"	d
 N_CONTEXT_LINES	src/ui.c	/^#define N_CONTEXT_LINES /;"	d	file:
+N_OPS	src/parse.h	/^    N_OPS,$/;"	e	enum:__anon11
 OPTIONAL	src/parse.c	/^#define OPTIONAL(/;"	d	file:
 OPTIONAL_CHAR	src/parse.c	/^#define OPTIONAL_CHAR(/;"	d	file:
 OPTIONAL_IDENT	src/parse.c	/^#define OPTIONAL_IDENT(/;"	d	file:
@@ -130,6 +129,7 @@ THREADPOOL_IMPLEMENTATION	src/threadpool.c	/^#define THREADPOOL_IMPLEMENTATION$/
 TLS_METHOD	src/tls.h	/^#define TLS_METHOD /;"	d
 TLS_PER_HW_THREAD	src/tls.h	/^#define TLS_PER_HW_THREAD /;"	d
 TLS_PER_OS_THREAD	src/tls.h	/^#define TLS_PER_OS_THREAD /;"	d
+TMPARRAY_DEFAULT_CAP	src/tmparray.h	/^#define TMPARRAY_DEFAULT_CAP /;"	d
 TP_DONT_STOP	src/threadpool.h	/^#define TP_DONT_STOP /;"	d
 TP_GRACEFUL	src/threadpool.h	/^#define TP_GRACEFUL /;"	d
 TP_IMMEDIATE	src/threadpool.h	/^#define TP_IMMEDIATE /;"	d
@@ -138,26 +138,33 @@ TREE_MALLOC_FN	src/tree.h	/^#define TREE_MALLOC_FN /;"	d
 TYPE_STRING_BUFF_SIZE	src/type.c	/^#define TYPE_STRING_BUFF_SIZE /;"	d	file:
 TY_NONE	src/type.h	/^#define TY_NONE /;"	d
 UINT	src/internal.h	/^#define UINT(/;"	d
-UNDERSCORE_ID	src/strings.c	/^string_id UNDERSCORE_ID;$/;"	v	typeref:typename:string_id
+UNDERSCORE_ID	src/strings.c	/^string_id UNDERSCORE_ID;$/;"	v
 UNLOCK	src/strings.c	/^#define UNLOCK(/;"	d	file:
 UNLOCK_OUTPUT	src/ui.c	/^#define UNLOCK_OUTPUT(/;"	d	file:
 WLOCK	src/strings.c	/^#define WLOCK(/;"	d	file:
 X	src/ast.c	/^#define X(/;"	d	file:
+X	src/ast.c	/^#undef X$/;"	d	file:
 X	src/ast.h	/^#define X(/;"	d
+X	src/ast.h	/^#undef X$/;"	d
 X	src/parse.c	/^#define X(/;"	d	file:
+X	src/parse.c	/^#undef X$/;"	d	file:
 X	src/parse.h	/^#define X(/;"	d
+X	src/parse.h	/^#undef X$/;"	d
 X	src/type.c	/^#define X(/;"	d	file:
+X	src/type.c	/^#undef X$/;"	d	file:
 X	src/type.h	/^#define X(/;"	d
+X	src/type.h	/^#undef X$/;"	d
 XSTR	src/internal.h	/^#define XSTR(/;"	d
 X_AST	src/ast.h	/^#define X_AST /;"	d
-X_AST	src/ast.h	/^X_AST$/;"	e	enum:__anonb4d85aba0103
+X_AST	src/ast.h	/^X_AST$/;"	e	enum:__anon2
 X_AST_ASSIGNS	src/ast.h	/^#define X_AST_ASSIGNS /;"	d
 X_CT_TYPES	src/type.h	/^#define X_CT_TYPES /;"	d
 X_HAVE_UNDER_TYPES	src/type.h	/^#define X_HAVE_UNDER_TYPES /;"	d
-X_OPS	src/parse.h	/^    X_OPS$/;"	e	enum:__anona50843ed0103
+X_INT_TYPES	src/type.h	/^#define X_INT_TYPES /;"	d
+X_OPS	src/parse.h	/^    X_OPS$/;"	e	enum:__anon11
 X_OPS	src/parse.h	/^#define X_OPS /;"	d
 X_REAL_BUILTIN_TYPES	src/type.h	/^#define X_REAL_BUILTIN_TYPES /;"	d
-X_TYPES	src/type.h	/^    X_TYPES$/;"	e	enum:__anon7ca0fa540103
+X_TYPES	src/type.h	/^    X_TYPES$/;"	e	enum:__anon19
 X_TYPES	src/type.h	/^#define X_TYPES /;"	d
 _CAT2	src/hash_table.h	/^#define _CAT2(/;"	d
 _CAT2	src/tree.h	/^#define _CAT2(/;"	d
@@ -174,7 +181,7 @@ _TI_FROM_TN	src/tree.h	/^#define _TI_FROM_TN(/;"	d
 _TN_IS_RED	src/tree.h	/^#define _TN_IS_RED(/;"	d
 _TREE_H_	src/tree.h	/^#define _TREE_H_$/;"	d
 _XSTR	src/internal.h	/^#define _XSTR(/;"	d
-__64	src/type.h	/^        u64 __64;$/;"	m	union:type::__anon7ca0fa54030a	typeref:typename:u64
+__64	src/type.h	/^        u64 __64;$/;"	m	union:type::__anon21
 __ARRAY_H__	src/array.h	/^#define __ARRAY_H__$/;"	d
 __AST_H__	src/ast.h	/^#define __AST_H__$/;"	d
 __FILE_H__	src/file.h	/^#define __FILE_H__$/;"	d
@@ -190,62 +197,58 @@ __SOURCE_LOCATION_H__	src/src_range.h	/^#define __SOURCE_LOCATION_H__$/;"	d
 __STRINGS_H__	src/strings.h	/^#define __STRINGS_H__$/;"	d
 __THREADPOOL_H__	src/threadpool.h	/^#define __THREADPOOL_H__$/;"	d
 __TLS_H__	src/tls.h	/^#define __TLS_H__$/;"	d
+__TMPARRAY_H__	src/tmparray.h	/^#define __TMPARRAY_H__$/;"	d
 __TYPE_H__	src/type.h	/^#define __TYPE_H__$/;"	d
 __UI_H__	src/ui.h	/^#define __UI_H__$/;"	d
-__anon2d8b0e440108	src/threadpool.h	/^typedef struct {$/;"	s
-__anon2d8b0e440208	src/threadpool.h	/^typedef struct {$/;"	s
-__anon49fcdd910108	src/array.h	/^typedef struct {$/;"	s
-__anon5ad507f20108	src/file.h	/^typedef struct {$/;"	s
-__anon7ca0fa540103	src/type.h	/^enum {$/;"	g
-__anon7ca0fa54020a	src/type.h	/^    union {$/;"	u	struct:type
-__anon7ca0fa54030a	src/type.h	/^    union {$/;"	u	struct:type
-__anon7ca0fa540408	src/type.h	/^        struct {$/;"	s	union:type::__anon7ca0fa54030a
-__anon7ca0fa540508	src/type.h	/^        struct {$/;"	s	union:type::__anon7ca0fa54030a
-__anona0faa0af0108	src/internal.h	/^typedef struct {} empty_t;$/;"	s
-__anona2dfe4a60108	src/src_range.h	/^typedef struct {$/;"	s
-__anona2dfe4a60208	src/src_range.h	/^typedef struct {$/;"	s
-__anona50843e80108	src/parse.c	/^typedef struct {$/;"	s	file:
-__anona50843ed0103	src/parse.h	/^enum {$/;"	g
-__anona94a61ab0108	src/memory.h	/^typedef struct {$/;"	s
-__anonb4d85aba0103	src/ast.h	/^enum {$/;"	g
-__anonb4d85aba020a	src/ast.h	/^typedef union {$/;"	u
-__anonb4d85aba0308	src/ast.h	/^typedef struct {$/;"	s
-__anonb4d85aba0408	src/ast.h	/^typedef struct {$/;"	s
-__anonb62c51650108	src/tls.h	/^typedef struct {$/;"	s
-__anonb62c51650208	src/tls.h	/^typedef struct {$/;"	s
-__anonef0120fe0108	src/options.h	/^typedef struct {$/;"	s
-_array_copy	src/array.c	/^void _array_copy(array_t *dst, array_t *src) {$/;"	f	typeref:typename:void
-_array_delete	src/array.c	/^void _array_delete(array_t *array, int idx) {$/;"	f	typeref:typename:void
-_array_free	src/array.c	/^void _array_free(array_t *array) {$/;"	f	typeref:typename:void
-_array_grow_if_needed	src/array.c	/^void _array_grow_if_needed(array_t *array) {$/;"	f	typeref:typename:void
-_array_grow_if_needed_to	src/array.c	/^void _array_grow_if_needed_to(array_t *array, int new_cap) {$/;"	f	typeref:typename:void
-_array_insert	src/array.c	/^void * _array_insert(array_t *array, int idx, void *elem) {$/;"	f	typeref:typename:void *
-_array_make	src/array.c	/^array_t _array_make(int elem_size) {$/;"	f	typeref:typename:array_t
-_array_make_with_cap	src/array.c	/^array_t _array_make_with_cap(int elem_size, int initial_cap) {$/;"	f	typeref:typename:array_t
-_array_next_elem	src/array.c	/^void * _array_next_elem(array_t *array) {$/;"	f	typeref:typename:void *
-_array_push	src/array.c	/^void * _array_push(array_t *array, void *elem) {$/;"	f	typeref:typename:void *
-_array_push_n	src/array.c	/^void * _array_push_n(array_t *array, void *elems, int n) {$/;"	f	typeref:typename:void *
-_array_zero_term	src/array.c	/^void _array_zero_term(array_t *array) {$/;"	f	typeref:typename:void
+_array_copy	src/array.c	/^void _array_copy(array_t *dst, array_t *src) {$/;"	f
+_array_delete	src/array.c	/^void _array_delete(array_t *array, int idx) {$/;"	f
+_array_free	src/array.c	/^void _array_free(array_t *array) {$/;"	f
+_array_grow_if_needed	src/array.c	/^void _array_grow_if_needed(array_t *array) {$/;"	f
+_array_grow_if_needed_to	src/array.c	/^void _array_grow_if_needed_to(array_t *array, int new_cap) {$/;"	f
+_array_insert	src/array.c	/^void * _array_insert(array_t *array, int idx, void *elem) {$/;"	f
+_array_make	src/array.c	/^array_t _array_make(int elem_size) {$/;"	f
+_array_make_with_cap	src/array.c	/^array_t _array_make_with_cap(int elem_size, int initial_cap) {$/;"	f
+_array_next_elem	src/array.c	/^void * _array_next_elem(array_t *array) {$/;"	f
+_array_push	src/array.c	/^void * _array_push(array_t *array, void *elem) {$/;"	f
+_array_push_n	src/array.c	/^void * _array_push_n(array_t *array, void *elems, int n) {$/;"	f
+_array_zero_term	src/array.c	/^void _array_zero_term(array_t *array) {$/;"	f
 _hash_table	src/hash_table.h	/^#define _hash_table(/;"	d
 _hash_table_slot	src/hash_table.h	/^#define _hash_table_slot(/;"	d
-_report_loc_err	src/ui.c	/^void _report_loc_err(int should_exit, src_point_t pt, const char *fmt, ...) {$/;"	f	typeref:typename:void
-_report_loc_info	src/ui.c	/^void _report_loc_info(int should_exit, src_point_t pt, const char *fmt, ...) {$/;"	f	typeref:typename:void
-_report_range_err	src/ui.c	/^void _report_range_err(int should_exit, src_range_t *range, const char *fmt, ...) {$/;"	f	typeref:typename:void
-_report_range_info	src/ui.c	/^void _report_range_info(int should_exit, src_range_t *range, const char *fmt, ...) {$/;"	f	typeref:typename:void
-_report_simple_err	src/ui.c	/^void _report_simple_err(int should_exit, const char *fmt, ...) {$/;"	f	typeref:typename:void
-_report_simple_info	src/ui.c	/^void _report_simple_info(int should_exit, const char *fmt, ...) {$/;"	f	typeref:typename:void
-_show_scope	src/scope.c	/^void _show_scope(scope_t *scope, int level) {$/;"	f	typeref:typename:void
-_tp_thread_task	src/threadpool.h	/^static void _tp_thread_task(void *_tp) {$/;"	f	typeref:typename:void
+_report_declaration_path	src/ast.c	/^static void _report_declaration_path(int should_exit, tmparray_t path) {$/;"	f	file:
+_report_loc_err	src/ui.c	/^void _report_loc_err(int should_exit, src_point_t pt, const char *fmt, ...) {$/;"	f
+_report_loc_err_no_context	src/ui.c	/^void _report_loc_err_no_context(int should_exit, src_point_t pt, const char *fmt, ...) {$/;"	f
+_report_loc_info	src/ui.c	/^void _report_loc_info(int should_exit, src_point_t pt, const char *fmt, ...) {$/;"	f
+_report_loc_info_no_context	src/ui.c	/^void _report_loc_info_no_context(int should_exit, src_point_t pt, const char *fmt, ...) {$/;"	f
+_report_range_err	src/ui.c	/^void _report_range_err(int should_exit, src_range_t *range, const char *fmt, ...) {$/;"	f
+_report_range_err_no_context	src/ui.c	/^void _report_range_err_no_context(int should_exit, src_range_t *range, const char *fmt, ...) {$/;"	f
+_report_range_info	src/ui.c	/^void _report_range_info(int should_exit, src_range_t *range, const char *fmt, ...) {$/;"	f
+_report_range_info_no_context	src/ui.c	/^void _report_range_info_no_context(int should_exit, src_range_t *range, const char *fmt, ...) {$/;"	f
+_report_simple_err	src/ui.c	/^void _report_simple_err(int should_exit, const char *fmt, ...) {$/;"	f
+_report_simple_info	src/ui.c	/^void _report_simple_info(int should_exit, const char *fmt, ...) {$/;"	f
+_show_scope	src/scope.c	/^void _show_scope(scope_t *scope, int level) {$/;"	f
+_tmparray_copy	src/tmparray.c	/^void _tmparray_copy(tmparray_t *dst, tmparray_t *src) {$/;"	f
+_tmparray_delete	src/tmparray.c	/^void _tmparray_delete(tmparray_t *tmparray, int idx) {$/;"	f
+_tmparray_free	src/tmparray.c	/^void _tmparray_free(tmparray_t *tmparray) {$/;"	f
+_tmparray_grow_if_needed	src/tmparray.c	/^void _tmparray_grow_if_needed(tmparray_t *tmparray) {$/;"	f
+_tmparray_grow_if_needed_to	src/tmparray.c	/^void _tmparray_grow_if_needed_to(tmparray_t *tmparray, int new_cap) {$/;"	f
+_tmparray_insert	src/tmparray.c	/^void * _tmparray_insert(tmparray_t *tmparray, int idx, void *elem) {$/;"	f
+_tmparray_make	src/tmparray.c	/^tmparray_t _tmparray_make(int elem_size) {$/;"	f
+_tmparray_make_with_cap	src/tmparray.c	/^tmparray_t _tmparray_make_with_cap(int elem_size, int initial_cap) {$/;"	f
+_tmparray_next_elem	src/tmparray.c	/^void * _tmparray_next_elem(tmparray_t *tmparray) {$/;"	f
+_tmparray_push	src/tmparray.c	/^void * _tmparray_push(tmparray_t *tmparray, void *elem) {$/;"	f
+_tmparray_push_n	src/tmparray.c	/^void * _tmparray_push_n(tmparray_t *tmparray, void *elems, int n) {$/;"	f
+_tmparray_zero_term	src/tmparray.c	/^void _tmparray_zero_term(tmparray_t *tmparray) {$/;"	f
+_tp_thread_task	src/threadpool.h	/^static void _tp_thread_task(void *_tp) {$/;"	f
 _tree	src/tree.h	/^#define _tree(/;"	d
 _tree_it	src/tree.h	/^#define _tree_it(/;"	d
 _tree_node	src/tree.h	/^#define _tree_node(/;"	d
-add_file_readonly	src/file.c	/^file_t * add_file_readonly(string_id path_id) {$/;"	f	typeref:typename:file_t *
-add_file_rw	src/file.c	/^file_t * add_file_rw(string_id path_id) {$/;"	f	typeref:typename:file_t *
-add_named_subscope	src/scope.c	/^scope_t *add_named_subscope(scope_t *scope, int kind, ast_t *node, string_id name_id) {$/;"	f	typeref:typename:scope_t *
-add_subscope	src/scope.c	/^scope_t *add_subscope(scope_t *scope, int kind, ast_t *node) {$/;"	f	typeref:typename:scope_t *
-add_symbol_if_new	src/scope.c	/^void add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node) {$/;"	f	typeref:typename:void
-arg	src/threadpool.h	/^    void           *arg;$/;"	m	struct:tp_task	typeref:typename:void *
-arg_t	src/ast.h	/^} arg_t;$/;"	t	typeref:struct:__anonb4d85aba0408
+add_file_readonly	src/file.c	/^file_t * add_file_readonly(string_id path_id) {$/;"	f
+add_file_rw	src/file.c	/^file_t * add_file_rw(string_id path_id) {$/;"	f
+add_named_subscope	src/scope.c	/^scope_t *add_named_subscope(scope_t *scope, int kind, ast_t *node, string_id name_id) {$/;"	f
+add_subscope	src/scope.c	/^scope_t *add_subscope(scope_t *scope, int kind, ast_t *node) {$/;"	f
+add_symbol_if_new	src/scope.c	/^void add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node) {$/;"	f
+arg	src/threadpool.h	/^    void           *arg;$/;"	m	struct:tp_task
+arg_t	src/ast.h	/^} arg_t;$/;"	t	typeref:struct:__anon5
 array_clear	src/array.h	/^#define array_clear(/;"	d
 array_copy	src/array.h	/^#define array_copy(/;"	d
 array_data	src/array.h	/^#define array_data(/;"	d
@@ -263,107 +266,117 @@ array_pop	src/array.h	/^#define array_pop(/;"	d
 array_push	src/array.h	/^#define array_push(/;"	d
 array_push_n	src/array.h	/^#define array_push_n(/;"	d
 array_rtraverse	src/array.h	/^#define array_rtraverse(/;"	d
-array_t	src/array.h	/^} array_t;$/;"	t	typeref:struct:__anon49fcdd910108
+array_t	src/array.h	/^} array_t;$/;"	t	typeref:struct:__anon1
 array_traverse	src/array.h	/^#define array_traverse(/;"	d
 array_traverse_from	src/array.h	/^#define array_traverse_from(/;"	d
 array_zero_term	src/array.h	/^#define array_zero_term(/;"	d
-ast_get_kind_str	src/ast.c	/^const char *ast_get_kind_str(int kind) {$/;"	f	typeref:typename:const char *
-ast_kind_can_be_symbol_origin	src/ast.c	/^int ast_kind_can_be_symbol_origin(int kind) {$/;"	f	typeref:typename:int
-ast_kind_is_assign	src/ast.c	/^int ast_kind_is_assign(int kind) {$/;"	f	typeref:typename:int
-ast_kind_to_name	src/ast.c	/^static const char *ast_kind_to_name[] = {$/;"	v	typeref:typename:const char * []	file:
-ast_t	src/ast.h	/^} ast_t;$/;"	t	typeref:struct:__anonb4d85aba0308
-base	src/memory.h	/^    void                    *base;$/;"	m	struct:bump_alloc_block	typeref:typename:void *
-beg	src/src_range.h	/^    src_point_t beg;$/;"	m	struct:__anona2dfe4a60208	typeref:typename:src_point_t
-buff	src/file.h	/^    char      *buff;$/;"	m	struct:__anon5ad507f20108	typeref:typename:char *
-buff_ptr	src/src_range.h	/^    char      *buff_ptr;$/;"	m	struct:__anona2dfe4a60108	typeref:typename:char *
-build_type_string	src/type.c	/^static void build_type_string(u32 ty, char *buff) {$/;"	f	typeref:typename:void	file:
-bump_alloc	src/memory.c	/^void * bump_alloc(bump_alloc_t *ba, u64 size)   { return mem_alloc(size);        }$/;"	f	typeref:typename:void *
-bump_alloc	src/memory.c	/^void *bump_alloc(bump_alloc_t *ba, u64 size) {$/;"	f	typeref:typename:void *
-bump_alloc	src/tls.h	/^    bump_alloc_t bump_alloc;$/;"	m	struct:__anonb62c51650108	typeref:typename:bump_alloc_t
+ast_get_kind_str	src/ast.c	/^const char *ast_get_kind_str(int kind) {$/;"	f
+ast_kind_can_be_symbol_origin	src/ast.c	/^int ast_kind_can_be_symbol_origin(int kind) {$/;"	f
+ast_kind_is_assign	src/ast.c	/^int ast_kind_is_assign(int kind) {$/;"	f
+ast_kind_to_name	src/ast.c	/^static const char *ast_kind_to_name[] = {$/;"	v	file:
+ast_t	src/ast.h	/^} ast_t;$/;"	t	typeref:struct:__anon4
+base	src/memory.h	/^    void                    *base;$/;"	m	struct:bump_alloc_block
+beg	src/src_range.h	/^    src_point_t beg;$/;"	m	struct:__anon13
+break	src/ast.h	/^AST_DEFINE(break);$/;"	v
+buff	src/file.h	/^    char      *buff;$/;"	m	struct:__anon6
+buff_ptr	src/src_range.h	/^    char      *buff_ptr;$/;"	m	struct:__anon12
+build_type_string	src/type.c	/^static void build_type_string(u32 ty, char *buff) {$/;"	f	file:
+bump_alloc	src/memory.c	/^void * bump_alloc(bump_alloc_t *ba, u64 size)   { return mem_alloc(size);        }$/;"	f
+bump_alloc	src/memory.c	/^void *bump_alloc(bump_alloc_t *ba, u64 size) {$/;"	f
+bump_alloc	src/tls.h	/^    bump_alloc_t bump_alloc;$/;"	m	struct:__anon16
 bump_alloc_block	src/memory.h	/^typedef struct bump_alloc_block {$/;"	s
 bump_alloc_block_t	src/memory.h	/^} bump_alloc_block_t;$/;"	t	typeref:struct:bump_alloc_block
-bump_alloc_make	src/memory.c	/^void   bump_alloc_make(bump_alloc_t *ba)        {                                }$/;"	f	typeref:typename:void
-bump_alloc_make	src/memory.c	/^void bump_alloc_make(bump_alloc_t *ba) {$/;"	f	typeref:typename:void
-bump_alloc_make_block	src/memory.c	/^static bump_alloc_block_t * bump_alloc_make_block(void) {$/;"	f	typeref:typename:bump_alloc_block_t *	file:
-bump_alloc_t	src/memory.h	/^} bump_alloc_t;$/;"	t	typeref:struct:__anona94a61ab0108
-bump_big_alloc	src/memory.c	/^static void * bump_big_alloc(bump_alloc_t *ba, u64 size) {$/;"	f	typeref:typename:void *	file:
+bump_alloc_make	src/memory.c	/^void   bump_alloc_make(bump_alloc_t *ba)        {                                }$/;"	f
+bump_alloc_make	src/memory.c	/^void bump_alloc_make(bump_alloc_t *ba) {$/;"	f
+bump_alloc_make_block	src/memory.c	/^static bump_alloc_block_t * bump_alloc_make_block(void) {$/;"	f	file:
+bump_alloc_t	src/memory.h	/^} bump_alloc_t;$/;"	t	typeref:struct:__anon8
+bump_big_alloc	src/memory.c	/^static void * bump_big_alloc(bump_alloc_t *ba, u64 size) {$/;"	f	file:
+calloc	src/memory.c	/^#undef calloc$/;"	d	file:
 calloc	src/memory.h	/^#define calloc /;"	d
-capacity	src/array.h	/^    int   capacity;$/;"	m	struct:__anon49fcdd910108	typeref:typename:int
-check_arg_list	src/ast.c	/^static void check_arg_list(ast_arg_list_t *arg_list, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-check_assign	src/ast.c	/^static void check_assign(ast_assign_t *assign, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-check_bin_expr	src/ast.c	/^static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-check_bool	src/ast.c	/^static void check_bool(ast_bool_t *b, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-check_call	src/ast.c	/^static void check_call(ast_bin_expr_t *expr, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-check_ident	src/ast.c	/^static void check_ident(ast_ident_t *ident, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-check_int	src/ast.c	/^static void check_int(ast_int_t *integer, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-check_loop	src/ast.c	/^static void check_loop(ast_loop_t *loop, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-check_node	src/ast.c	/^void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {$/;"	f	typeref:typename:void
-check_proc	src/ast.c	/^static void check_proc(ast_proc_t *proc, scope_t *scope, ast_assign_t *parent_assign) {$/;"	f	typeref:typename:void	file:
-check_proc_param	src/ast.c	/^static void check_proc_param(ast_proc_param_t *param, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-check_struct	src/ast.c	/^static void check_struct(ast_struct_t *st, scope_t *scope, ast_assign_t *parent_assign) {$/;"	f	typeref:typename:void	file:
-check_unary_expr	src/ast.c	/^static void check_unary_expr(ast_unary_expr_t *expr, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-checked_open_FILE	src/file.c	/^int checked_open_FILE(const char *path, const char *mode, FILE **f, u64 *file_size) {$/;"	f	typeref:typename:int
-clean	src/parse.c	/^static int clean(parse_context_t *cxt, int passalong_len) {$/;"	f	typeref:typename:int	file:
-col	src/src_range.h	/^    u32        col;$/;"	m	struct:__anona2dfe4a60108	typeref:typename:u32
-common_exit	src/ui.c	/^static void common_exit(int status) {$/;"	f	typeref:typename:void	file:
-cond	src/threadpool.h	/^    pthread_cond_t   cond;$/;"	m	struct:__anon2d8b0e440208	typeref:typename:pthread_cond_t
-consume_comment	src/parse.c	/^static void consume_comment(parse_context_t *cxt) {$/;"	f	typeref:typename:void	file:
-consume_to_eol	src/parse.c	/^static void consume_to_eol(parse_context_t *cxt) {$/;"	f	typeref:typename:void	file:
-copy_file_into_memory	src/file.c	/^int copy_file_into_memory(const char *path, file_t *file) {$/;"	f	typeref:typename:int
-create_named_scope	src/scope.c	/^scope_t create_named_scope(scope_t *parent, int kind, ast_t *node, string_id name_id) {$/;"	f	typeref:typename:scope_t
-create_scope	src/scope.c	/^scope_t create_scope(scope_t *parent, int kind, ast_t *node) {$/;"	f	typeref:typename:scope_t
-cstr_dup	src/strings.c	/^static char *cstr_dup(const char *str) {$/;"	f	typeref:typename:char *	file:
-cur_point	src/parse.c	/^    src_point_t   cur_point;$/;"	m	struct:__anona50843e80108	typeref:typename:src_point_t	file:
-cursor	src/memory.h	/^    void                    *cursor;$/;"	m	struct:bump_alloc_block	typeref:typename:void *
-cursor	src/parse.c	/^    char         *cursor;$/;"	m	struct:__anona50843e80108	typeref:typename:char *	file:
-data	src/array.h	/^    void *data;$/;"	m	struct:__anon49fcdd910108	typeref:typename:void *
-dec_tls_entry_ref	src/tls.c	/^static void dec_tls_entry_ref(void *_tls_entry) {$/;"	f	typeref:typename:void	file:
-do_check	src/simon.c	/^void do_check(void) {$/;"	f	typeref:typename:void
-do_init	src/simon.c	/^void do_init(void) {$/;"	f	typeref:typename:void
-do_options	src/simon.c	/^int do_options(int argc, char **argv) {$/;"	f	typeref:typename:int
-do_parse	src/simon.c	/^void do_parse(void) {$/;"	f	typeref:typename:void
-do_resolve_symbols	src/simon.c	/^void do_resolve_symbols(void) {$/;"	f	typeref:typename:void
-dump_symbols	src/options.h	/^    int         dump_symbols;$/;"	m	struct:__anonef0120fe0108	typeref:typename:int
-eat	src/parse.c	/^static int eat(parse_context_t *cxt, int len) {$/;"	f	typeref:typename:int	file:
-elem_size	src/array.h	/^    int   elem_size;$/;"	m	struct:__anon49fcdd910108	typeref:typename:int
-empty_t	src/internal.h	/^typedef struct {} empty_t;$/;"	t	typeref:struct:__anona0faa0af0108
-empty_type_list	src/type.c	/^static u32     empty_type_list;$/;"	v	typeref:typename:u32	file:
-end	src/file.h	/^    char      *end;$/;"	m	struct:__anon5ad507f20108	typeref:typename:char *
-end	src/memory.h	/^    void                    *end;$/;"	m	struct:bump_alloc_block	typeref:typename:void *
-end	src/parse.c	/^    char         *end;$/;"	m	struct:__anona50843e80108	typeref:typename:char *	file:
-end	src/src_range.h	/^    src_point_t end;$/;"	m	struct:__anona2dfe4a60208	typeref:typename:src_point_t
-expr	src/ast.h	/^    ast_t     *expr;$/;"	m	struct:__anonb4d85aba0408	typeref:typename:ast_t *
-f	src/ast.h	/^    double     f;$/;"	m	union:__anonb4d85aba020a	typeref:typename:double
-file	src/parse.c	/^    file_t       *file;$/;"	m	struct:__anona50843e80108	typeref:typename:file_t *	file:
-file_t	src/file.h	/^} file_t;$/;"	t	typeref:struct:__anon5ad507f20108
-find_in_scope	src/scope.c	/^ast_t *find_in_scope(scope_t *scope, string_id name_id) {$/;"	f	typeref:typename:ast_t *
-find_tls_entry	src/tls.c	/^static tls_entry_t * find_tls_entry(void) {$/;"	f	typeref:typename:tls_entry_t *	file:
-flags	src/ast.h	/^    u16         flags; \/*        +2 bytes                  *\/$/;"	m	struct:__anonb4d85aba0308	typeref:typename:u16
-flags	src/type.h	/^        u32 flags;$/;"	m	union:type::__anon7ca0fa54020a	typeref:typename:u32
-fn	src/threadpool.h	/^    tp_task_fn_t    fn;$/;"	m	struct:tp_task	typeref:typename:tp_task_fn_t
+capacity	src/array.h	/^    int   capacity;$/;"	m	struct:__anon1
+capacity	src/tmparray.h	/^    int   capacity;$/;"	m	struct:__anon18
+check_arg_list	src/ast.c	/^static void check_arg_list(ast_arg_list_t *arg_list, scope_t *scope) {$/;"	f	file:
+check_assign	src/ast.c	/^static void check_assign(ast_assign_t *assign, scope_t *scope) {$/;"	f	file:
+check_bin_expr	src/ast.c	/^static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {$/;"	f	file:
+check_bool	src/ast.c	/^static void check_bool(ast_bool_t *b, scope_t *scope) {$/;"	f	file:
+check_call	src/ast.c	/^static void check_call(ast_bin_expr_t *expr, scope_t *scope) {$/;"	f	file:
+check_ident	src/ast.c	/^static void check_ident(ast_ident_t *ident, scope_t *scope) {$/;"	f	file:
+check_int	src/ast.c	/^static void check_int(ast_int_t *integer, scope_t *scope) {$/;"	f	file:
+check_loop	src/ast.c	/^static void check_loop(ast_loop_t *loop, scope_t *scope) {$/;"	f	file:
+check_node	src/ast.c	/^void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {$/;"	f
+check_proc	src/ast.c	/^static void check_proc(ast_proc_t *proc, scope_t *scope, ast_assign_t *parent_assign) {$/;"	f	file:
+check_proc_param	src/ast.c	/^static void check_proc_param(ast_proc_param_t *param, scope_t *scope) {$/;"	f	file:
+check_struct	src/ast.c	/^static void check_struct(ast_struct_t *st, scope_t *scope, ast_assign_t *parent_assign) {$/;"	f	file:
+check_unary_expr	src/ast.c	/^static void check_unary_expr(ast_unary_expr_t *expr, scope_t *scope) {$/;"	f	file:
+checked_open_FILE	src/file.c	/^int checked_open_FILE(const char *path, const char *mode, FILE **f, u64 *file_size) {$/;"	f
+clean	src/parse.c	/^static int clean(parse_context_t *cxt, int passalong_len) {$/;"	f	file:
+col	src/src_range.h	/^    u32        col;$/;"	m	struct:__anon12
+common_exit	src/ui.c	/^static void common_exit(int status) {$/;"	f	file:
+cond	src/threadpool.h	/^    pthread_cond_t   cond;$/;"	m	struct:__anon15
+consume_comment	src/parse.c	/^static void consume_comment(parse_context_t *cxt) {$/;"	f	file:
+consume_to_eol	src/parse.c	/^static void consume_to_eol(parse_context_t *cxt) {$/;"	f	file:
+continue	src/ast.h	/^AST_DEFINE(continue);$/;"	v
+copy_file_into_memory	src/file.c	/^int copy_file_into_memory(const char *path, file_t *file) {$/;"	f
+create_named_scope	src/scope.c	/^scope_t create_named_scope(scope_t *parent, int kind, ast_t *node, string_id name_id) {$/;"	f
+create_scope	src/scope.c	/^scope_t create_scope(scope_t *parent, int kind, ast_t *node) {$/;"	f
+cstr_dup	src/strings.c	/^static char *cstr_dup(const char *str) {$/;"	f	file:
+cur_point	src/parse.c	/^    src_point_t   cur_point;$/;"	m	struct:__anon10	file:
+cursor	src/memory.h	/^    void                    *cursor;$/;"	m	struct:bump_alloc_block
+cursor	src/parse.c	/^    char         *cursor;$/;"	m	struct:__anon10	file:
+data	src/array.h	/^    void *data;$/;"	m	struct:__anon1
+data	src/tmparray.h	/^    void *data;$/;"	m	struct:__anon18
+dec_tls_entry_ref	src/tls.c	/^static void dec_tls_entry_ref(void *_tls_entry) {$/;"	f	file:
+do_check	src/simon.c	/^void do_check(void) {$/;"	f
+do_init	src/simon.c	/^void do_init(void) {$/;"	f
+do_options	src/simon.c	/^int do_options(int argc, char **argv) {$/;"	f
+do_parse	src/simon.c	/^void do_parse(void) {$/;"	f
+do_resolve_symbols	src/simon.c	/^void do_resolve_symbols(void) {$/;"	f
+dump_symbols	src/options.h	/^    int         dump_symbols;$/;"	m	struct:__anon9
+eat	src/parse.c	/^static int eat(parse_context_t *cxt, int len) {$/;"	f	file:
+elem_size	src/array.h	/^    int   elem_size;$/;"	m	struct:__anon1
+elem_size	src/tmparray.h	/^    int   elem_size;$/;"	m	struct:__anon18
+empty_t	src/internal.h	/^typedef struct {} empty_t;$/;"	t	typeref:struct:__anon7
+empty_type_list	src/type.c	/^static u32     empty_type_list;$/;"	v	file:
+end	src/file.h	/^    char      *end;$/;"	m	struct:__anon6
+end	src/memory.h	/^    void                    *end;$/;"	m	struct:bump_alloc_block
+end	src/parse.c	/^    char         *end;$/;"	m	struct:__anon10	file:
+end	src/src_range.h	/^    src_point_t end;$/;"	m	struct:__anon13
+expr	src/ast.h	/^    ast_t     *expr;$/;"	m	struct:__anon5
+f	src/ast.h	/^    double     f;$/;"	m	union:__anon3
+file	src/parse.c	/^    file_t       *file;$/;"	m	struct:__anon10	file:
+file_t	src/file.h	/^} file_t;$/;"	t	typeref:struct:__anon6
+find_in_scope	src/scope.c	/^ast_t *find_in_scope(scope_t *scope, string_id name_id) {$/;"	f
+find_tls_entry	src/tls.c	/^static tls_entry_t * find_tls_entry(void) {$/;"	f	file:
+flags	src/ast.h	/^    u16         flags; \/*        +2 bytes                  *\/$/;"	m	struct:__anon4
+flags	src/type.h	/^        u32 flags;$/;"	m	union:type::__anon20
+fn	src/threadpool.h	/^    tp_task_fn_t    fn;$/;"	m	struct:tp_task
+free	src/memory.c	/^#undef free$/;"	d	file:
 free	src/memory.h	/^#define free /;"	d
-free_buff	src/file.h	/^    int        free_buff;$/;"	m	struct:__anon5ad507f20108	typeref:typename:int
-free_scope_no_recurse	src/scope.c	/^void free_scope_no_recurse(scope_t *scope) {$/;"	f	typeref:typename:void
-get_file	src/file.c	/^file_t * get_file(string_id path_id) {$/;"	f	typeref:typename:file_t *
-get_next_thread_idx	src/tls.c	/^static u32 get_next_thread_idx(void) {$/;"	f	typeref:typename:u32	file:
-get_num_param_types	src/type.c	/^u32 get_num_param_types(u32 proc_ty) {$/;"	f	typeref:typename:u32
-get_or_insert_type	src/type.c	/^static u32 get_or_insert_type(type_t t) {$/;"	f	typeref:typename:u32	file:
-get_or_insert_type_list	src/type.c	/^static u32 get_or_insert_type_list(type_t t) {$/;"	f	typeref:typename:u32	file:
-get_param_type	src/type.c	/^u32 get_param_type(u32 proc_ty, u32 idx) {$/;"	f	typeref:typename:u32
-get_proc_type	src/type.c	/^u32 get_proc_type(u32 n_param_types, u32 *param_types, u32 ret_type) {$/;"	f	typeref:typename:u32
-get_ptr_type	src/type.c	/^u32 get_ptr_type(u32 ty) {$/;"	f	typeref:typename:u32
-get_ret_type	src/type.c	/^u32 get_ret_type(u32 proc_ty) {$/;"	f	typeref:typename:u32
-get_string	src/strings.c	/^const char *get_string(string_id id) {$/;"	f	typeref:typename:const char *
-get_string_id	src/strings.c	/^string_id get_string_id(const char *string) {$/;"	f	typeref:typename:string_id
-get_string_id_n	src/strings.c	/^string_id get_string_id_n(const char *string, u64 len) {$/;"	f	typeref:typename:string_id
-get_struct_type	src/type.c	/^u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope) {$/;"	f	typeref:typename:u32
-get_subscope_from_node	src/scope.c	/^scope_t *get_subscope_from_node(scope_t *scope, ast_t *node) {$/;"	f	typeref:typename:scope_t *
-get_tls	src/tls.c	/^tls_t * get_tls(void) {$/;"	f	typeref:typename:tls_t *
-get_type_string_id	src/type.c	/^string_id get_type_string_id(u32 ty) {$/;"	f	typeref:typename:string_id
-get_type_structure	src/type.c	/^static type_t * get_type_structure(u32 ty) {$/;"	f	typeref:typename:type_t *	file:
-global_scope	src/globals.c	/^scope_t          global_scope;$/;"	v	typeref:typename:scope_t
-global_scope	src/parse.c	/^    scope_t       global_scope;$/;"	m	struct:__anona50843e80108	typeref:typename:scope_t	file:
-global_scope_mtx	src/globals.c	/^pthread_mutex_t  global_scope_mtx = PTHREAD_MUTEX_INITIALIZER;$/;"	v	typeref:typename:pthread_mutex_t
+free_buff	src/file.h	/^    int        free_buff;$/;"	m	struct:__anon6
+free_scope_no_recurse	src/scope.c	/^void free_scope_no_recurse(scope_t *scope) {$/;"	f
+get_declaration_path	src/ast.c	/^static tmparray_t get_declaration_path(ast_ident_t *ident) {$/;"	f	file:
+get_file	src/file.c	/^file_t * get_file(string_id path_id) {$/;"	f
+get_next_thread_idx	src/tls.c	/^static u32 get_next_thread_idx(void) {$/;"	f	file:
+get_num_param_types	src/type.c	/^u32 get_num_param_types(u32 proc_ty) {$/;"	f
+get_or_insert_type	src/type.c	/^static u32 get_or_insert_type(type_t t) {$/;"	f	file:
+get_or_insert_type_list	src/type.c	/^static u32 get_or_insert_type_list(type_t t) {$/;"	f	file:
+get_param_type	src/type.c	/^u32 get_param_type(u32 proc_ty, u32 idx) {$/;"	f
+get_proc_type	src/type.c	/^u32 get_proc_type(u32 n_param_types, u32 *param_types, u32 ret_type) {$/;"	f
+get_ptr_type	src/type.c	/^u32 get_ptr_type(u32 ty) {$/;"	f
+get_ret_type	src/type.c	/^u32 get_ret_type(u32 proc_ty) {$/;"	f
+get_string	src/strings.c	/^const char *get_string(string_id id) {$/;"	f
+get_string_id	src/strings.c	/^string_id get_string_id(const char *string) {$/;"	f
+get_string_id_n	src/strings.c	/^string_id get_string_id_n(const char *string, u64 len) {$/;"	f
+get_struct_type	src/type.c	/^u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope) {$/;"	f
+get_subscope_from_node	src/scope.c	/^scope_t *get_subscope_from_node(scope_t *scope, ast_t *node) {$/;"	f
+get_tls	src/tls.c	/^tls_t * get_tls(void) {$/;"	f
+get_type_string_id	src/type.c	/^string_id get_type_string_id(u32 ty) {$/;"	f
+get_type_structure	src/type.c	/^static type_t * get_type_structure(u32 ty) {$/;"	f	file:
+get_under_type	src/type.c	/^u32 get_under_type(u32 ty) {$/;"	f
+get_vargs_type	src/type.c	/^u32 get_vargs_type(u32 ty) {$/;"	f
+global_scope	src/globals.c	/^scope_t          global_scope;$/;"	v
+global_scope	src/parse.c	/^    scope_t       global_scope;$/;"	m	struct:__anon10	file:
+global_scope_mtx	src/globals.c	/^pthread_mutex_t  global_scope_mtx = PTHREAD_MUTEX_INITIALIZER;$/;"	v
 hash_table	src/hash_table.h	/^#define hash_table(/;"	d
 hash_table_delete	src/hash_table.h	/^#define hash_table_delete(/;"	d
 hash_table_free	src/hash_table.h	/^#define hash_table_free(/;"	d
@@ -376,212 +389,253 @@ hash_table_make_e	src/hash_table.h	/^#define hash_table_make_e(/;"	d
 hash_table_pretty_name	src/hash_table.h	/^#define hash_table_pretty_name(/;"	d
 hash_table_slot	src/hash_table.h	/^#define hash_table_slot(/;"	d
 hash_table_traverse	src/hash_table.h	/^#define hash_table_traverse(/;"	d
-head	src/memory.h	/^    bump_alloc_block_t *head;$/;"	m	struct:__anona94a61ab0108	typeref:typename:bump_alloc_block_t *
-head	src/threadpool.h	/^    tp_task_t    *head, *tail;$/;"	m	struct:__anon2d8b0e440108	typeref:typename:tp_task_t *
-help	src/options.h	/^    int         help;$/;"	m	struct:__anonef0120fe0108	typeref:typename:int
-ht_prime_sizes	src/hash_table.h	/^static uint64_t ht_prime_sizes[] = {$/;"	v	typeref:typename:uint64_t[]
-i	src/ast.h	/^    i64        i;$/;"	m	union:__anonb4d85aba020a	typeref:typename:i64
+head	src/memory.h	/^    bump_alloc_block_t *head;$/;"	m	struct:__anon8
+head	src/threadpool.h	/^    tp_task_t    *head, *tail;$/;"	m	struct:__anon14
+help	src/options.h	/^    int         help;$/;"	m	struct:__anon9
+ht_prime_sizes	src/hash_table.h	/^static uint64_t ht_prime_sizes[] = {$/;"	v
+i	src/ast.h	/^    i64        i;$/;"	m	union:__anon3
 i16	src/internal.h	/^#define i16 /;"	d
 i32	src/internal.h	/^#define i32 /;"	d
 i64	src/internal.h	/^#define i64 /;"	d
 i8	src/internal.h	/^#define i8 /;"	d
-id	src/tls.h	/^    u64           id;$/;"	m	struct:__anonb62c51650208	typeref:typename:u64
-id_list	src/type.h	/^        u32 *id_list;$/;"	m	union:type::__anon7ca0fa54030a	typeref:typename:u32 *
-in_proc	src/scope.h	/^    int           in_proc;$/;"	m	struct:scope	typeref:typename:int
-init_file_table	src/file.c	/^void init_file_table(void) {$/;"	f	typeref:typename:void
-init_mem	src/memory.c	/^void init_mem(void) {$/;"	f	typeref:typename:void
-init_scopes	src/scope.c	/^void init_scopes(void) {$/;"	f	typeref:typename:void
-init_strings	src/strings.c	/^void init_strings(void) {$/;"	f	typeref:typename:void
-init_tls	src/tls.c	/^void init_tls(void) {$/;"	f	typeref:typename:void
-init_tls_data	src/tls.c	/^static void init_tls_data(tls_t *tls) {$/;"	f	typeref:typename:void	file:
-init_types	src/type.c	/^int init_types(void) {$/;"	f	typeref:typename:int
-init_ui	src/ui.c	/^void init_ui(void) {$/;"	f	typeref:typename:void
-input_files	src/options.h	/^    array_t     input_files;$/;"	m	struct:__anonef0120fe0108	typeref:typename:array_t
-insert_builtin_type	src/scope.c	/^static void insert_builtin_type(const char *name, u32 type_value) {$/;"	f	typeref:typename:void	file:
-insert_new_type	src/type.c	/^static u32 insert_new_type(type_t t) {$/;"	f	typeref:typename:u32	file:
-is_initialized	src/tls.h	/^    int          is_initialized;$/;"	m	struct:__anonb62c51650108	typeref:typename:int
-is_kwd	src/strings.c	/^int is_kwd(string_id id) {$/;"	f	typeref:typename:int
-is_valid	src/tls.h	/^    int           is_valid;$/;"	m	struct:__anonb62c51650208	typeref:typename:int
-key	src/tls.h	/^    pthread_key_t key;$/;"	m	struct:__anonb62c51650208	typeref:typename:pthread_key_t
-kind	src/ast.h	/^    u16         kind;  \/*        +2 bytes                  *\/$/;"	m	struct:__anonb4d85aba0308	typeref:typename:u16
-kind	src/scope.h	/^    int           kind;$/;"	m	struct:scope	typeref:typename:int
-kind	src/type.h	/^    u32 kind;$/;"	m	struct:type	typeref:typename:u32
-kwd_ids	src/strings.c	/^static array_t          kwd_ids;$/;"	v	typeref:typename:array_t	file:
-len	src/file.h	/^    u64        len;$/;"	m	struct:__anon5ad507f20108	typeref:typename:u64
-len	src/threadpool.h	/^    unsigned int  len;$/;"	m	struct:__anon2d8b0e440108	typeref:typename:unsigned int
-len	src/type.h	/^            u32 len;$/;"	m	struct:type::__anon7ca0fa54030a::__anon7ca0fa540408	typeref:typename:u32
+id	src/tls.h	/^    u64           id;$/;"	m	struct:__anon17
+id_list	src/type.h	/^        u32 *id_list;$/;"	m	union:type::__anon21
+in_proc	src/scope.h	/^    int           in_proc;$/;"	m	struct:scope
+init_file_table	src/file.c	/^void init_file_table(void) {$/;"	f
+init_mem	src/memory.c	/^void init_mem(void) {$/;"	f
+init_scopes	src/scope.c	/^void init_scopes(void) {$/;"	f
+init_strings	src/strings.c	/^void init_strings(void) {$/;"	f
+init_tls	src/tls.c	/^void init_tls(void) {$/;"	f
+init_tls_data	src/tls.c	/^static void init_tls_data(tls_t *tls) {$/;"	f	file:
+init_types	src/type.c	/^int init_types(void) {$/;"	f
+init_ui	src/ui.c	/^void init_ui(void) {$/;"	f
+input_files	src/options.h	/^    array_t     input_files;$/;"	m	struct:__anon9
+insert_builtin_type	src/scope.c	/^static void insert_builtin_type(const char *name, u32 type_value) {$/;"	f	file:
+insert_new_type	src/type.c	/^static u32 insert_new_type(type_t t) {$/;"	f	file:
+is_initialized	src/tls.h	/^    int          is_initialized;$/;"	m	struct:__anon16
+is_kwd	src/strings.c	/^int is_kwd(string_id id) {$/;"	f
+is_valid	src/tls.h	/^    int           is_valid;$/;"	m	struct:__anon17
+key	src/tls.h	/^    pthread_key_t key;$/;"	m	struct:__anon17
+kind	src/ast.h	/^    u16         kind;  \/*        +2 bytes                  *\/$/;"	m	struct:__anon4
+kind	src/scope.h	/^    int           kind;$/;"	m	struct:scope
+kind	src/type.h	/^    u32 kind;$/;"	m	struct:type
+kwd_ids	src/strings.c	/^static array_t          kwd_ids;$/;"	v	file:
+len	src/file.h	/^    u64        len;$/;"	m	struct:__anon6
+len	src/threadpool.h	/^    unsigned int  len;$/;"	m	struct:__anon14
+len	src/type.h	/^            u32 len;$/;"	m	struct:type::__anon21::__anon22
 likely	src/internal.h	/^#define likely(/;"	d
-line	src/src_range.h	/^    u32        line;$/;"	m	struct:__anona2dfe4a60108	typeref:typename:u32
-lines_mtx	src/globals.c	/^pthread_mutex_t  lines_mtx = PTHREAD_MUTEX_INITIALIZER;$/;"	v	typeref:typename:pthread_mutex_t
-list_len	src/type.h	/^        u32 list_len;$/;"	m	union:type::__anon7ca0fa54020a	typeref:typename:u32
-loc	src/ast.h	/^    src_range_t loc;   \/*        48 bytes                  *\/$/;"	m	struct:__anonb4d85aba0308	typeref:typename:src_range_t
-local_tls	src/tls.c	/^static __thread tls_t local_tls;$/;"	v	typeref:typename:__thread tls_t	file:
-local_tls_entry	src/tls.c	/^static __thread tls_entry_t *local_tls_entry;$/;"	v	typeref:typename:__thread tls_entry_t *	file:
-lookahead_binary_op	src/parse.c	/^static int lookahead_binary_op(parse_context_t *cxt) {$/;"	f	typeref:typename:int	file:
-lookahead_unary_prefix_op	src/parse.c	/^static int lookahead_unary_prefix_op(parse_context_t *cxt) {$/;"	f	typeref:typename:int	file:
-main	src/simon.c	/^int main(int argc, char **argv) {$/;"	f	typeref:typename:int
+line	src/src_range.h	/^    u32        line;$/;"	m	struct:__anon12
+lines_mtx	src/globals.c	/^pthread_mutex_t  lines_mtx = PTHREAD_MUTEX_INITIALIZER;$/;"	v
+list_len	src/type.h	/^        u32 list_len;$/;"	m	union:type::__anon20
+loc	src/ast.h	/^    src_range_t loc;   \/*        48 bytes                  *\/$/;"	m	struct:__anon4
+local_tls	src/tls.c	/^static __thread tls_t local_tls;$/;"	v	file:
+local_tls_entry	src/tls.c	/^static __thread tls_entry_t *local_tls_entry;$/;"	v	file:
+lookahead_binary_op	src/parse.c	/^static int lookahead_binary_op(parse_context_t *cxt) {$/;"	f	file:
+lookahead_unary_prefix_op	src/parse.c	/^static int lookahead_unary_prefix_op(parse_context_t *cxt) {$/;"	f	file:
+main	src/simon.c	/^int main(int argc, char **argv) {$/;"	f
+malloc	src/memory.c	/^#undef malloc$/;"	d	file:
 malloc	src/memory.h	/^#define malloc /;"	d
-map_file_into_readonly_memory	src/file.c	/^int map_file_into_readonly_memory(const char *path, file_t *file) {$/;"	f	typeref:typename:int
-measure_time_now_ms	src/internal.c	/^u64 measure_time_now_ms(void) {$/;"	f	typeref:typename:u64
-measure_time_now_us	src/internal.c	/^u64 measure_time_now_us(void) {$/;"	f	typeref:typename:u64
-mem_alloc	src/memory.c	/^void * mem_alloc(size_t n_bytes)                { return malloc(n_bytes);        }$/;"	f	typeref:typename:void *
-mem_alloc	src/memory.c	/^void * mem_alloc(size_t n_bytes) {$/;"	f	typeref:typename:void *
-mem_calloc	src/memory.c	/^void * mem_calloc(size_t count, size_t n_bytes) { return calloc(count, n_bytes); }$/;"	f	typeref:typename:void *
-mem_calloc	src/memory.c	/^void * mem_calloc(size_t count, size_t n_bytes) {$/;"	f	typeref:typename:void *
-mem_free	src/memory.c	/^void   mem_free(void *addr)                     { free(addr);                    }$/;"	f	typeref:typename:void
-mem_free	src/memory.c	/^void mem_free(void *addr) { }$/;"	f	typeref:typename:void
-move_subscope	src/scope.c	/^scope_t *move_subscope(scope_t *dst, scope_t *subscope) {$/;"	f	typeref:typename:scope_t *
-multiple_entry_error	src/parse.c	/^void multiple_entry_error(ast_assign_t *new, ast_assign_t *old) {$/;"	f	typeref:typename:void
-mutex	src/threadpool.h	/^    pthread_mutex_t  mutex;$/;"	m	struct:__anon2d8b0e440208	typeref:typename:pthread_mutex_t
-n_blank_lines	src/globals.c	/^u64              n_blank_lines;$/;"	v	typeref:typename:u64
-n_blank_lines	src/parse.c	/^    u64           n_blank_lines;$/;"	m	struct:__anona50843e80108	typeref:typename:u64	file:
-n_digits	src/ui.c	/^static int n_digits(u64 num) {$/;"	f	typeref:typename:int	file:
-n_lines	src/globals.c	/^u64              n_lines;$/;"	v	typeref:typename:u64
-n_lines	src/parse.c	/^    u64           n_lines;$/;"	m	struct:__anona50843e80108	typeref:typename:u64	file:
-n_running	src/threadpool.h	/^    int              n_running;$/;"	m	struct:__anon2d8b0e440208	typeref:typename:int
-n_started	src/threadpool.h	/^    int              n_started;$/;"	m	struct:__anon2d8b0e440208	typeref:typename:int
-n_threads	src/options.h	/^    int         n_threads;$/;"	m	struct:__anonef0120fe0108	typeref:typename:int
-name	src/ast.h	/^    string_id  name;$/;"	m	struct:__anonb4d85aba0408	typeref:typename:string_id
-name_id	src/scope.h	/^    string_id     name_id;$/;"	m	struct:scope	typeref:typename:string_id
-name_id	src/type.h	/^        string_id name_id;$/;"	m	union:type::__anon7ca0fa54030a	typeref:typename:string_id
-next	src/threadpool.h	/^    struct tp_task *prev, *next;$/;"	m	struct:tp_task	typeref:struct:tp_task *
-next_power_of_2	src/internal.c	/^u64 next_power_of_2(u64 x) {$/;"	f	typeref:typename:u64
-node	src/scope.h	/^    ast_t        *node;$/;"	m	struct:scope	typeref:typename:ast_t *
-nodes	src/scope.h	/^    array_t       nodes;$/;"	m	struct:scope	typeref:typename:array_t
-num_threads	src/tls.c	/^static u32                   num_threads;$/;"	v	typeref:typename:u32	file:
-op_arity_table	src/parse.c	/^int op_arity_table[] = {$/;"	v	typeref:typename:int[]
-op_assoc_table	src/parse.c	/^int op_assoc_table[] = {$/;"	v	typeref:typename:int[]
-op_prec_table	src/parse.c	/^u32 op_prec_table[] = {$/;"	v	typeref:typename:u32[]
-op_str_table	src/parse.c	/^const char * op_str_table[] = {$/;"	v	typeref:typename:const char * []
-options	src/options.c	/^options_t options;$/;"	v	typeref:typename:options_t
-options_t	src/options.h	/^} options_t;$/;"	t	typeref:struct:__anonef0120fe0108
-output_is_tty	src/ui.c	/^static int output_is_tty;$/;"	v	typeref:typename:int	file:
-output_mtx	src/ui.c	/^static pthread_mutex_t output_mtx = PTHREAD_MUTEX_INITIALIZER;$/;"	v	typeref:typename:pthread_mutex_t	file:
-output_name	src/options.h	/^    const char *output_name;$/;"	m	struct:__anonef0120fe0108	typeref:typename:const char *
-param_list_id	src/type.h	/^            u32 param_list_id;$/;"	m	struct:type::__anon7ca0fa54030a::__anon7ca0fa540508	typeref:typename:u32
-parent	src/scope.h	/^    struct scope *parent;$/;"	m	struct:scope	typeref:struct:scope *
-parse	src/parse.c	/^static void parse(parse_context_t *cxt) {$/;"	f	typeref:typename:void	file:
-parse_arg_list	src/parse.c	/^static ast_t * parse_arg_list(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_assign	src/parse.c	/^static ast_t * parse_assign(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_block	src/parse.c	/^static ast_t * parse_block(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_break	src/parse.c	/^static ast_t *parse_break(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_char	src/parse.c	/^static int parse_char(parse_context_t *cxt, char c) {$/;"	f	typeref:typename:int	file:
-parse_context_t	src/parse.c	/^} parse_context_t;$/;"	t	typeref:struct:__anona50843e80108	file:
-parse_continue	src/parse.c	/^static ast_t *parse_continue(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_defer	src/parse.c	/^static ast_t *parse_defer(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_expr	src/parse.c	/^static ast_t * parse_expr(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_expr_more	src/parse.c	/^static ast_t * parse_expr_more(parse_context_t *cxt, ast_t *left, int min_prec) {$/;"	f	typeref:typename:ast_t *	file:
-parse_expr_prec	src/parse.c	/^static ast_t * parse_expr_prec(parse_context_t *cxt, int min_prec) {$/;"	f	typeref:typename:ast_t *	file:
-parse_file	src/parse.c	/^void parse_file(const char *path) {$/;"	f	typeref:typename:void
-parse_file_thread	src/parse.c	/^static void parse_file_thread(void *_path) {$/;"	f	typeref:typename:void	file:
-parse_identifier	src/parse.c	/^static int parse_identifier(parse_context_t *cxt, string_id *string_out) {$/;"	f	typeref:typename:int	file:
-parse_identifier_assign	src/parse.c	/^static int parse_identifier_assign(parse_context_t *cxt) {$/;"	f	typeref:typename:int	file:
-parse_if	src/parse.c	/^static ast_t * parse_if(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_int	src/parse.c	/^static int parse_int(parse_context_t *cxt, string_id *string_out) {$/;"	f	typeref:typename:int	file:
-parse_leaf_expr	src/parse.c	/^static ast_t * parse_leaf_expr(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_literal	src/parse.c	/^static int parse_literal(parse_context_t *cxt, const char *lit) {$/;"	f	typeref:typename:int	file:
-parse_loop	src/parse.c	/^static ast_t * parse_loop(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_module_body	src/parse.c	/^static ast_t * parse_module_body(parse_context_t *cxt, string_id name) {$/;"	f	typeref:typename:ast_t *	file:
-parse_operand	src/parse.c	/^static ast_t * parse_operand(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_options	src/options.c	/^int parse_options(int argc, char **argv) {$/;"	f	typeref:typename:int
-parse_proc_body	src/parse.c	/^static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_parse_block) {$/;"	f	typeref:typename:ast_t *	file:
-parse_return	src/parse.c	/^static ast_t *parse_return(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_static_directive	src/parse.c	/^static ast_t * parse_static_directive(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_stmt	src/parse.c	/^static ast_t *parse_stmt(parse_context_t *cxt) {$/;"	f	typeref:typename:ast_t *	file:
-parse_string_literal	src/parse.c	/^static int parse_string_literal(parse_context_t *cxt, string_id *string_out) {$/;"	f	typeref:typename:int	file:
-parse_struct_body	src/parse.c	/^static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {$/;"	f	typeref:typename:ast_t *	file:
-parse_word	src/parse.c	/^static int parse_word(parse_context_t *cxt, const char *word) {$/;"	f	typeref:typename:int	file:
-path_id	src/file.h	/^    string_id  path_id;$/;"	m	struct:__anon5ad507f20108	typeref:typename:string_id
-path_id	src/src_range.h	/^    string_id  path_id;$/;"	m	struct:__anona2dfe4a60108	typeref:typename:string_id
-platform_get_num_hw_threads	src/platform.c	/^u32 platform_get_num_hw_threads(void) {$/;"	f	typeref:typename:u32
-pre_clean_point	src/parse.c	/^    src_point_t   pre_clean_point;$/;"	m	struct:__anona50843e80108	typeref:typename:src_point_t	file:
-pretty_bytes	src/internal.c	/^char * pretty_bytes(u64 n_bytes) {$/;"	f	typeref:typename:char *
-pretty_bytes_buff	src/internal.c	/^static __thread char pretty_bytes_buff[64];$/;"	v	typeref:typename:__thread char[64]	file:
-prev	src/memory.h	/^    struct bump_alloc_block *prev;$/;"	m	struct:bump_alloc_block	typeref:struct:bump_alloc_block *
-prev	src/threadpool.h	/^    struct tp_task *prev, *next;$/;"	m	struct:tp_task	typeref:struct:tp_task *
-print_all_strings	src/strings.c	/^void print_all_strings(void) {$/;"	f	typeref:typename:void
-print_range	src/ui.c	/^static void print_range(src_range_t *range, const char *all_color, const char *range_color, cons/;"	f	typeref:typename:void	file:
-print_usage	src/options.c	/^void print_usage(void) {$/;"	f	typeref:typename:void
-program_entry	src/globals.c	/^ast_assign_t    *program_entry;$/;"	v	typeref:typename:ast_assign_t *
-program_entry	src/parse.c	/^    ast_assign_t *program_entry;$/;"	m	struct:__anona50843e80108	typeref:typename:ast_assign_t *	file:
-program_entry_mtx	src/globals.c	/^pthread_mutex_t  program_entry_mtx = PTHREAD_MUTEX_INITIALIZER;$/;"	v	typeref:typename:pthread_mutex_t
-queue	src/threadpool.h	/^    tp_queue_t       queue;$/;"	m	struct:__anon2d8b0e440208	typeref:typename:tp_queue_t
+map_file_into_readonly_memory	src/file.c	/^int map_file_into_readonly_memory(const char *path, file_t *file) {$/;"	f
+measure_time_now_ms	src/internal.c	/^u64 measure_time_now_ms(void) {$/;"	f
+measure_time_now_us	src/internal.c	/^u64 measure_time_now_us(void) {$/;"	f
+mem_alloc	src/memory.c	/^void * mem_alloc(size_t n_bytes)                { return malloc(n_bytes);        }$/;"	f
+mem_alloc	src/memory.c	/^void * mem_alloc(size_t n_bytes) {$/;"	f
+mem_calloc	src/memory.c	/^void * mem_calloc(size_t count, size_t n_bytes) { return calloc(count, n_bytes); }$/;"	f
+mem_calloc	src/memory.c	/^void * mem_calloc(size_t count, size_t n_bytes) {$/;"	f
+mem_free	src/memory.c	/^void   mem_free(void *addr)                     { free(addr);                    }$/;"	f
+mem_free	src/memory.c	/^void mem_free(void *addr) { }$/;"	f
+move_subscope	src/scope.c	/^scope_t *move_subscope(scope_t *dst, scope_t *subscope) {$/;"	f
+multiple_entry_error	src/parse.c	/^void multiple_entry_error(ast_assign_t *new, ast_assign_t *old) {$/;"	f
+mutex	src/threadpool.h	/^    pthread_mutex_t  mutex;$/;"	m	struct:__anon15
+n_blank_lines	src/globals.c	/^u64              n_blank_lines;$/;"	v
+n_blank_lines	src/parse.c	/^    u64           n_blank_lines;$/;"	m	struct:__anon10	file:
+n_digits	src/ui.c	/^static int n_digits(u64 num) {$/;"	f	file:
+n_lines	src/globals.c	/^u64              n_lines;$/;"	v
+n_lines	src/parse.c	/^    u64           n_lines;$/;"	m	struct:__anon10	file:
+n_running	src/threadpool.h	/^    int              n_running;$/;"	m	struct:__anon15
+n_started	src/threadpool.h	/^    int              n_started;$/;"	m	struct:__anon15
+n_threads	src/options.h	/^    int         n_threads;$/;"	m	struct:__anon9
+name	src/ast.h	/^    string_id  name;$/;"	m	struct:__anon5
+name_id	src/scope.h	/^    string_id     name_id;$/;"	m	struct:scope
+name_id	src/type.h	/^        string_id name_id;$/;"	m	union:type::__anon21
+next	src/threadpool.h	/^    struct tp_task *prev, *next;$/;"	m	struct:tp_task	typeref:struct:tp_task::
+next_power_of_2	src/internal.c	/^u64 next_power_of_2(u64 x) {$/;"	f
+node	src/scope.h	/^    ast_t        *node;$/;"	m	struct:scope
+nodes	src/scope.h	/^    array_t       nodes;$/;"	m	struct:scope
+num_threads	src/tls.c	/^static u32                   num_threads;$/;"	v	file:
+op_arity_table	src/parse.c	/^int op_arity_table[] = {$/;"	v
+op_assoc_table	src/parse.c	/^int op_assoc_table[] = {$/;"	v
+op_prec_table	src/parse.c	/^u32 op_prec_table[] = {$/;"	v
+op_str_table	src/parse.c	/^const char * op_str_table[] = {$/;"	v
+options	src/options.c	/^options_t options;$/;"	v
+options_t	src/options.h	/^} options_t;$/;"	t	typeref:struct:__anon9
+output_is_tty	src/ui.c	/^static int output_is_tty;$/;"	v	file:
+output_mtx	src/ui.c	/^static pthread_mutex_t output_mtx = PTHREAD_MUTEX_INITIALIZER;$/;"	v	file:
+output_name	src/options.h	/^    const char *output_name;$/;"	m	struct:__anon9
+param_list_id	src/type.h	/^            u32 param_list_id;$/;"	m	struct:type::__anon21::__anon23
+parent	src/scope.h	/^    struct scope *parent;$/;"	m	struct:scope	typeref:struct:scope::scope
+parse	src/parse.c	/^static void parse(parse_context_t *cxt) {$/;"	f	file:
+parse_arg_list	src/parse.c	/^static ast_t * parse_arg_list(parse_context_t *cxt) {$/;"	f	file:
+parse_assign	src/parse.c	/^static ast_t * parse_assign(parse_context_t *cxt) {$/;"	f	file:
+parse_block	src/parse.c	/^static ast_t * parse_block(parse_context_t *cxt) {$/;"	f	file:
+parse_break	src/parse.c	/^static ast_t *parse_break(parse_context_t *cxt) {$/;"	f	file:
+parse_char	src/parse.c	/^static int parse_char(parse_context_t *cxt, char c) {$/;"	f	file:
+parse_context_t	src/parse.c	/^} parse_context_t;$/;"	t	typeref:struct:__anon10	file:
+parse_continue	src/parse.c	/^static ast_t *parse_continue(parse_context_t *cxt) {$/;"	f	file:
+parse_defer	src/parse.c	/^static ast_t *parse_defer(parse_context_t *cxt) {$/;"	f	file:
+parse_expr	src/parse.c	/^static ast_t * parse_expr(parse_context_t *cxt) {$/;"	f	file:
+parse_expr_more	src/parse.c	/^static ast_t * parse_expr_more(parse_context_t *cxt, ast_t *left, int min_prec) {$/;"	f	file:
+parse_expr_prec	src/parse.c	/^static ast_t * parse_expr_prec(parse_context_t *cxt, int min_prec) {$/;"	f	file:
+parse_file	src/parse.c	/^void parse_file(const char *path) {$/;"	f
+parse_file_thread	src/parse.c	/^static void parse_file_thread(void *_path) {$/;"	f	file:
+parse_identifier	src/parse.c	/^static int parse_identifier(parse_context_t *cxt, string_id *string_out) {$/;"	f	file:
+parse_identifier_assign	src/parse.c	/^static int parse_identifier_assign(parse_context_t *cxt) {$/;"	f	file:
+parse_if	src/parse.c	/^static ast_t * parse_if(parse_context_t *cxt) {$/;"	f	file:
+parse_int	src/parse.c	/^static int parse_int(parse_context_t *cxt, string_id *string_out) {$/;"	f	file:
+parse_leaf_expr	src/parse.c	/^static ast_t * parse_leaf_expr(parse_context_t *cxt) {$/;"	f	file:
+parse_literal	src/parse.c	/^static int parse_literal(parse_context_t *cxt, const char *lit) {$/;"	f	file:
+parse_loop	src/parse.c	/^static ast_t * parse_loop(parse_context_t *cxt) {$/;"	f	file:
+parse_module_body	src/parse.c	/^static ast_t * parse_module_body(parse_context_t *cxt, string_id name) {$/;"	f	file:
+parse_operand	src/parse.c	/^static ast_t * parse_operand(parse_context_t *cxt) {$/;"	f	file:
+parse_options	src/options.c	/^int parse_options(int argc, char **argv) {$/;"	f
+parse_proc_body	src/parse.c	/^static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_parse_block) {$/;"	f	file:
+parse_return	src/parse.c	/^static ast_t *parse_return(parse_context_t *cxt) {$/;"	f	file:
+parse_static_directive	src/parse.c	/^static ast_t * parse_static_directive(parse_context_t *cxt) {$/;"	f	file:
+parse_stmt	src/parse.c	/^static ast_t *parse_stmt(parse_context_t *cxt) {$/;"	f	file:
+parse_string_literal	src/parse.c	/^static int parse_string_literal(parse_context_t *cxt, string_id *string_out) {$/;"	f	file:
+parse_struct_body	src/parse.c	/^static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {$/;"	f	file:
+parse_word	src/parse.c	/^static int parse_word(parse_context_t *cxt, const char *word) {$/;"	f	file:
+path_id	src/file.h	/^    string_id  path_id;$/;"	m	struct:__anon6
+path_id	src/src_range.h	/^    string_id  path_id;$/;"	m	struct:__anon12
+platform_get_num_hw_threads	src/platform.c	/^u32 platform_get_num_hw_threads(void) {$/;"	f
+pre_clean_point	src/parse.c	/^    src_point_t   pre_clean_point;$/;"	m	struct:__anon10	file:
+pretty_bytes	src/internal.c	/^char * pretty_bytes(u64 n_bytes) {$/;"	f
+pretty_bytes_buff	src/internal.c	/^static __thread char pretty_bytes_buff[64];$/;"	v	file:
+prev	src/memory.h	/^    struct bump_alloc_block *prev;$/;"	m	struct:bump_alloc_block	typeref:struct:bump_alloc_block::bump_alloc_block
+prev	src/threadpool.h	/^    struct tp_task *prev, *next;$/;"	m	struct:tp_task	typeref:struct:tp_task::tp_task
+print_all_strings	src/strings.c	/^void print_all_strings(void) {$/;"	f
+print_range	src/ui.c	/^static void print_range(src_range_t *range, const char *all_color, const char *range_color, const char *loc_color, int n_context_lines) {$/;"	f	file:
+print_usage	src/options.c	/^void print_usage(void) {$/;"	f
+program_entry	src/globals.c	/^ast_assign_t    *program_entry;$/;"	v
+program_entry	src/parse.c	/^    ast_assign_t *program_entry;$/;"	m	struct:__anon10	file:
+program_entry_mtx	src/globals.c	/^pthread_mutex_t  program_entry_mtx = PTHREAD_MUTEX_INITIALIZER;$/;"	v
+queue	src/threadpool.h	/^    tp_queue_t       queue;$/;"	m	struct:__anon15
+realloc	src/memory.c	/^#undef realloc$/;"	d	file:
 realloc	src/memory.h	/^#define realloc /;"	d
-redecl_error	src/ast.c	/^static void redecl_error(string_id name, ast_t *bad, ast_t *existing) {$/;"	f	typeref:typename:void	file:
-ref_count	src/tls.h	/^    u32           ref_count;$/;"	m	struct:__anonb62c51650208	typeref:typename:u32
-report_file_err	src/ui.c	/^void report_file_err(file_t *file, int err) {$/;"	f	typeref:typename:void
+redecl_error	src/ast.c	/^static void redecl_error(string_id name, ast_t *bad, ast_t *existing) {$/;"	f	file:
+ref_count	src/tls.h	/^    u32           ref_count;$/;"	m	struct:__anon17
+report_declaration_path	src/ast.c	/^#define report_declaration_path(/;"	d	file:
+report_declaration_path_no_exit	src/ast.c	/^#define report_declaration_path_no_exit(/;"	d	file:
+report_file_err	src/ui.c	/^void report_file_err(file_t *file, int err) {$/;"	f
 report_loc_err	src/ui.h	/^#define report_loc_err(/;"	d
+report_loc_err_no_context	src/ui.h	/^#define report_loc_err_no_context(/;"	d
+report_loc_err_no_context_no_exit	src/ui.h	/^#define report_loc_err_no_context_no_exit(/;"	d
 report_loc_err_no_exit	src/ui.h	/^#define report_loc_err_no_exit(/;"	d
 report_loc_info	src/ui.h	/^#define report_loc_info(/;"	d
+report_loc_info_no_context	src/ui.h	/^#define report_loc_info_no_context(/;"	d
+report_loc_info_no_context_no_exit	src/ui.h	/^#define report_loc_info_no_context_no_exit(/;"	d
 report_loc_info_no_exit	src/ui.h	/^#define report_loc_info_no_exit(/;"	d
 report_range_err	src/ui.h	/^#define report_range_err(/;"	d
+report_range_err_no_context	src/ui.h	/^#define report_range_err_no_context(/;"	d
+report_range_err_no_context_no_exit	src/ui.h	/^#define report_range_err_no_context_no_exit(/;"	d
 report_range_err_no_exit	src/ui.h	/^#define report_range_err_no_exit(/;"	d
 report_range_info	src/ui.h	/^#define report_range_info(/;"	d
+report_range_info_no_context	src/ui.h	/^#define report_range_info_no_context(/;"	d
+report_range_info_no_context_no_exit	src/ui.h	/^#define report_range_info_no_context_no_exit(/;"	d
 report_range_info_no_exit	src/ui.h	/^#define report_range_info_no_exit(/;"	d
 report_simple_err	src/ui.h	/^#define report_simple_err(/;"	d
 report_simple_err_no_exit	src/ui.h	/^#define report_simple_err_no_exit(/;"	d
 report_simple_info	src/ui.h	/^#define report_simple_info(/;"	d
 report_simple_info_no_exit	src/ui.h	/^#define report_simple_info_no_exit(/;"	d
-ret_id	src/type.h	/^            u32 ret_id;$/;"	m	struct:type::__anon7ca0fa54030a::__anon7ca0fa540508	typeref:typename:u32
-roots	src/globals.c	/^array_t          roots;$/;"	v	typeref:typename:array_t
-roots_mtx	src/globals.c	/^pthread_mutex_t  roots_mtx = PTHREAD_MUTEX_INITIALIZER;$/;"	v	typeref:typename:pthread_mutex_t
-s	src/ast.h	/^    string_id  s;$/;"	m	union:__anonb4d85aba020a	typeref:typename:string_id
+ret_id	src/type.h	/^            u32 ret_id;$/;"	m	struct:type::__anon21::__anon23
+roots	src/globals.c	/^array_t          roots;$/;"	v
+roots_mtx	src/globals.c	/^pthread_mutex_t  roots_mtx = PTHREAD_MUTEX_INITIALIZER;$/;"	v
+s	src/ast.h	/^    string_id  s;$/;"	m	union:__anon3
 scope	src/scope.h	/^typedef struct scope {$/;"	s
-scope_find_origins	src/scope.c	/^static void scope_find_origins(scope_t *scope) {$/;"	f	typeref:typename:void	file:
-scope_find_origins_thread	src/scope.c	/^static void scope_find_origins_thread(void *arg) { scope_find_origins((scope_t*)arg); }$/;"	f	typeref:typename:void	file:
-scope_stack	src/parse.c	/^    array_t       scope_stack;$/;"	m	struct:__anona50843e80108	typeref:typename:array_t	file:
+scope_find_origins	src/scope.c	/^static void scope_find_origins(scope_t *scope) {$/;"	f	file:
+scope_find_origins_thread	src/scope.c	/^static void scope_find_origins_thread(void *arg) { scope_find_origins((scope_t*)arg); }$/;"	f	file:
+scope_stack	src/parse.c	/^    array_t       scope_stack;$/;"	m	struct:__anon10	file:
 scope_t	src/ast.h	/^typedef struct scope scope_t;$/;"	t	typeref:struct:scope
 scope_t	src/scope.h	/^} scope_t;$/;"	t	typeref:struct:scope
-scopes_find_origins	src/scope.c	/^void scopes_find_origins(scope_t *scope) {$/;"	f	typeref:typename:void
-search_up_scopes	src/scope.c	/^ast_t *search_up_scopes(scope_t *scope, string_id name_id) {$/;"	f	typeref:typename:ast_t *
-search_up_scopes_return_scope	src/scope.c	/^ast_t *search_up_scopes_return_scope(scope_t *scope, string_id name_id, scope_t **out_scope) {$/;"	f	typeref:typename:ast_t *
-search_up_scopes_stop_at_module	src/scope.c	/^ast_t *search_up_scopes_stop_at_module(scope_t *scope, string_id name_id) {$/;"	f	typeref:typename:ast_t *
-search_up_scopes_stop_at_module_return_scope	src/scope.c	/^ast_t *search_up_scopes_stop_at_module_return_scope(scope_t *scope, string_id name_id, scope_t */;"	f	typeref:typename:ast_t *
-setup_cxt	src/parse.c	/^static void setup_cxt(parse_context_t *cxt) {$/;"	f	typeref:typename:void	file:
-should_free	src/array.h	/^    int   should_free;$/;"	m	struct:__anon49fcdd910108	typeref:typename:int
-show_scope	src/scope.c	/^void show_scope(scope_t *scope) {$/;"	f	typeref:typename:void
-simon_assert_fail	src/internal.c	/^void simon_assert_fail(const char *msg, const char *fname, int line, const char *cond_str) {$/;"	f	typeref:typename:void
-src_point_t	src/src_range.h	/^} src_point_t;$/;"	t	typeref:struct:__anona2dfe4a60108
-src_range_t	src/src_range.h	/^} src_range_t;$/;"	t	typeref:struct:__anona2dfe4a60208
-start_parsing_file_async	src/parse.c	/^void start_parsing_file_async(const char *path) {$/;"	f	typeref:typename:void
-stop_mode	src/threadpool.h	/^    int              stop_mode;$/;"	m	struct:__anon2d8b0e440208	typeref:typename:int
-str_equ	src/hash_utilities.c	/^int str_equ(const char *a, const char *b) { return strcmp(a, b) == 0; }$/;"	f	typeref:typename:int
-str_hash	src/hash_utilities.c	/^u64 str_hash(const char *s) {$/;"	f	typeref:typename:u64
-str_id_hash	src/hash_utilities.c	/^u64 str_id_hash(string_id id) {$/;"	f	typeref:typename:u64
-string_id	src/strings.h	/^typedef u64         string_id;$/;"	t	typeref:typename:u64
-string_t	src/strings.h	/^typedef const char *string_t;$/;"	t	typeref:typename:const char *
-string_table_lock	src/strings.c	/^static pthread_rwlock_t string_table_lock = PTHREAD_RWLOCK_INITIALIZER;$/;"	v	typeref:typename:pthread_rwlock_t	file:
-subscopes	src/scope.h	/^    array_t       subscopes;$/;"	m	struct:scope	typeref:typename:array_t
-symbols	src/scope.h	/^    array_t       symbols;$/;"	m	struct:scope	typeref:typename:array_t
-t	src/ast.h	/^    u32        t;$/;"	m	union:__anonb4d85aba020a	typeref:typename:u32
-tail	src/threadpool.h	/^    tp_task_t    *head, *tail;$/;"	m	struct:__anon2d8b0e440108	typeref:typename:tp_task_t *
-threads	src/threadpool.h	/^    pthread_t       *threads;$/;"	m	struct:__anon2d8b0e440208	typeref:typename:pthread_t *
-tls	src/parse.c	/^    tls_t        *tls;$/;"	m	struct:__anona50843e80108	typeref:typename:tls_t *	file:
-tls	src/tls.h	/^    tls_t         tls;$/;"	m	struct:__anonb62c51650208	typeref:typename:tls_t
-tls_entry_array	src/tls.c	/^static tls_entry_t           tls_entry_array[MAX_NUM_TLS];$/;"	v	typeref:typename:tls_entry_t[]	file:
-tls_entry_array_lock	src/tls.c	/^static pthread_mutex_t       tls_entry_array_lock;$/;"	v	typeref:typename:pthread_mutex_t	file:
-tls_entry_t	src/tls.h	/^} tls_entry_t;$/;"	t	typeref:struct:__anonb62c51650208
-tls_t	src/tls.h	/^} tls_t;$/;"	t	typeref:struct:__anonb62c51650108
-top_level_nodes	src/parse.c	/^    array_t       top_level_nodes;$/;"	m	struct:__anona50843e80108	typeref:typename:array_t	file:
-tp	src/globals.c	/^tp_t            *tp;$/;"	v	typeref:typename:tp_t *
-tp_add_task	src/threadpool.h	/^void tp_add_task(tp_t *tp, tp_task_fn_t fn, void *arg) {$/;"	f	typeref:typename:void
-tp_free	src/threadpool.h	/^void tp_free(tp_t *tp) {$/;"	f	typeref:typename:void
-tp_make	src/threadpool.h	/^tp_t * tp_make(int n_workers) {$/;"	f	typeref:typename:tp_t *
-tp_queue_clear	src/threadpool.h	/^static void tp_queue_clear(tp_queue_t *queue) {$/;"	f	typeref:typename:void
-tp_queue_de	src/threadpool.h	/^static tp_task_t * tp_queue_de(tp_queue_t *queue) {$/;"	f	typeref:typename:tp_task_t *
-tp_queue_en	src/threadpool.h	/^static void tp_queue_en(tp_queue_t *queue, tp_task_fn_t fn, void *arg) {$/;"	f	typeref:typename:void
-tp_queue_make	src/threadpool.h	/^static tp_queue_t tp_queue_make(void) {$/;"	f	typeref:typename:tp_queue_t
-tp_queue_t	src/threadpool.h	/^} tp_queue_t;$/;"	t	typeref:struct:__anon2d8b0e440108
-tp_running	src/threadpool.h	/^int tp_running(tp_t *tp) {$/;"	f	typeref:typename:int
-tp_stop	src/threadpool.h	/^void tp_stop(tp_t *tp, int stop_mode) {$/;"	f	typeref:typename:void
-tp_t	src/threadpool.h	/^} tp_t;$/;"	t	typeref:struct:__anon2d8b0e440208
+scopes_find_origins	src/scope.c	/^void scopes_find_origins(scope_t *scope) {$/;"	f
+search_up_scopes	src/scope.c	/^ast_t *search_up_scopes(scope_t *scope, string_id name_id) {$/;"	f
+search_up_scopes_return_scope	src/scope.c	/^ast_t *search_up_scopes_return_scope(scope_t *scope, string_id name_id, scope_t **out_scope) {$/;"	f
+search_up_scopes_stop_at_module	src/scope.c	/^ast_t *search_up_scopes_stop_at_module(scope_t *scope, string_id name_id) {$/;"	f
+search_up_scopes_stop_at_module_return_scope	src/scope.c	/^ast_t *search_up_scopes_stop_at_module_return_scope(scope_t *scope, string_id name_id, scope_t **out_scope) {$/;"	f
+setup_cxt	src/parse.c	/^static void setup_cxt(parse_context_t *cxt) {$/;"	f	file:
+should_free	src/array.h	/^    int   should_free;$/;"	m	struct:__anon1
+should_free	src/tmparray.h	/^    int   should_free;$/;"	m	struct:__anon18
+show_scope	src/scope.c	/^void show_scope(scope_t *scope) {$/;"	f
+simon_assert_fail	src/internal.c	/^void simon_assert_fail(const char *msg, const char *fname, int line, const char *cond_str) {$/;"	f
+src_point_t	src/src_range.h	/^} src_point_t;$/;"	t	typeref:struct:__anon12
+src_range_t	src/src_range.h	/^} src_range_t;$/;"	t	typeref:struct:__anon13
+start_parsing_file_async	src/parse.c	/^void start_parsing_file_async(const char *path) {$/;"	f
+static_comment	src/ast.h	/^AST_DEFINE(static_comment);$/;"	v
+static_else	src/ast.h	/^AST_DEFINE(static_else);$/;"	v
+static_endif	src/ast.h	/^AST_DEFINE(static_endif);$/;"	v
+stop_mode	src/threadpool.h	/^    int              stop_mode;$/;"	m	struct:__anon15
+str_equ	src/hash_utilities.c	/^int str_equ(const char *a, const char *b) { return strcmp(a, b) == 0; }$/;"	f
+str_hash	src/hash_utilities.c	/^u64 str_hash(const char *s) {$/;"	f
+str_id_hash	src/hash_utilities.c	/^u64 str_id_hash(string_id id) {$/;"	f
+string_id	src/strings.h	/^typedef u64         string_id;$/;"	t
+string_t	src/strings.h	/^typedef const char *string_t;$/;"	t
+string_table_lock	src/strings.c	/^static pthread_rwlock_t string_table_lock = PTHREAD_RWLOCK_INITIALIZER;$/;"	v	file:
+subscopes	src/scope.h	/^    array_t       subscopes;$/;"	m	struct:scope
+symbols	src/scope.h	/^    array_t       symbols;$/;"	m	struct:scope
+t	src/ast.h	/^    u32        t;$/;"	m	union:__anon3
+tail	src/threadpool.h	/^    tp_task_t    *head, *tail;$/;"	m	struct:__anon14
+threads	src/threadpool.h	/^    pthread_t       *threads;$/;"	m	struct:__anon15
+tls	src/parse.c	/^    tls_t        *tls;$/;"	m	struct:__anon10	file:
+tls	src/tls.h	/^    tls_t         tls;$/;"	m	struct:__anon17
+tls_entry_array	src/tls.c	/^static tls_entry_t           tls_entry_array[MAX_NUM_TLS];$/;"	v	file:
+tls_entry_array_lock	src/tls.c	/^static pthread_mutex_t       tls_entry_array_lock;$/;"	v	file:
+tls_entry_t	src/tls.h	/^} tls_entry_t;$/;"	t	typeref:struct:__anon17
+tls_t	src/tls.h	/^} tls_t;$/;"	t	typeref:struct:__anon16
+tmp_mem_alloc	src/memory.c	/^void * tmp_mem_alloc(size_t n_bytes)                { return malloc(n_bytes);        }$/;"	f
+tmp_mem_calloc	src/memory.c	/^void * tmp_mem_calloc(size_t count, size_t n_bytes) { return calloc(count, n_bytes); }$/;"	f
+tmp_mem_free	src/memory.c	/^void   tmp_mem_free(void *addr)                     { free(addr);                    }$/;"	f
+tmp_mem_realloc	src/memory.c	/^void * tmp_mem_realloc(void *ptr, size_t n_bytes)   { return realloc(ptr, n_bytes);  }$/;"	f
+tmparray_clear	src/tmparray.h	/^#define tmparray_clear(/;"	d
+tmparray_copy	src/tmparray.h	/^#define tmparray_copy(/;"	d
+tmparray_data	src/tmparray.h	/^#define tmparray_data(/;"	d
+tmparray_delete	src/tmparray.h	/^#define tmparray_delete(/;"	d
+tmparray_free	src/tmparray.h	/^#define tmparray_free(/;"	d
+tmparray_grow_if_needed	src/tmparray.h	/^#define tmparray_grow_if_needed(/;"	d
+tmparray_insert	src/tmparray.h	/^#define tmparray_insert(/;"	d
+tmparray_item	src/tmparray.h	/^#define tmparray_item(/;"	d
+tmparray_last	src/tmparray.h	/^#define tmparray_last(/;"	d
+tmparray_len	src/tmparray.h	/^#define tmparray_len(/;"	d
+tmparray_make	src/tmparray.h	/^#define tmparray_make(/;"	d
+tmparray_make_with_cap	src/tmparray.h	/^#define tmparray_make_with_cap(/;"	d
+tmparray_next_elem	src/tmparray.h	/^#define tmparray_next_elem(/;"	d
+tmparray_pop	src/tmparray.h	/^#define tmparray_pop(/;"	d
+tmparray_push	src/tmparray.h	/^#define tmparray_push(/;"	d
+tmparray_push_n	src/tmparray.h	/^#define tmparray_push_n(/;"	d
+tmparray_rtraverse	src/tmparray.h	/^#define tmparray_rtraverse(/;"	d
+tmparray_t	src/tmparray.h	/^} tmparray_t;$/;"	t	typeref:struct:__anon18
+tmparray_traverse	src/tmparray.h	/^#define tmparray_traverse(/;"	d
+tmparray_traverse_from	src/tmparray.h	/^#define tmparray_traverse_from(/;"	d
+tmparray_zero_term	src/tmparray.h	/^#define tmparray_zero_term(/;"	d
+top_level_nodes	src/parse.c	/^    array_t       top_level_nodes;$/;"	m	struct:__anon10	file:
+tp	src/globals.c	/^tp_t            *tp;$/;"	v
+tp_add_task	src/threadpool.h	/^void tp_add_task(tp_t *tp, tp_task_fn_t fn, void *arg) {$/;"	f
+tp_free	src/threadpool.h	/^void tp_free(tp_t *tp) {$/;"	f
+tp_make	src/threadpool.h	/^tp_t * tp_make(int n_workers) {$/;"	f
+tp_queue_clear	src/threadpool.h	/^static void tp_queue_clear(tp_queue_t *queue) {$/;"	f
+tp_queue_de	src/threadpool.h	/^static tp_task_t * tp_queue_de(tp_queue_t *queue) {$/;"	f
+tp_queue_en	src/threadpool.h	/^static void tp_queue_en(tp_queue_t *queue, tp_task_fn_t fn, void *arg) {$/;"	f
+tp_queue_make	src/threadpool.h	/^static tp_queue_t tp_queue_make(void) {$/;"	f
+tp_queue_t	src/threadpool.h	/^} tp_queue_t;$/;"	t	typeref:struct:__anon14
+tp_running	src/threadpool.h	/^int tp_running(tp_t *tp) {$/;"	f
+tp_stop	src/threadpool.h	/^void tp_stop(tp_t *tp, int stop_mode) {$/;"	f
+tp_t	src/threadpool.h	/^} tp_t;$/;"	t	typeref:struct:__anon15
 tp_task	src/threadpool.h	/^typedef struct tp_task {$/;"	s
-tp_task_fn_t	src/threadpool.h	/^typedef void   (*tp_task_fn_t)  (void*);$/;"	t	typeref:typename:void (*)(void *)
-tp_task_free	src/threadpool.h	/^static void tp_task_free(tp_task_t *task) { free(task); }$/;"	f	typeref:typename:void
-tp_task_make	src/threadpool.h	/^static tp_task_t * tp_task_make(tp_task_fn_t fn, void *arg) {$/;"	f	typeref:typename:tp_task_t *
+tp_task_fn_t	src/threadpool.h	/^typedef void   (*tp_task_fn_t)  (void*);$/;"	t
+tp_task_free	src/threadpool.h	/^static void tp_task_free(tp_task_t *task) { free(task); }$/;"	f
+tp_task_make	src/threadpool.h	/^static tp_task_t * tp_task_make(tp_task_fn_t fn, void *arg) {$/;"	f
 tp_task_t	src/threadpool.h	/^} tp_task_t;$/;"	t	typeref:struct:tp_task
-tp_thread_fn_t	src/threadpool.h	/^typedef void * (*tp_thread_fn_t)(void*);$/;"	t	typeref:typename:void * (*)(void *)
-tp_wait	src/threadpool.h	/^void tp_wait(tp_t *tp) {$/;"	f	typeref:typename:void
+tp_thread_fn_t	src/threadpool.h	/^typedef void * (*tp_thread_fn_t)(void*);$/;"	t
+tp_wait	src/threadpool.h	/^void tp_wait(tp_t *tp) {$/;"	f
 tree	src/tree.h	/^#define tree(/;"	d
 tree_begin	src/tree.h	/^#define tree_begin(/;"	d
 tree_delete	src/tree.h	/^#define tree_delete(/;"	d
@@ -603,33 +657,36 @@ tree_make	src/tree.h	/^#define tree_make(/;"	d
 tree_node	src/tree.h	/^#define tree_node(/;"	d
 tree_pretty_name	src/tree.h	/^#define tree_pretty_name(/;"	d
 tree_traverse	src/tree.h	/^#define tree_traverse(/;"	d
-type	src/ast.h	/^    u32         type;  \/*        +4 bytes                  *\/$/;"	m	struct:__anonb4d85aba0308	typeref:typename:u32
+try_get_decl_and_path	src/ast.c	/^static ast_assign_t * try_get_decl_and_path(ast_ident_t *ident, tmparray_t *path) {$/;"	f	file:
+type	src/ast.h	/^    u32         type;  \/*        +4 bytes                  *\/$/;"	m	struct:__anon4
 type	src/type.h	/^typedef struct type {$/;"	s
-type_builtin	src/ast.c	/^static void type_builtin(ast_builtin_t *node, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-type_has_compile_time_only_values	src/type.c	/^int type_has_compile_time_only_values(u32 ty) {$/;"	f	typeref:typename:int
-type_kind	src/type.c	/^int type_kind(u32 ty) { return get_type_structure(ty)->kind; }$/;"	f	typeref:typename:int
-type_kind_has_under	src/type.c	/^static int type_kind_has_under(u32 kind) {$/;"	f	typeref:typename:int	file:
+type_builtin	src/ast.c	/^static void type_builtin(ast_builtin_t *node, scope_t *scope) {$/;"	f	file:
+type_has_compile_time_only_values	src/type.c	/^int type_has_compile_time_only_values(u32 ty) {$/;"	f
+type_kind	src/type.c	/^int type_kind(u32 ty) { return get_type_structure(ty)->kind; }$/;"	f
+type_kind_has_under	src/type.c	/^int type_kind_has_under(u32 kind) {$/;"	f
+type_kind_is_int	src/type.c	/^int type_kind_is_int(u32 kind) {$/;"	f
 type_t	src/type.h	/^} type_t;$/;"	t	typeref:struct:type
-type_table	src/type.c	/^static array_t type_table;$/;"	v	typeref:typename:array_t	file:
-typecheck_assign	src/ast.c	/^static void typecheck_assign(ast_assign_t *assign, ast_t *origin, scope_t *scope) {$/;"	f	typeref:typename:void	file:
-u	src/ast.h	/^    u64        u;$/;"	m	union:__anonb4d85aba020a	typeref:typename:u64
+type_table	src/type.c	/^static array_t type_table;$/;"	v	file:
+typecheck_assign	src/ast.c	/^static void typecheck_assign(ast_assign_t *assign, ast_t *origin, scope_t *scope) {$/;"	f	file:
+u	src/ast.h	/^    u64        u;$/;"	m	union:__anon3
 u16	src/internal.h	/^#define u16 /;"	d
 u32	src/internal.h	/^#define u32 /;"	d
 u64	src/internal.h	/^#define u64 /;"	d
 u8	src/internal.h	/^#define u8 /;"	d
-undeclared_error	src/ast.c	/^static void undeclared_error(string_id name, ast_t *node) {$/;"	f	typeref:typename:void	file:
-under_id	src/type.h	/^            u32 under_id;$/;"	m	struct:type::__anon7ca0fa54030a::__anon7ca0fa540408	typeref:typename:u32
+undeclared_error	src/ast.c	/^static void undeclared_error(string_id name, ast_t *node) {$/;"	f	file:
+under_id	src/type.h	/^            u32 under_id;$/;"	m	struct:type::__anon21::__anon22
 unlikely	src/internal.h	/^#define unlikely(/;"	d
 use_hash_table	src/hash_table.h	/^#define use_hash_table(/;"	d
 use_tree	src/tree.h	/^#define use_tree(/;"	d
 use_tree_c	src/tree.h	/^#define use_tree_c(/;"	d
 use_tree_ptr_c	src/tree.h	/^#define use_tree_ptr_c(/;"	d
-used	src/array.h	/^    int   used;$/;"	m	struct:__anon49fcdd910108	typeref:typename:int
-v	src/ast.h	/^    void      *v;$/;"	m	union:__anonb4d85aba020a	typeref:typename:void *
-validate_range	src/src_range.c	/^void validate_range(src_range_t *range) {$/;"	f	typeref:typename:void
-value	src/ast.h	/^    value_t     value; \/*        +8 bytes                  *\/$/;"	m	struct:__anonb4d85aba0308	typeref:typename:value_t
-value_t	src/ast.h	/^} value_t;$/;"	t	typeref:union:__anonb4d85aba020a
-verb_message	src/ui.c	/^void verb_message(const char *fmt, ...) {$/;"	f	typeref:typename:void
-verbose	src/options.h	/^    int         verbose;$/;"	m	struct:__anonef0120fe0108	typeref:typename:int
-visited	src/scope.h	/^    int           visited;$/;"	m	struct:scope	typeref:typename:int
-wait_for_parsing_async	src/parse.c	/^void wait_for_parsing_async(void) { tp_wait(tp); }$/;"	f	typeref:typename:void
+used	src/array.h	/^    int   used;$/;"	m	struct:__anon1
+used	src/tmparray.h	/^    int   used;$/;"	m	struct:__anon18
+v	src/ast.h	/^    void      *v;$/;"	m	union:__anon3
+validate_range	src/src_range.c	/^void validate_range(src_range_t *range) {$/;"	f
+value	src/ast.h	/^    value_t     value; \/*        +8 bytes                  *\/$/;"	m	struct:__anon4
+value_t	src/ast.h	/^} value_t;$/;"	t	typeref:union:__anon3
+verb_message	src/ui.c	/^void verb_message(const char *fmt, ...) {$/;"	f
+verbose	src/options.h	/^    int         verbose;$/;"	m	struct:__anon9
+visited	src/scope.h	/^    int           visited;$/;"	m	struct:scope
+wait_for_parsing_async	src/parse.c	/^void wait_for_parsing_async(void) { tp_wait(tp); }$/;"	f

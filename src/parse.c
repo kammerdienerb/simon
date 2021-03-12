@@ -1328,58 +1328,58 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
         ASTP(param)->loc.beg = GET_BEG_POINT(cxt);
         param->name          = STRING_ID_NULL;
 
+        if (OPTIONAL_CHAR(cxt, '%')) { ASTP(param)->flags |= AST_FLAG_POLYMORPH; }
+
+        EXPECT_IDENT(cxt, &param->name, "expected parameter name");
+
+        ASTP(param)->loc.end = GET_END_POINT(cxt);
+
+        EXPECT_CHAR(cxt, ':', "expected ':'");
+
         if (OPTIONAL_LIT(cxt, "...")) {
             seen_vargs            = 1;
             ASTP(param)->flags   |= AST_FLAG_VARARGS;
-            ASTP(param)->loc.end  = GET_END_POINT(cxt);
+            ASTP(result)->flags  |= AST_FLAG_VARARGS;
+        }
+
+        poly_ty_name = NULL;
+        if (OPTIONAL_CHAR(cxt, '%')) {
+            poly_ty_name                 = AST_ALLOC(cxt, ast_polymorph_type_name_t);
+            ASTP(poly_ty_name)->kind     = AST_POLYMORPH_TYPE_NAME;
+            ASTP(poly_ty_name)->loc.beg  = GET_BEG_POINT(cxt);
+            ASTP(poly_ty_name)->flags   |= AST_FLAG_POLYMORPH;
+            ASTP(result)->flags         |= AST_FLAG_POLYMORPH;
+
+            EXPECT_IDENT(cxt, &poly_ty_name->name,
+                            "expected identifier as polymorph type name for parameter '%s'",
+                            get_string(param->name));
+
+            ASTP(poly_ty_name)->loc.end = GET_END_POINT(cxt);
+
+            param->type_expr_or_polymorph_type_name = ASTP(poly_ty_name);
         } else {
-            if (OPTIONAL_CHAR(cxt, '%')) { ASTP(param)->flags |= AST_FLAG_POLYMORPH; }
-
-            EXPECT_IDENT(cxt, &param->name, "expected parameter name");
-
-            ASTP(param)->loc.end = GET_END_POINT(cxt);
-
-            EXPECT_CHAR(cxt, ':', "expected ':'");
-
-            poly_ty_name = NULL;
-            if (OPTIONAL_CHAR(cxt, '%')) {
-                poly_ty_name                 = AST_ALLOC(cxt, ast_polymorph_type_name_t);
-                ASTP(poly_ty_name)->kind     = AST_POLYMORPH_TYPE_NAME;
-                ASTP(poly_ty_name)->loc.beg  = GET_BEG_POINT(cxt);
-                ASTP(poly_ty_name)->flags   |= AST_FLAG_POLYMORPH;
-                ASTP(result)->flags         |= AST_FLAG_POLYMORPH;
-
-                EXPECT_IDENT(cxt, &poly_ty_name->name,
-                             "expected identifier as polymorph type name for parameter '%s'",
-                             get_string(param->name));
-
-                ASTP(poly_ty_name)->loc.end = GET_END_POINT(cxt);
-
-                param->type_expr_or_polymorph_type_name = ASTP(poly_ty_name);
-            } else {
-                param->type_expr_or_polymorph_type_name = parse_expr_prec(cxt, ASSIGNMENT_PREC + 1);
-                if (param->type_expr_or_polymorph_type_name == NULL) {
-                    report_loc_err(GET_BEG_POINT(cxt),
-                                "expected valid type expression for parameter '%s'",
-                                get_string(param->name));
-                    return NULL;
-                }
+            param->type_expr_or_polymorph_type_name = parse_expr_prec(cxt, ASSIGNMENT_PREC + 1);
+            if (param->type_expr_or_polymorph_type_name == NULL) {
+                report_loc_err(GET_BEG_POINT(cxt),
+                            "expected valid type expression for parameter '%s'",
+                            get_string(param->name));
+                return NULL;
             }
+        }
 
-            if (OPTIONAL_CHAR(cxt, '=')) {
-                param->val = parse_expr(cxt);
-                if (param->val == NULL) {
-                    report_loc_err(GET_BEG_POINT(cxt),
-                                "expected valid expression as default value for parameter '%s'",
-                                get_string(param->name));
-                    return NULL;
-                }
+        if (OPTIONAL_CHAR(cxt, '=')) {
+            param->val = parse_expr(cxt);
+            if (param->val == NULL) {
+                report_loc_err(GET_BEG_POINT(cxt),
+                            "expected valid expression as default value for parameter '%s'",
+                            get_string(param->name));
+                return NULL;
             }
+        }
 
-            INSTALL_IF_NEW(cxt, param->name, ASTP(param));
-            if (poly_ty_name != NULL) {
-                INSTALL_IF_NEW(cxt, poly_ty_name->name, ASTP(poly_ty_name));
-            }
+        INSTALL_IF_NEW(cxt, param->name, ASTP(param));
+        if (poly_ty_name != NULL) {
+            INSTALL_IF_NEW(cxt, poly_ty_name->name, ASTP(poly_ty_name));
         }
 
         array_push(result->params, param);

@@ -11,8 +11,9 @@
 #define _HASH_TABLE_H_
 
 #include <stdint.h>
-#include <stdlib.h> /* malloc, calloc, free */
 #include <string.h> /* memcpy */
+
+#include "memory.h"
 
 #define hash_table_make(K_T, V_T, HASH) (CAT2(hash_table(K_T, V_T), _make)((HASH), NULL))
 #define hash_table_make_e(K_T, V_T, HASH, EQU) (CAT2(hash_table(K_T, V_T), _make)((HASH), (EQU)))
@@ -174,7 +175,7 @@ static uint64_t ht_prime_sizes[] = {
     /* hash_table slot */                                                                    \
     static inline hash_table_slot(K_T, V_T)                                                  \
         CAT2(hash_table_slot(K_T, V_T), _make)(K_T key, V_T val, uint64_t hash) {            \
-        hash_table_slot(K_T, V_T) slot = malloc(sizeof(*slot));                              \
+        hash_table_slot(K_T, V_T) slot = tmp_mem_alloc(sizeof(*slot));                       \
                                                                                              \
         slot->_key  = key;                                                                   \
         slot->_val  = val;                                                                   \
@@ -224,7 +225,7 @@ static uint64_t ht_prime_sizes[] = {
         old_data      = t->_data;                                                            \
         t->_size_idx += 1;                                                                   \
         new_data_size = sizeof(hash_table_slot(K_T, V_T)) * ht_prime_sizes[t->_size_idx];    \
-        t->_data      = calloc(new_data_size, 1);                                            \
+        t->_data      = tmp_mem_calloc(new_data_size, 1);                                    \
                                                                                              \
         for (int i = 0; i < old_size; i += 1) {                                              \
             slot_ptr = old_data + i;                                                         \
@@ -236,7 +237,7 @@ static uint64_t ht_prime_sizes[] = {
             }                                                                                \
         }                                                                                    \
                                                                                              \
-        free(old_data);                                                                      \
+        tmp_mem_free(old_data);                                                                      \
                                                                                              \
         CAT2(hash_table(K_T, V_T), _update_load_thresh)(t);                                  \
     }                                                                                        \
@@ -293,7 +294,7 @@ static uint64_t ht_prime_sizes[] = {
             } else {                                                                         \
                 *slot_ptr = slot->_next;                                                     \
             }                                                                                \
-            free(slot);                                                                      \
+            tmp_mem_free(slot);                                                              \
             t->len -= 1;                                                                     \
             return 1;                                                                        \
         }                                                                                    \
@@ -347,17 +348,17 @@ static uint64_t ht_prime_sizes[] = {
             hash_table_slot(K_T, V_T) next, slot = t->_data[i];                              \
             while (slot != NULL) {                                                           \
                 next = slot->_next;                                                          \
-                free(slot);                                                                  \
+                tmp_mem_free(slot);                                                          \
                 slot = next;                                                                 \
             }                                                                                \
         }                                                                                    \
-        free(t->_data);                                                                      \
-        free(t);                                                                             \
+        tmp_mem_free(t->_data);                                                              \
+        tmp_mem_free(t);                                                                     \
     }                                                                                        \
                                                                                              \
     static inline hash_table(K_T, V_T)                                                       \
     CAT2(hash_table(K_T, V_T), _make)(CAT2(hash_table(K_T, V_T), _hash_t) hash, void *equ) { \
-        hash_table(K_T, V_T) t = malloc(sizeof(*t));                                         \
+        hash_table(K_T, V_T) t = tmp_mem_alloc(sizeof(*t));                                  \
                                                                                              \
         uint64_t data_size                                                                   \
             = ht_prime_sizes[DEFAULT_START_SIZE_IDX] * sizeof(hash_table_slot(K_T, V_T));    \

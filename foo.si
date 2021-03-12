@@ -1,7 +1,32 @@
 # foo.si
 
+bar2 = bar;
+
+__prints = proc(i: s64, strings: ...*char) {
+}
+
+_prints = __prints;
+
+prints = _prints;
+
+do_something_with_arg = proc(arg: *char) {
+    _prints(i=123, strings="a", "b", "c");
+}
+
 [[ program_entry ]]
 main = proc(argc: s64, argv: **char) {
     loop i = 0; i < argc; i += 1 {
+        arg = argv[i];
+        do_something_with_arg(arg);
     }
+
+    bar2(false);
+
+    my_bar = *bar;
+    (@my_bar)(true);
+
+    my_prints = *__prints;
+    (@my_prints)(123, "a string");
 }
+
+bar = proc(b: bool) {}

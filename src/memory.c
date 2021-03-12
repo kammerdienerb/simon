@@ -104,3 +104,14 @@ void * mem_calloc(size_t count, size_t n_bytes) {
 
 void mem_free(void *addr) { }
 #endif
+
+
+#undef malloc
+#undef calloc
+#undef free
+#undef realloc
+
+void * tmp_mem_alloc(size_t n_bytes)                { return malloc(n_bytes);        }
+void * tmp_mem_calloc(size_t count, size_t n_bytes) { return calloc(count, n_bytes); }
+void   tmp_mem_free(void *addr)                     { free(addr);                    }
+void * tmp_mem_realloc(void *ptr, size_t n_bytes)   { return realloc(ptr, n_bytes);  }

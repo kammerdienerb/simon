@@ -41,4 +41,9 @@ void   mem_free(void *addr);
 
 #define realloc (__we_dont_use_realloc__)
 
+void * tmp_mem_alloc(size_t n_bytes);
+void * tmp_mem_calloc(size_t count, size_t n_bytes);
+void   tmp_mem_free(void *addr);
+void * tmp_mem_realloc(void *ptr, size_t n_bytes);
+
 #endif
