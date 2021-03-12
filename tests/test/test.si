@@ -1,11 +1,7 @@
 # test.si
 
 test = module {
-    square = proc (x: %_) {
-        return x * x;
-    }
-
-    square = proc (x, %_ = typeof(x)) {
+    square = proc (x: %T): T {
         return x * x;
     }
 

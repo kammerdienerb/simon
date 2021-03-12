@@ -127,25 +127,25 @@ static type_t * get_type_structure(u32 ty) {
 
 int type_kind(u32 ty) { return get_type_structure(ty)->kind; }
 
-u32 get_ptr_type(u32 ty, u32 flags) {
+u32 get_ptr_type(u32 ty) {
     type_t new_t;
 
     new_t.kind     = TY_PTR;
-    new_t.flags    = flags;
+    new_t.flags    = 0;
     new_t.under_id = ty;
     new_t.len      = 0;
 
     return get_or_insert_type(new_t);
 }
 
-u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope, u32 flags) {
+u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope) {
     type_t      t;
     const char *scope_name;
     const char *name;
     char        buff[SCOPE_NAME_BUFF_SIZE];
 
     t.kind  = TY_STRUCT;
-    t.flags = flags;
+    t.flags = 0;
 
     if (scope->parent == NULL) {
         t.name_id = name_id;
@@ -191,7 +191,8 @@ u32 get_num_param_types(u32 proc_ty) {
     type_t *t;
     type_t *params_t;
 
-    t        = get_type_structure(proc_ty);
+    t = get_type_structure(proc_ty);
+    ASSERT(t->kind == TY_PROC, "type is not TY_PROC");
     params_t = get_type_structure(t->param_list_id);
 
     return params_t->list_len;
@@ -201,7 +202,8 @@ u32 get_param_type(u32 proc_ty, u32 idx) {
     type_t *t;
     type_t *params_t;
 
-    t        = get_type_structure(proc_ty);
+    t = get_type_structure(proc_ty);
+    ASSERT(t->kind == TY_PROC, "type is not TY_PROC");
     params_t = get_type_structure(t->param_list_id);
 
     return params_t->id_list[idx];
@@ -211,6 +213,7 @@ u32 get_ret_type(u32 proc_ty) {
     type_t *t;
 
     t = get_type_structure(proc_ty);
+    ASSERT(t->kind == TY_PROC, "type is not TY_PROC");
 
     return t->ret_id;
 }
@@ -218,9 +221,11 @@ u32 get_ret_type(u32 proc_ty) {
 #define TYPE_STRING_BUFF_SIZE (4096)
 
 static void build_type_string(u32 ty, char *buff) {
-    type_t *tp;
-    type_t  t;
-    char    under_buff[TYPE_STRING_BUFF_SIZE];
+    type_t     *tp;
+    type_t      t;
+    char        under_buff[TYPE_STRING_BUFF_SIZE];
+    const char *lazy_comma;
+    int         i;
 
     buff[0] = 0;
 
@@ -240,7 +245,7 @@ static void build_type_string(u32 ty, char *buff) {
         case TY_MACRO:     strncat(buff, "macro",               TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_TYPE:      strncat(buff, "type",                TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_PROC:      strncat(buff, "procedure",           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_PTR:       strncat(buff, "pointer",             TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_PTR:       strncat(buff, "*",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_BOOL:      strncat(buff, "bool",                TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_CHAR:      strncat(buff, "char",                TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_U8:        strncat(buff, "u8",                  TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
@@ -252,15 +257,32 @@ static void build_type_string(u32 ty, char *buff) {
         case TY_S32:       strncat(buff, "s32",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_S64:       strncat(buff, "s64",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_STRUCT:    strncat(buff, get_string(t.name_id), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case _TY_TYPE_LIST: break; /* Handled below. */
         default:
             ASSERT(0, "unhandled type kind in build_type_string()");
             return;
     }
 
     if (type_kind_has_under(t.kind)) {
-        strncat(buff, "(", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
         build_type_string(t.under_id, under_buff);
         strncat(buff, under_buff, TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+    } else if (t.kind == TY_PROC) {
+        build_type_string(t.under_id, under_buff);
+        strncat(buff, under_buff, TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+        if (t.ret_id != TY_NOT_TYPED) {
+            strncat(buff, ": ", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+            build_type_string(t.ret_id, under_buff);
+            strncat(buff, under_buff, TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+        }
+    } else if (t.kind == _TY_TYPE_LIST) {
+        strncat(buff, "(", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+        lazy_comma = "";
+        for (i = 0; i < t.list_len; i += 1) {
+            strncat(buff, lazy_comma, TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+            build_type_string(t.id_list[i], under_buff);
+            strncat(buff, under_buff, TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+            lazy_comma = ", ";
+        }
         strncat(buff, ")", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
     }
 }

@@ -4,11 +4,11 @@ a = proc () {
     print("a()");
 }
 
-b = proc (arg) {
+b = proc (arg: s64) {
     print("b(arg: %)", arg);
 }
 
-c = proc (arg1, arg2) {
+c = proc (arg1: s64, arg2: bool) {
     print("c(arg1: %, arg2: %)", arg1, arg2);
 }
 

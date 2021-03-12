@@ -1,9 +1,7 @@
 # foo.si
 
 [[ program_entry ]]
-main = proc() : u32 {
-    foo(true, false);
+main = proc(argc: s64, argv: **char) {
+    loop i = 0; i < argc; i += 1 {
+    }
 }
-
-int = s64;
-foo = proc(i: int, b: bool) { }

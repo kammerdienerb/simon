@@ -11,7 +11,6 @@
     X(TY_MODULE)     \
     X(TY_MACRO)      \
     X(TY_TYPE)       \
-    X(TY_PROC)       \
     X(TY_BOOL)       \
     X(TY_CHAR)       \
     X(TY_U8)         \
@@ -24,7 +23,8 @@
     X(TY_S64)        \
     X(TY_PTR)        \
     X(_TY_TYPE_LIST) \
-    X(TY_STRUCT)
+    X(TY_STRUCT)     \
+    X(TY_PROC)
 
 enum {
 #define X(ty) ty,
@@ -46,7 +46,6 @@ enum {
     X(TY_MODULE)             \
     X(TY_MACRO)              \
     X(TY_TYPE)               \
-    X(TY_PROC)               \
     X(TY_BOOL)               \
     X(TY_CHAR)               \
     X(TY_U8)                 \
@@ -92,8 +91,8 @@ typedef struct type {
 int init_types(void);
 int type_has_compile_time_only_values(u32 ty);
 int type_kind(u32 ty);
-u32 get_ptr_type(u32 ty, u32 flags);
-u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope, u32 flags);
+u32 get_ptr_type(u32 ty);
+u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope);
 u32 get_proc_type(u32 n_param_types, u32 *param_types, u32 ret_type);
 u32 get_num_param_types(u32 proc_ty);
 u32 get_param_type(u32 proc_ty, u32 idx);

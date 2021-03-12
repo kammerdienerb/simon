@@ -134,6 +134,7 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_assign_t *parent_as
     ASSERT(!(ASTP(proc)->flags & AST_FLAG_POLYMORPH), "TODO");
 
     new_scope = get_subscope_from_node(scope, ASTP(proc));
+    ASSERT(new_scope != NULL, "didn't get scope");
 
     n_params    = array_len(proc->params);
     param_types = alloca(sizeof(u32) * n_params);
@@ -150,7 +151,7 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_assign_t *parent_as
             report_range_err_no_exit(&proc->ret_type_expr->loc,
                                 "expression must be a type since it declares the return type of procedure '%s'",
                                 get_string(parent_assign->name));
-            report_simple_info("got '%s' instead", get_string(get_type_string_id(proc->ret_type_expr->type)));
+            report_simple_info("got %s instead", get_string(get_type_string_id(proc->ret_type_expr->type)));
             return;
         }
 
@@ -160,6 +161,16 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_assign_t *parent_as
     }
 
     ASTP(proc)->type = get_proc_type(n_params, param_types, ret_type);
+
+
+    /* @bad?, @refactor
+    ** We have to bubble this type up to the assignment so that identifier lookups
+    ** that occur before we return from this routine can get the right type.
+    ** I'm not sure if this should just be done everywhere like this (shouldn't
+    ** be _that_ many spots), or if something a little smarter should be done.
+    */
+    ASTP(parent_assign)->type  = ASTP(proc)->type;
+    ASTP(parent_assign)->value = ASTP(proc)->value;
 
     check_node(proc->block, new_scope, NULL);
 }
@@ -194,7 +205,7 @@ static void check_proc_param(ast_proc_param_t *param, scope_t *scope) {
             report_range_err_no_exit(&param->type_expr_or_polymorph_type_name->loc,
                              "expression must be a type since it declares the type of parameter '%s'",
                              get_string(param->name));
-            report_simple_info("got '%s' instead", get_string(get_type_string_id(param->type_expr_or_polymorph_type_name->type)));
+            report_simple_info("got %s instead", get_string(get_type_string_id(param->type_expr_or_polymorph_type_name->type)));
             return;
         }
 
@@ -226,7 +237,7 @@ static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
         report_range_err_no_exit(&ASTP(expr)->loc,
                                  "attempting to call a value that is not a procedure");
         report_range_info(&expr->left->loc,
-                          "value has type '%s'",
+                          "value has type %s",
                           get_string(get_type_string_id(proc_ty)));
         return;
     }
@@ -257,7 +268,7 @@ static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
 
         if (arg_type != param_type) {
             report_range_err(&arg_p->expr->loc,
-                             "incorrect argument type: expected '%s', but got '%s'",
+                             "incorrect argument type: expected %s, but got %s",
                              get_string(get_type_string_id(param_type)),
                              get_string(get_type_string_id(arg_type)));
 
@@ -274,8 +285,44 @@ static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
     check_node(expr->left, scope, NULL);
     check_node(expr->right, scope, NULL);
 
-    if (expr->op == OP_CALL) {
-        check_call(expr, scope);
+    switch (expr->op) {
+        case OP_CALL:
+            check_call(expr, scope);
+            break;
+
+        case OP_EQU:
+        case OP_NEQ:
+        case OP_LSS:
+        case OP_LEQ:
+        case OP_GTR:
+        case OP_GEQ:
+            ASTP(expr)->type = TY_BOOL;
+            break;
+
+        case OP_PLUS_ASSIGN:
+            ASTP(expr)->type = expr->left->type;
+            break;
+        default:
+            ASSERT(0, "unandled binary operator");
+            return;
+    }
+}
+
+static void check_unary_expr(ast_unary_expr_t *expr, scope_t *scope) {
+    check_node(expr->child, scope, NULL);
+
+    switch (expr->op) {
+        case OP_ADDR:
+            if (expr->child->type == TY_TYPE) {
+                ASTP(expr)->type    = TY_TYPE;
+                ASTP(expr)->value.t = get_ptr_type(expr->child->value.t);
+            } else {
+                ASTP(expr)->type = get_ptr_type(expr->child->type);
+            }
+            break;
+        default:
+            ASSERT(0, "unandled unary operator");
+            return;
     }
 }
 
@@ -308,7 +355,7 @@ static void check_ident(ast_ident_t *ident, scope_t *scope) {
 }
 
 static void check_struct(ast_struct_t *st, scope_t *scope, ast_assign_t *parent_assign) {
-    ASTP(st)->type = get_struct_type(st, parent_assign->name, scope, 0);
+    ASTP(st)->type = get_struct_type(st, parent_assign->name, scope);
 }
 
 static void check_arg_list(ast_arg_list_t *arg_list, scope_t *scope) {
@@ -319,6 +366,31 @@ static void check_arg_list(ast_arg_list_t *arg_list, scope_t *scope) {
     array_traverse(arg_list->args, arg) {
         check_node(arg->expr, scope, NULL);
     }
+}
+
+static void check_loop(ast_loop_t *loop, scope_t *scope) {
+    scope_t *new_scope;
+
+    ASTP(loop)->type = TY_NOT_TYPED;
+
+    new_scope = get_subscope_from_node(scope, ASTP(loop));
+    ASSERT(new_scope != NULL, "didn't get scope");
+
+    if (loop->init != NULL) {
+        check_node(loop->init, new_scope, NULL);
+    }
+    if (loop->cond != NULL) {
+        check_node(loop->cond, new_scope, NULL);
+        if (loop->cond->type != TY_BOOL) {
+            report_range_err(&loop->cond->loc, "loop condition must have type bool");
+            return;
+        }
+    }
+    if (loop->post != NULL) {
+        check_node(loop->post, new_scope, NULL);
+    }
+
+    check_node(loop->block, new_scope, NULL);
 }
 
 void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
@@ -362,6 +434,10 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
             check_bin_expr((ast_bin_expr_t*)node, scope);
             break;
 
+        case AST_UNARY_EXPR:
+            check_unary_expr((ast_unary_expr_t*)node, scope);
+            break;
+
         case AST_BOOL:
             check_bool((ast_bool_t*)node, scope);
             break;
@@ -369,7 +445,7 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
             check_int((ast_int_t*)node, scope);
             break;
         case AST_STRING:
-            node->type = get_ptr_type(TY_CHAR, 0);
+            node->type = get_ptr_type(TY_CHAR);
             break;
 
         case AST_IDENT:
@@ -378,6 +454,10 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
 
         case AST_ARG_LIST:
             check_arg_list((ast_arg_list_t*)node, scope);
+            break;
+
+        case AST_LOOP:
+            check_loop((ast_loop_t*)node, scope);
             break;
 
         case AST_BUILTIN:

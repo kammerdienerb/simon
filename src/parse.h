@@ -37,8 +37,8 @@
     X(OP_BXOR,         4,       OP_ASSOC_LEFT,    2,          "^")      \
     X(OP_BOR,          3,       OP_ASSOC_LEFT,    2,          "|")      \
     X(OP_NOT,          11,      OP_ASSOC_RIGHT,   1,          "not")    \
-    X(OP_ADDR,         11,      OP_ASSOC_RIGHT,   1,          "&")      \
-    X(OP_DEREF,        11,      OP_ASSOC_RIGHT,   1,          "*")      \
+    X(OP_ADDR,         11,      OP_ASSOC_RIGHT,   1,          "*")      \
+    X(OP_DEREF,        11,      OP_ASSOC_RIGHT,   1,          "@")      \
     X(OP_NEG,          11,      OP_ASSOC_RIGHT,   1,          "-")      \
     X(OP_BNEG,         11,      OP_ASSOC_RIGHT,   1,          "~")
 

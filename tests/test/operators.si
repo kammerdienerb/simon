@@ -1,7 +1,5 @@
 # operators.si
 
-p = proc (s) { }
-
 [[ program_entry ]]
 main = proc () {
     1 + 1;

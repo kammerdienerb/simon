@@ -1,8 +1,8 @@
 # conditionals.si
 
-a = proc (arg) { print("a()"); return arg; }
-b = proc (arg) { print("b()"); return arg; }
-c = proc (arg) { print("c()"); return arg; }
+a = proc (arg: bool): bool { print("a()"); return arg; }
+b = proc (arg: bool): bool { print("b()"); return arg; }
+c = proc (arg: bool): bool { print("c()"); return arg; }
 
 [[ program_entry ]]
 main = proc () {
