@@ -9,7 +9,7 @@ void init_mem(void) {
 
 void   bump_alloc_make(bump_alloc_t *ba)        {                                }
 void * bump_alloc(bump_alloc_t *ba, u64 size)   { return mem_alloc(size);        }
-void * mem_alloc(size_t n_bytes)                { return malloc(n_bytes);        }
+void * mem_alloc(size_t n_bytes)                { return calloc(1, n_bytes);     }
 void * mem_calloc(size_t count, size_t n_bytes) { return calloc(count, n_bytes); }
 void   mem_free(void *addr)                     { free(addr);                    }
 

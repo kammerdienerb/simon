@@ -5,27 +5,31 @@
 #include "strings.h"
 #include "ast.h"
 
-#define X_TYPES      \
-    X(TY_UNKNOWN)    \
-    X(TY_NOT_TYPED)  \
-    X(TY_MODULE)     \
-    X(TY_MACRO)      \
-    X(TY_TYPE)       \
-    X(TY_BOOL)       \
-    X(TY_CHAR)       \
-    X(TY_U8)         \
-    X(TY_U16)        \
-    X(TY_U32)        \
-    X(TY_U64)        \
-    X(TY_S8)         \
-    X(TY_S16)        \
-    X(TY_S32)        \
-    X(TY_S64)        \
-    X(TY_PTR)        \
-    X(TY_VARGS)      \
-    X(_TY_TYPE_LIST) \
-    X(TY_STRUCT)     \
+#define X_TYPES       \
+    X(TY_UNKNOWN)     \
+    X(TY_NOT_TYPED)   \
+    X(TY_MODULE)      \
+    X(TY_MACRO)       \
+    X(TY_TYPE)        \
+    X(TY_BOOL)        \
+    X(TY_CHAR)        \
+    X(TY_U8)          \
+    X(TY_U16)         \
+    X(TY_U32)         \
+    X(TY_U64)         \
+    X(TY_S8)          \
+    X(TY_S16)         \
+    X(TY_S32)         \
+    X(TY_S64)         \
+    X(TY_PTR)         \
+    X(TY_GENERIC_INT) \
+    X(TY_VARGS)       \
+    X(_TY_TYPE_LIST)  \
+    X(TY_STRUCT)      \
     X(TY_PROC)
+
+#define TKINDPAIR_INT_INT ((((u64)TY_GENERIC_INT) << 32ULL) + TY_GENERIC_INT)
+#define TKINDPAIR_PTR_INT ((((u64)TY_PTR)         << 32ULL) + TY_GENERIC_INT)
 
 enum {
 #define X(ty) ty,
@@ -82,7 +86,7 @@ typedef struct type {
         /* Generic types with underlying types (like pointers or arrays) */
         struct {
             u32 under_id;
-            u32 len;
+            u32 _pad;
         };
         /* Struct type */
         string_id name_id;

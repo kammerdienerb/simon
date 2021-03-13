@@ -133,7 +133,17 @@ static type_t * get_type_structure(u32 ty) {
     return array_item(type_table, ty);
 }
 
-int type_kind(u32 ty) { return get_type_structure(ty)->kind; }
+int type_kind(u32 ty) {
+    u32 kind;
+
+    kind = get_type_structure(ty)->kind;
+
+    if (type_kind_is_int(kind)) {
+        kind = TY_GENERIC_INT;
+    }
+
+    return kind;
+}
 
 u32 get_ptr_type(u32 ty) {
     type_t new_t;
@@ -141,7 +151,7 @@ u32 get_ptr_type(u32 ty) {
     new_t.kind     = TY_PTR;
     new_t.flags    = 0;
     new_t.under_id = ty;
-    new_t.len      = 0;
+    new_t._pad     = 0;
 
     return get_or_insert_type(new_t);
 }
@@ -152,7 +162,7 @@ u32 get_vargs_type(u32 ty) {
     new_t.kind     = TY_VARGS;
     new_t.flags    = 0;
     new_t.under_id = ty;
-    new_t.len      = 0;
+    new_t._pad     = 0;
 
     return get_or_insert_type(new_t);
 }

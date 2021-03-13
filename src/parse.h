@@ -55,4 +55,18 @@ void start_parsing_file_async(const char *path);
 void start_parsing_file(const char *path);
 void wait_for_parsing_async(void);
 
+extern u32         op_prec_table[];
+extern int         op_assoc_table[];
+extern int         op_arity_table[];
+extern const char *op_str_table[];
+
+#define OP_PREC(_op)      (op_prec_table[(_op)])
+#define OP_ASSOC(_op)     (op_assoc_table[(_op)])
+#define OP_IS_UNARY(_op)  (op_arity_table[(_op)] == 1)
+#define OP_IS_BINARY(_op) (op_arity_table[(_op)] == 2)
+#define OP_STR(_op)       (op_str_table[(_op)])
+#define OP_STRLEN(_op)    (strlen(OP_STR((_op))))
+#define ASSIGNMENT_PREC   (OP_PREC(OP_ASSIGN))
+#define HIGHEST_BIN_PREC  (12)
+
 #endif

@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
     do_check();
 
     if (options.dump_symbols) {
-        show_scope(&global_scope);
+        show_scope(global_scope);
     }
 
     verb_message("total time: %lu us\n", measure_time_now_us() - start_us);
@@ -116,14 +116,15 @@ void do_resolve_symbols(void) {
 
     start_us = measure_time_now_us();
 
-    scopes_find_origins(&global_scope);
+    scopes_find_origins(global_scope);
 
     verb_message("symbol origin resolution took %lu us\n", measure_time_now_us() - start_us);
 }
 
 void do_check(void) {
-    u64 start_us;
-    scope_t *entry_scope;
+    u64       start_us;
+    scope_t  *entry_scope;
+    ast_t   **rootp;
 
     start_us = measure_time_now_us();
 
@@ -132,17 +133,19 @@ void do_check(void) {
         return;
     }
 
-    entry_scope = get_subscope_from_node(&global_scope, program_entry->val);
+    entry_scope = get_subscope_from_node(global_scope, program_entry->val);
     if (entry_scope         == NULL
     ||  entry_scope->parent == NULL
-    ||  entry_scope->parent != &global_scope) {
+    ||  entry_scope->parent != global_scope) {
 
         report_range_err(&ASTP(program_entry)->loc,
                          "'program_entry' procedure must be in global scope");
         return;
     }
 
-    check_node(ASTP(program_entry), &global_scope, NULL);
+    array_traverse(roots, rootp) {
+        check_node(*rootp, global_scope, NULL);
+    }
 
     verb_message("type-checking and semantic analysis took %lu us\n", measure_time_now_us() - start_us);
 }

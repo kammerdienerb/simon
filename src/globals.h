@@ -27,7 +27,7 @@ do {                                             \
 } while (0)
 
 extern pthread_mutex_t  global_scope_mtx;
-extern scope_t          global_scope;
+extern scope_t         *global_scope;
 
 #define GS_LOCK()                                \
 do {                                             \

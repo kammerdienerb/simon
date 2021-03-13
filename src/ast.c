@@ -3,7 +3,7 @@
 #include "ui.h"
 #include "type.h"
 #include "parse.h"
-#include "tmparray.h"
+#include "array.h"
 
 int ast_kind_is_assign(int kind) {
     return
@@ -43,12 +43,12 @@ static void undeclared_error(string_id name, ast_t *node) {
     report_range_err(&node->loc, "use of undeclared identifier '%s'", get_string(name));
 }
 
-static tmparray_t get_declaration_path(ast_ident_t *ident) {
-    tmparray_t    path;
+static array_t get_declaration_path(ast_ident_t *ident) {
+    array_t    path;
     ast_assign_t *assign;
     ast_t        *assign_ast;
 
-    path = tmparray_make(ast_t*);
+    path = array_make(ast_t*);
 
     while (ident->resolved_node != NULL) {
         ASSERT(ast_kind_is_assign(ident->resolved_node->kind),
@@ -60,7 +60,7 @@ static tmparray_t get_declaration_path(ast_ident_t *ident) {
 
         /* @todo @dotexpr */
         assign_ast = ASTP(assign);
-        tmparray_push(path, assign_ast);
+        array_push(path, assign_ast);
 
         if (ASTP(assign)->kind != AST_ASSIGN_EXPR
         ||  assign->val->kind  != AST_IDENT) {
@@ -74,17 +74,17 @@ static tmparray_t get_declaration_path(ast_ident_t *ident) {
     return path;
 }
 
-static void _report_declaration_path(int should_exit, tmparray_t path) {
+static void _report_declaration_path(int should_exit, array_t path) {
     int            i;
     ast_t        **it;
     ast_assign_t  *assign;
 
     i = 0;
-    tmparray_rtraverse(path, it) {
+    array_rtraverse(path, it) {
         assign = (ast_assign_t*)*it;
 
         if (i == 0) {
-            if (i == tmparray_len(path) - 1 && should_exit) {
+            if (i == array_len(path) - 1 && should_exit) {
                 report_range_info_no_context(&ASTP(assign)->loc,
                                              "'%s' originally assigned here:",
                                              get_string(assign->name));
@@ -93,7 +93,7 @@ static void _report_declaration_path(int should_exit, tmparray_t path) {
                                                      "'%s' originally assigned here:",
                                                      get_string(assign->name));
             }
-        } else if (i == tmparray_len(path) - 1 && should_exit) {
+        } else if (i == array_len(path) - 1 && should_exit) {
             report_range_info_no_context(&ASTP(assign)->loc,
                                          "then to '%s' here:",
                                          get_string(assign->name));
@@ -207,7 +207,7 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_assign_t *parent_as
     n_params    = array_len(proc->params);
     param_types = alloca(sizeof(u32) * n_params);
     i           = 0;
-    tmparray_traverse(proc->params, it) {
+    array_traverse(proc->params, it) {
         check_node(*it, new_scope, NULL);
         param_types[i] = (*it)->type;
         i += 1;
@@ -293,7 +293,7 @@ static void check_bool(ast_bool_t *b, scope_t *scope) {
     ASTP(b)->type = TY_BOOL;
 }
 
-static ast_assign_t * try_get_decl_and_path(ast_ident_t *ident, tmparray_t *path) {
+static ast_assign_t * try_get_decl_and_path(ast_ident_t *ident, array_t *path) {
     if (ident->resolved_node == NULL) { return NULL; }
 
     ASSERT(ast_kind_is_assign(ident->resolved_node->kind),
@@ -301,11 +301,11 @@ static ast_assign_t * try_get_decl_and_path(ast_ident_t *ident, tmparray_t *path
 
     *path = get_declaration_path(ident);
 
-    if (tmparray_len(*path) == 0) {
+    if (array_len(*path) == 0) {
         return (ast_assign_t*)ident->resolved_node;
     }
 
-    return (ast_assign_t*)*(ast_t**)tmparray_last(*path);
+    return (ast_assign_t*)*(ast_t**)array_last(*path);
 }
 
 static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
@@ -321,7 +321,7 @@ static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
     u32             varg_ty;
     u32             last_ty;
     ast_assign_t   *proc_assign;
-    tmparray_t      path;
+    array_t      path;
     ast_proc_t     *proc;
     ast_t          *parm_decl;
 
@@ -538,9 +538,58 @@ too_few:
         }
     }
 
-    if (proc != NULL) { tmparray_free(path); }
+    if (proc != NULL) { array_free(path); }
 
     ASTP(expr)->type = get_ret_type(expr->left->type);
+}
+
+static void binop_bad_type_error(ast_bin_expr_t *expr) {
+    u32 lt;
+    u32 rt;
+
+    lt = expr->left->type;
+    rt = expr->right->type;
+
+    report_range_err(&ASTP(expr)->loc,
+                     "operator '%s' does not apply to types %s and %s",
+                     OP_STR(expr->op),
+                     get_string(get_type_string_id(lt)),
+                     get_string(get_type_string_id(rt)));
+}
+
+static void check_add(ast_bin_expr_t *expr) {
+    u32 t1;
+    u32 t2;
+    u32 tk1;
+    u32 tk2;
+    u64 tk_both;
+
+    t1  = expr->left->type;
+    t2  = expr->right->type;
+    tk1 = type_kind(t1);
+    tk2 = type_kind(t2);
+
+    /*
+    ** tk_both is the combo of tk1 and tk2 in sorted order so that we can do the
+    ** below checks without considering right/left.
+    */
+    tk_both = tk1 < tk2
+                ? (((u64)tk1) << 32ULL) + tk2
+                : (((u64)tk2) << 32ULL) + tk1;
+
+    switch (tk_both) {
+        case TKINDPAIR_INT_INT:
+            /* @todo check for width incompat */
+            /* @todo How to handle this case? Do we promote the type? */
+            ASTP(expr)->type = t1;
+            break;
+        case TKINDPAIR_PTR_INT:
+            ASTP(expr)->type = (tk1 == TY_PTR ? t1 : t2);
+            break;
+        default:
+            binop_bad_type_error(expr);
+            return;
+    }
 }
 
 static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
@@ -571,6 +620,10 @@ static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
             ASTP(expr)->type = get_under_type(expr->left->type);
             break;
 
+        case OP_PLUS:
+            check_add(expr);
+            break;
+
         case OP_EQU:
         case OP_NEQ:
         case OP_LSS:
@@ -581,7 +634,8 @@ static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
             break;
 
         case OP_PLUS_ASSIGN:
-            ASTP(expr)->type = expr->left->type;
+            check_add(expr);
+            ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
             break;
         default:
             ASSERT(0, "unandled binary operator");

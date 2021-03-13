@@ -27,7 +27,7 @@ array_t _array_make_with_cap(int elem_size, int initial_cap) {
 
 void _array_free(array_t *array) {
     if (array->data && array->should_free) {
-        mem_free(array->data);
+        tmp_mem_free(array->data);
     }
     memset(array, 0, sizeof(*array));
 }
@@ -37,7 +37,7 @@ void _array_grow_if_needed(array_t *array) {
     int   grow;
 
     if (!array->data) {
-        array->data        = mem_alloc(array->capacity * array->elem_size);
+        array->data        = tmp_mem_alloc(array->capacity * array->elem_size);
         array->should_free = 1;
     } else {
         grow = 0;
@@ -49,10 +49,10 @@ void _array_grow_if_needed(array_t *array) {
 
         if (grow) {
             data_save   = array->data;
-            array->data = mem_alloc(array->capacity * array->elem_size);
+            array->data = tmp_mem_alloc(array->capacity * array->elem_size);
             memcpy(array->data, data_save, array->used * array->elem_size);
             if (array->should_free) {
-                mem_free(data_save);
+                tmp_mem_free(data_save);
             }
             array->should_free = 1;
         }
@@ -70,7 +70,7 @@ void _array_grow_if_needed_to(array_t *array, int new_cap) {
     }
 
     if (!array->data) {
-        array->data        = mem_alloc(array->capacity * array->elem_size);
+        array->data        = tmp_mem_alloc(array->capacity * array->elem_size);
         array->should_free = 1;
     } else {
         while (array->used >= array->capacity) {
@@ -80,10 +80,10 @@ void _array_grow_if_needed_to(array_t *array, int new_cap) {
 
         if (grow) {
             data_save   = array->data;
-            array->data = mem_alloc(array->capacity * array->elem_size);
+            array->data = tmp_mem_alloc(array->capacity * array->elem_size);
             memcpy(array->data, data_save, array->used * array->elem_size);
             if (array->should_free) {
-                mem_free(data_save);
+                tmp_mem_free(data_save);
             }
             array->should_free = 1;
         }

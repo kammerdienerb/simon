@@ -12,7 +12,7 @@ static void insert_builtin_type(const char *name, u32 type_value) {
     ASTP(b)->type    = TY_TYPE;
     ASTP(b)->value.t = type_value;
 
-    add_symbol_if_new(&global_scope, get_string_id(name), ASTP(b));
+    add_symbol_if_new(global_scope, get_string_id(name), ASTP(b));
 }
 
 void init_scopes(void) {
@@ -30,23 +30,25 @@ void init_scopes(void) {
     insert_builtin_type("s64",  TY_S64);
 }
 
-scope_t create_scope(scope_t *parent, int kind, ast_t *node) {
-    scope_t scope;
+scope_t *create_scope(scope_t *parent, int kind, ast_t *node) {
+    scope_t *scope;
 
-    scope.parent    = parent;
-    scope.kind      = kind;
-    scope.node      = node;
-    scope.symbols   = array_make(string_id);
-    scope.nodes     = array_make(ast_t*);
-    scope.subscopes = array_make(scope_t);
-    scope.name_id   = parent != NULL ? parent->name_id : STRING_ID_NULL;
-    scope.in_proc   = parent != NULL && (kind == AST_PROC || parent->in_proc);
+    scope = mem_alloc(sizeof(*scope));
+
+    scope->parent    = parent;
+    scope->kind      = kind;
+    scope->node      = node;
+    scope->symbols   = array_make(string_id);
+    scope->nodes     = array_make(ast_t*);
+    scope->subscopes = array_make(scope_t*);
+    scope->name_id   = parent != NULL ? parent->name_id : STRING_ID_NULL;
+    scope->in_proc   = parent != NULL && (kind == AST_PROC || parent->in_proc);
 
     return scope;
 }
 
-scope_t create_named_scope(scope_t *parent, int kind, ast_t *node, string_id name_id) {
-    scope_t     new_scope;
+scope_t *create_named_scope(scope_t *parent, int kind, ast_t *node, string_id name_id) {
+    scope_t    *new_scope;
     const char *parent_name;
     const char *name;
     char        buff[SCOPE_NAME_BUFF_SIZE];
@@ -54,7 +56,7 @@ scope_t create_named_scope(scope_t *parent, int kind, ast_t *node, string_id nam
     new_scope = create_scope(parent, kind, node);
 
     if (parent == NULL || parent->parent == NULL) {
-        new_scope.name_id = name_id;
+        new_scope->name_id = name_id;
     } else {
         parent_name = get_string(parent->name_id);
         name        = get_string(name_id);
@@ -66,7 +68,7 @@ scope_t create_named_scope(scope_t *parent, int kind, ast_t *node, string_id nam
         strncpy(buff, parent_name, SCOPE_NAME_BUFF_SIZE - strlen(buff) - 1);
         strncat(buff, ".", SCOPE_NAME_BUFF_SIZE - strlen(buff) - 1);
         strncat(buff, name, SCOPE_NAME_BUFF_SIZE - strlen(buff) - 1);
-        new_scope.name_id = get_string_id(buff);
+        new_scope->name_id = get_string_id(buff);
     }
 
     return new_scope;
@@ -143,39 +145,34 @@ void add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node) {
 }
 
 scope_t *add_subscope(scope_t *scope, int kind, ast_t *node) {
-    scope_t  subscope;
-    scope_t *ret;
+    scope_t *subscope;
 
     subscope = create_scope(scope, kind, node);
-    ret      = array_push(scope->subscopes, subscope);
+    array_push(scope->subscopes, subscope);
 
-    return ret;
+    return subscope;
 }
 
 scope_t *add_named_subscope(scope_t *scope, int kind, ast_t *node, string_id name_id) {
-    scope_t  subscope;
-    scope_t *ret;
+    scope_t *subscope;
 
     subscope = create_named_scope(scope, kind, node, name_id);
-    ret      = array_push(scope->subscopes, subscope);
+    array_push(scope->subscopes, subscope);
 
-    return ret;
+    return subscope;
 }
 
-scope_t *move_subscope(scope_t *dst, scope_t *subscope) {
-    scope_t *ret;
-
+void move_subscope(scope_t *dst, scope_t *subscope) {
     subscope->parent = dst;
 
-    ret = array_push(dst->subscopes, *subscope);
-
-    return ret;
+    array_push(dst->subscopes, subscope);
 }
 
 void free_scope_no_recurse(scope_t *scope) {
     array_free(scope->symbols);
     array_free(scope->nodes);
     array_free(scope->subscopes);
+    mem_free(scope);
 }
 
 static void scope_find_origins(scope_t *scope) {
@@ -184,7 +181,7 @@ static void scope_find_origins(scope_t *scope) {
     ast_t      *node;
     string_id  *name_p;
     ast_t      *existing_node;
-    scope_t    *subscope;
+    scope_t   **subscope;
     int         j;
 
     ASSERT(scope->parent != NULL, "scope_find_origins() may not be called on the global scope");
@@ -216,7 +213,7 @@ again:;
             if (scope->in_proc) {
                 j = 0;
                 array_traverse(scope->subscopes, subscope) {
-                    if (subscope->node == existing_node) {
+                    if ((*subscope)->node == existing_node) {
                         array_delete(scope->subscopes, j);
                         break;
                     }
@@ -236,7 +233,7 @@ next:;
     }
 
     array_traverse(scope->subscopes, subscope) {
-        scope_find_origins(subscope);
+        scope_find_origins(*subscope);
     }
 }
 
@@ -244,7 +241,7 @@ static void scope_find_origins_thread(void *arg) { scope_find_origins((scope_t*)
 
 void scopes_find_origins(scope_t *scope) {
     ast_t   **node_p;
-    scope_t  *subscope;
+    scope_t **subscope;
 
     ASSERT(scope->parent == NULL, "scopes_find_origins() must be called with the global scope");
 
@@ -260,21 +257,21 @@ void scopes_find_origins(scope_t *scope) {
 
     if (tp == NULL) {
         array_traverse(scope->subscopes, subscope) {
-            scope_find_origins(subscope);
+            scope_find_origins(*subscope);
         }
     } else {
         array_traverse(scope->subscopes, subscope) {
-            tp_add_task(tp, scope_find_origins_thread, (void*)subscope);
+            tp_add_task(tp, scope_find_origins_thread, (void*)*subscope);
         }
         tp_wait(tp);
     }
 }
 
 scope_t *get_subscope_from_node(scope_t *scope, ast_t *node) {
-    scope_t *it;
+    scope_t **it;
 
     array_traverse(scope->subscopes, it) {
-        if (it->node == node) { return it; }
+        if ((*it)->node == node) { return *it; }
     }
 
     return NULL;
@@ -286,9 +283,9 @@ void _show_scope(scope_t *scope, int level) {
     int         i;
     ast_t     **node_it;
     ast_t      *opening_node;
-    scope_t    *subscope_it;
+    scope_t   **subscope_it;
 
-    array_traverse(scope->subscopes, subscope_it) { subscope_it->visited = 0; }
+    array_traverse(scope->subscopes, subscope_it) { (*subscope_it)->visited = 0; }
 
     n = 0;
     array_traverse(scope->symbols, symbol_it) {
@@ -309,21 +306,21 @@ void _show_scope(scope_t *scope, int level) {
         }
 
         array_traverse(scope->subscopes, subscope_it) {
-            if (subscope_it->node == opening_node) {
-                _show_scope(subscope_it, level + 1);
-                subscope_it->visited = 1;
+            if ((*subscope_it)->node == opening_node) {
+                _show_scope(*subscope_it, level + 1);
+                (*subscope_it)->visited = 1;
             }
         }
         n += 1;
     }
 
     array_traverse(scope->subscopes, subscope_it) {
-        if (!subscope_it->visited) {
+        if (!((*subscope_it)->visited)) {
             for (i = 0; i < level; i += 1) {
                 printf("  ");
             }
-            printf("%s\n", AST_STR(subscope_it->node->kind));
-            _show_scope(subscope_it, level + 1);
+            printf("%s\n", AST_STR((*subscope_it)->node->kind));
+            _show_scope(*subscope_it, level + 1);
         }
     }
 }

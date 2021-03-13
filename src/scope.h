@@ -20,12 +20,12 @@ typedef struct scope {
 } scope_t;
 
 void     init_scopes(void);
-scope_t  create_scope(scope_t *parent, int kind, ast_t *node);
-scope_t  create_named_scope(scope_t *parent, int kind, ast_t *node, string_id name_id);
+scope_t *create_scope(scope_t *parent, int kind, ast_t *node);
+scope_t *create_named_scope(scope_t *parent, int kind, ast_t *node, string_id name_id);
 void     add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node);
 scope_t *add_subscope(scope_t *scope, int kind, ast_t *node);
 scope_t *add_named_subscope(scope_t *scope, int kind, ast_t *node, string_id name_id);
-scope_t *move_subscope(scope_t *dst, scope_t *subscope);
+void     move_subscope(scope_t *dst, scope_t *subscope);
 void     free_scope_no_recurse(scope_t *scope);
 void     scopes_find_origins(scope_t *scope);
 scope_t *get_subscope_from_node(scope_t *scope, ast_t *node);

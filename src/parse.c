@@ -21,7 +21,7 @@ typedef struct {
     u64           n_lines;
     u64           n_blank_lines;
     array_t       top_level_nodes;
-    scope_t       global_scope;
+    scope_t      *global_scope;
     array_t       scope_stack;
     ast_assign_t *program_entry;
 } parse_context_t;
@@ -32,33 +32,22 @@ u32 op_prec_table[] = {
     X_OPS
 #undef X
 };
-#define OP_PREC(_op) (op_prec_table[(_op)])
-
 int op_assoc_table[] = {
 #define X(_op, _prec, _assoc, _arity, _str) _assoc,
     X_OPS
 #undef X
 };
-#define OP_ASSOC(_op) (op_assoc_table[(_op)])
-
 int op_arity_table[] = {
 #define X(_op, _prec, _assoc, _arity, _str) _arity,
     X_OPS
 #undef X
 };
-#define OP_IS_UNARY(_op)  (op_arity_table[(_op)] == 1)
-#define OP_IS_BINARY(_op) (op_arity_table[(_op)] == 2)
-
 const char * op_str_table[] = {
 #define X(_op, _prec, _assoc, _arity, _str) _str,
     X_OPS
 #undef X
 };
-#define OP_STR(_op)       (op_str_table[(_op)])
-#define OP_STRLEN(_op)    (strlen(OP_STR((_op))))
 
-#define ASSIGNMENT_PREC  (OP_PREC(OP_ASSIGN))
-#define HIGHEST_BIN_PREC (12)
 
 
 
@@ -1526,8 +1515,6 @@ static ast_t * parse_assign(parse_context_t *cxt) {
 }
 
 static void setup_cxt(parse_context_t *cxt) {
-    scope_t *gs;
-
     cxt->tls = get_tls();
 
     cxt->end                = cxt->file->end;
@@ -1543,8 +1530,7 @@ static void setup_cxt(parse_context_t *cxt) {
     cxt->scope_stack        = array_make(scope_t*);
     cxt->program_entry      = NULL;
 
-    gs = &cxt->global_scope;
-    array_push(cxt->scope_stack, gs);
+    array_push(cxt->scope_stack, cxt->global_scope);
 }
 
 static void parse(parse_context_t *cxt) {
@@ -1552,7 +1538,7 @@ static void parse(parse_context_t *cxt) {
     ast_t     **node_it;
     int         i;
     string_id  *name_it;
-    scope_t    *subscope_it;
+    scope_t   **subscope_it;
     int         final_scope_kind;
 
     setup_cxt(cxt);
@@ -1597,15 +1583,15 @@ static void parse(parse_context_t *cxt) {
 
     GS_LOCK(); {
         i = 0;
-        array_traverse(cxt->global_scope.symbols, name_it) {
-            add_symbol_if_new(&global_scope, *name_it, *(ast_t**)array_item(cxt->global_scope.nodes, i));
+        array_traverse(cxt->global_scope->symbols, name_it) {
+            add_symbol_if_new(global_scope, *name_it, *(ast_t**)array_item(cxt->global_scope->nodes, i));
             i += 1;
         }
-        array_traverse(cxt->global_scope.subscopes, subscope_it) {
-            move_subscope(&global_scope, subscope_it);
+        array_traverse(cxt->global_scope->subscopes, subscope_it) {
+            move_subscope(global_scope, *subscope_it);
         }
 
-        free_scope_no_recurse(&cxt->global_scope);
+        free_scope_no_recurse(cxt->global_scope);
     } GS_UNLOCK();
 
     LINES_LOCK(); {
