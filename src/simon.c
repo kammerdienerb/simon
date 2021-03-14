@@ -12,7 +12,8 @@
 #include "scope.h"
 #include "type.h"
 
-int do_options(int argc, char **argv);
+void do_sanity_checks(void);
+int  do_options(int argc, char **argv);
 void do_init(void);
 void do_parse(void);
 void do_resolve_symbols(void);
@@ -22,6 +23,8 @@ int main(int argc, char **argv) {
     u64 start_us;
 
     start_us = measure_time_now_us();
+
+    do_sanity_checks();
 
     if (do_options(argc, argv)) { return 1; }
     if (options.help)           { return 0; }
@@ -44,6 +47,10 @@ int main(int argc, char **argv) {
     verb_message("total time: %lu us\n", measure_time_now_us() - start_us);
 
     return 0;
+}
+
+void do_sanity_checks(void) {
+    ASSERT(sizeof(ast_ident_t) <= sizeof(ast_bin_expr_t), "ident doesn't fit into bin_expr");
 }
 
 int do_options(int argc, char **argv) {

@@ -192,6 +192,7 @@ AST_DEFINE(bool,
 AST_DEFINE(ident,
     string_id  str_rep;
     ast_t     *resolved_node;
+    scope_t   *resolved_node_scope;
 );
 
 AST_DEFINE(unary_expr,

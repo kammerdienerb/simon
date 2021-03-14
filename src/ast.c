@@ -543,44 +543,27 @@ too_few:
     ASTP(expr)->type = get_ret_type(expr->left->type);
 }
 
-static void check_ident(ast_ident_t *ident, scope_t *scope, scope_t **out_resolved_ident_scope) {
-    ast_t   *resolved_node;
-    scope_t *resolved_ident_scope;
-
+static void check_ident(ast_ident_t *ident, scope_t *scope) {
     if (ident->str_rep == UNDERSCORE_ID) {
         report_range_err_no_exit(&ASTP(ident)->loc, "'_' can be assigned to, but not referenced");
         report_simple_info("'_' acts as an assignment sink for values meant to be unreferenceable");
         return;
     }
 
-    resolved_node = ident->resolved_node;
+    ASSERT(ident->resolved_node == NULL, "ident has already been resolved");
 
-    if (resolved_node == NULL || out_resolved_ident_scope != NULL) {
-        resolved_node = search_up_scopes_return_scope(scope, ident->str_rep, &resolved_ident_scope);
+    ident->resolved_node = search_up_scopes_return_scope(scope, ident->str_rep, &ident->resolved_node_scope);
 
-#ifdef SIMON_DO_ASSERTIONS
-        if (ident->resolved_node != NULL) {
-            ASSERT(ident->resolved_node == resolved_node, "resolved_node mismatch");
-        }
-#endif
-
-        if (resolved_node == NULL) {
-            report_range_err(&ASTP(ident)->loc,
-                             "use of undeclared identifier '%s'", get_string(ident->str_rep));
-            return;
-        }
-
-        if (out_resolved_ident_scope != NULL) {
-            *out_resolved_ident_scope = resolved_ident_scope;
-        }
-
-        ident->resolved_node = resolved_node;
-
-        check_node(resolved_node, resolved_ident_scope, NULL);
-
-        ASTP(ident)->type  = resolved_node->type;
-        ASTP(ident)->value = resolved_node->value;
+    if (ident->resolved_node == NULL) {
+        report_range_err(&ASTP(ident)->loc,
+                            "use of undeclared identifier '%s'", get_string(ident->str_rep));
+        return;
     }
+
+    check_node(ident->resolved_node, ident->resolved_node_scope, NULL);
+
+    ASTP(ident)->type  = ident->resolved_node->type;
+    ASTP(ident)->value = ident->resolved_node->value;
 }
 
 static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
@@ -590,45 +573,92 @@ static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
     ** no operators that do anything to modules other than assignment.
     */
 
-    ast_ident_t *left_ident;
-    scope_t     *resolved_ident_scope;
-    scope_t     *module_scope;
+    ast_ident_t  *left_ident;
+    ast_assign_t *resolved_assign;
+    scope_t      *module_scope;
+    ast_ident_t  *right_ident;
+    ast_t        *found_node;
+    ast_ident_t  *new_ident;
+    const char   *lname;
+    u32           llen;
+    const char   *rname;
+    u32           rlen;
+    u32           new_name_len;
+    char         *new_name_buff;
 
 
-    ASSERT(expr->left->kind == AST_IDENT, "expr->left must be an identifier in check_module_dot()");
+    ASSERT(expr->left->kind == AST_IDENT,
+           "expr->left must be an identifier in check_module_dot()");
+
     left_ident = (ast_ident_t*)expr->left;
 
-    /* @bad @performance
-    ** We need to know the scope of the resolved node.
-    ** That means we need to run check_ident again, which incurs another symbol lookup.
+    ASSERT(left_ident->resolved_node != NULL,
+          "module identifier does not have a resolved_node");
+
+    ASSERT(left_ident->resolved_node_scope != NULL,
+           "did not get resolved_node_scope");
+
+    ASSERT(left_ident->resolved_node->kind == AST_ASSIGN_MODULE,
+           "left_ident does not resolve to a module assignment");
+
+    resolved_assign = (ast_assign_t*)left_ident->resolved_node;
+
+    module_scope = get_subscope_from_node(left_ident->resolved_node_scope,
+                                          resolved_assign->val);
+
+    ASSERT(module_scope != NULL, "did not find module scope");
+
+
+    right_ident = (ast_ident_t*)expr->right;
+
+    found_node = find_in_scope(module_scope, right_ident->str_rep);
+
+    if (found_node == NULL) {
+        report_range_err(&expr->right->loc,
+                         "nothing named '%s' in module '%s'",
+                         get_string(right_ident->str_rep),
+                         get_string(left_ident->str_rep));
+        return;
+    }
+
+    check_node(found_node, module_scope, NULL);
+
+    /* @note !!!
+    ** We're overwriting the data of expr here..
+    ** Be careful with this.
+    ** There's an assertion in do_sanity_checks() that ensures that an
+    ** ast_ident_t will fit in an ast_bin_expr_t.
     */
-    resolved_ident_scope = NULL;
-    check_ident(left_ident, scope, &resolved_ident_scope);
+    new_ident = (ast_ident_t*)expr;
 
+    ASTP(new_ident)->kind  = AST_IDENT;
+    ASTP(new_ident)->type  = found_node->type;
+    ASTP(new_ident)->value = found_node->value;
+    /* @note -- are there any flags we need to set/clear? */
 
-    ASSERT(left_ident->resolved_node != NULL, "module identifier does not have a resolved_node");
-    ASSERT(resolved_ident_scope      != NULL, "did not get resolved_ident_scope");
+    lname         = get_string(left_ident->str_rep);
+    llen          = strlen(lname);
+    rname         = get_string(right_ident->str_rep);
+    rlen          = strlen(rname);
+    new_name_len  = llen + 1 + rlen;
+    new_name_buff = alloca(new_name_len);
+    strcpy(new_name_buff, lname);
+    new_name_buff[llen] = '.';
+    strcpy(new_name_buff + llen + 1, rname);
 
-    /* @here
-    ** We have the scope now, so we can get the scope that the left-hand-side
-    ** creates and lookup the right-hand-side ident in that scope.
-    **
-    ** I'm not sure how this is gonna work out with multi-level dots...
-    ** For example, if we have foo.bar.zap, we'd find foo, lookup bar in
-    ** it, and replace foo.bar, with some ident that resolves to whatever
-    ** foo.bar is.
-    ** But then, we'd need to find zap in _that_ scope.
-    ** So, we need to make sure that either:
-    **     1. The thing that we replace the foo.bar expr with can be used
-    **        to search for zip.
-    ** OR
-    **     2. We carry some of that info along (maybe in the ast_ident_t?).
-    */
-    (void)module_scope;
-    ASSERT(0, "HERE");
+    new_ident->str_rep             = get_string_id_n(new_name_buff, new_name_len);
+    new_ident->resolved_node       = found_node;
+    new_ident->resolved_node_scope = module_scope;
 }
 
 static void check_dot(ast_bin_expr_t *expr, scope_t *scope) {
+    if (expr->right->kind != AST_IDENT) {
+        report_range_err(&expr->right->loc,
+                         "the '.' operator must be followed by an identifier");
+        return;
+    }
+
+
     check_node(expr->left, scope, NULL);
 
     if (expr->left->type == TY_MODULE) {
@@ -916,7 +946,7 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
             break;
 
         case AST_IDENT:
-            check_ident((ast_ident_t*)node, scope, NULL);
+            check_ident((ast_ident_t*)node, scope);
             break;
 
         case AST_ARG_LIST:
