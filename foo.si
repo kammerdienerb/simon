@@ -1,18 +1,20 @@
 # foo.si
 
 basic = module {
-    io = module {
-        prints = proc(i: s64, strings: ...*char) {
-        #     loop s = __varg_it(strings); s != __varg_end(strings); s = __varg_next(strings, s) {
-        #     }
+    foo = module {
+        IO = io;
+        P  = IO.prints;
+        bar = proc() {
+            b.foo.P(0);
         }
     }
 
-    foo = module {
-        bar = proc() {
-            io.prints(0);
+    io = module {
+        prints = proc(i: s64, strings: ...*char) {
         }
     }
+
+    b = basic;
 }
 
 [[ program_entry ]]
@@ -27,4 +29,3 @@ do_something_with_arg = proc(arg: *char) {
     prints = basic.io.prints;
     prints(i=123, strings="a", "b", "c");
 }
-

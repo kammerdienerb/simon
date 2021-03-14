@@ -1458,6 +1458,11 @@ static ast_t * parse_assign(parse_context_t *cxt) {
 
     result = AST_ALLOC(cxt, ast_assign_t);
 
+    result->scope = SCOPE(cxt);
+    if (result->scope == cxt->global_scope) {
+        result->scope = global_scope;
+    }
+
     if (has_tags) {
         result->tags = tags;
     }

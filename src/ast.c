@@ -58,7 +58,6 @@ static array_t get_declaration_path(ast_ident_t *ident) {
 
         ASSERT(assign->val != NULL, "assign has no val");
 
-        /* @todo @dotexpr */
         assign_ast = ASTP(assign);
         array_push(path, assign_ast);
 
@@ -156,6 +155,15 @@ static void check_assign(ast_assign_t *assign, scope_t *scope) {
     }
 
     check_node(assign->val, scope, assign);
+
+    if (assign->val->type == TY_NOT_TYPED) {
+        report_range_err_no_exit(&assign->val->loc,
+                                 "invalid expression in assignment of '%s'",
+                                 get_string(assign->name));
+        report_simple_info("the expression does not have a type or value");
+        return;
+    }
+
     ASTP(assign)->type  = assign->val->type;
     ASTP(assign)->value = assign->val->value;
 
@@ -321,7 +329,7 @@ static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
     u32             varg_ty;
     u32             last_ty;
     ast_assign_t   *proc_assign;
-    array_t      path;
+    array_t         path;
     ast_proc_t     *proc;
     ast_t          *parm_decl;
 
@@ -544,6 +552,8 @@ too_few:
 }
 
 static void check_ident(ast_ident_t *ident, scope_t *scope) {
+    scope_t *resolved_node_scope;
+
     if (ident->str_rep == UNDERSCORE_ID) {
         report_range_err_no_exit(&ASTP(ident)->loc, "'_' can be assigned to, but not referenced");
         report_simple_info("'_' acts as an assignment sink for values meant to be unreferenceable");
@@ -552,15 +562,15 @@ static void check_ident(ast_ident_t *ident, scope_t *scope) {
 
     ASSERT(ident->resolved_node == NULL, "ident has already been resolved");
 
-    ident->resolved_node = search_up_scopes_return_scope(scope, ident->str_rep, &ident->resolved_node_scope);
+    ident->resolved_node = search_up_scopes_return_scope(scope, ident->str_rep, &resolved_node_scope);
 
     if (ident->resolved_node == NULL) {
         report_range_err(&ASTP(ident)->loc,
-                            "use of undeclared identifier '%s'", get_string(ident->str_rep));
+                         "use of undeclared identifier '%s'", get_string(ident->str_rep));
         return;
     }
 
-    check_node(ident->resolved_node, ident->resolved_node_scope, NULL);
+    check_node(ident->resolved_node, resolved_node_scope, NULL);
 
     ASTP(ident)->type  = ident->resolved_node->type;
     ASTP(ident)->value = ident->resolved_node->value;
@@ -575,6 +585,7 @@ static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
 
     ast_ident_t  *left_ident;
     ast_assign_t *resolved_assign;
+    array_t       path;
     scope_t      *module_scope;
     ast_ident_t  *right_ident;
     ast_t        *found_node;
@@ -592,34 +603,39 @@ static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
 
     left_ident = (ast_ident_t*)expr->left;
 
-    ASSERT(left_ident->resolved_node != NULL,
-          "module identifier does not have a resolved_node");
+    resolved_assign = try_get_decl_and_path(left_ident, &path);
 
-    ASSERT(left_ident->resolved_node_scope != NULL,
-           "did not get resolved_node_scope");
+    ASSERT(resolved_assign != NULL, "did not get resolved assign");
 
-    ASSERT(left_ident->resolved_node->kind == AST_ASSIGN_MODULE,
-           "left_ident does not resolve to a module assignment");
+    ASSERT(ASTP(resolved_assign)->kind == AST_ASSIGN_MODULE,
+           "resolved_assign is not a module assignment");
 
-    resolved_assign = (ast_assign_t*)left_ident->resolved_node;
-
-    module_scope = get_subscope_from_node(left_ident->resolved_node_scope,
+    module_scope = get_subscope_from_node(resolved_assign->scope,
                                           resolved_assign->val);
 
     ASSERT(module_scope != NULL, "did not find module scope");
-
 
     right_ident = (ast_ident_t*)expr->right;
 
     found_node = find_in_scope(module_scope, right_ident->str_rep);
 
     if (found_node == NULL) {
-        report_range_err(&expr->right->loc,
-                         "nothing named '%s' in module '%s'",
-                         get_string(right_ident->str_rep),
-                         get_string(left_ident->str_rep));
+        if (left_ident->resolved_node == ASTP(resolved_assign)) {
+            report_range_err(&expr->right->loc,
+                             "nothing named '%s' in module '%s'",
+                             get_string(right_ident->str_rep),
+                             get_string(left_ident->str_rep));
+        } else {
+            report_range_err_no_exit(&expr->right->loc,
+                                     "nothing named '%s' in module '%s'",
+                                     get_string(right_ident->str_rep),
+                                     get_string(left_ident->str_rep));
+            report_declaration_path(path);
+        }
         return;
     }
+
+    array_free(path);
 
     check_node(found_node, module_scope, NULL);
 
@@ -646,9 +662,8 @@ static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
     new_name_buff[llen] = '.';
     strcpy(new_name_buff + llen + 1, rname);
 
-    new_ident->str_rep             = get_string_id_n(new_name_buff, new_name_len);
-    new_ident->resolved_node       = found_node;
-    new_ident->resolved_node_scope = module_scope;
+    new_ident->str_rep       = get_string_id_n(new_name_buff, new_name_len);
+    new_ident->resolved_node = found_node;
 }
 
 static void check_dot(ast_bin_expr_t *expr, scope_t *scope) {
@@ -658,13 +673,21 @@ static void check_dot(ast_bin_expr_t *expr, scope_t *scope) {
         return;
     }
 
-
-    check_node(expr->left, scope, NULL);
-
-    if (expr->left->type == TY_MODULE) {
-        check_module_dot(expr, scope);
-    } else {
-        ASSERT(0, "unimlemented");
+    switch (type_kind(expr->left->type)) {
+        case TY_MODULE:
+            check_module_dot(expr, scope);
+            break;
+        case TY_STRUCT:
+            ASSERT(0, "unimplemented");
+            break;
+        case TY_PTR:
+            ASSERT(0, "unimplemented");
+            break;
+        default:
+            report_range_err(&ASTP(expr)->loc,
+                             "the '.' operator does not apply to left-hand-side operand type %s",
+                             get_string(get_type_string_id(expr->left->type)));
+            return;
     }
 }
 
@@ -740,19 +763,44 @@ static void check_sub(ast_bin_expr_t *expr) {
     }
 }
 
+static void operand_not_typed_error(ast_t *expr, ast_t *operand) {
+    int op;
+
+    op = expr->kind == AST_UNARY_EXPR
+            ? ((ast_unary_expr_t*)expr)->op
+            : ((ast_bin_expr_t*)expr)->op;
+
+    report_range_err_no_exit(&operand->loc,
+                             "invalid operand to %s '%s' expression",
+                             OP_IS_UNARY(op) ? "unary" : "binary",
+                             OP_STR(op));
+    report_simple_info("the expression does not have a type or value");
+}
+
 static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
     /*
     ** OP_DOT is special because the right operand could fail in symbol resolution
     ** if checked alone.
     */
+
+    check_node(expr->left, scope, NULL);
+
+    if (expr->left->type == TY_NOT_TYPED) {
+        operand_not_typed_error(ASTP(expr), expr->left);
+        return;
+    }
+
     if (expr->op == OP_DOT) {
         check_dot(expr, scope);
         return;
     }
 
-
-    check_node(expr->left, scope, NULL);
     check_node(expr->right, scope, NULL);
+
+    if (expr->left->type == TY_NOT_TYPED) {
+        operand_not_typed_error(ASTP(expr), expr->right);
+        return;
+    }
 
     switch (expr->op) {
         case OP_DOT: /* Handled above. */ break;
@@ -813,6 +861,11 @@ static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
 
 static void check_unary_expr(ast_unary_expr_t *expr, scope_t *scope) {
     check_node(expr->child, scope, NULL);
+
+    if (expr->child->type == TY_NOT_TYPED) {
+        operand_not_typed_error(ASTP(expr), expr->child);
+        return;
+    }
 
     switch (expr->op) {
         case OP_ADDR:

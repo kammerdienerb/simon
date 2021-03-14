@@ -172,6 +172,7 @@ AST_DEFINE(macro,
 );
 
 AST_DEFINE(assign,
+    scope_t   *scope;
     string_id  name;
     ast_t     *val;
     array_t    tags;
@@ -192,7 +193,6 @@ AST_DEFINE(bool,
 AST_DEFINE(ident,
     string_id  str_rep;
     ast_t     *resolved_node;
-    scope_t   *resolved_node_scope;
 );
 
 AST_DEFINE(unary_expr,
