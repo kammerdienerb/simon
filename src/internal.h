@@ -46,7 +46,7 @@ do { if (unlikely(!(cond))) {                          \
     simon_assert_fail(msg, __FILE__, __LINE__, #cond); \
 } } while (0)
 #else
-#define ASSERT(cond, mst) ((void)(cond));
+#define ASSERT(cond, msg) ((void)(cond));
 #endif
 
 #define _XSTR(x) #x

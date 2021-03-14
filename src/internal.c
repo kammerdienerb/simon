@@ -9,6 +9,8 @@ void simon_assert_fail(const char *msg, const char *fname, int line, const char 
                     "    Condition: '%s'\n",
                     msg, fname, line, cond_str);
 
+    fflush(stdout);
+
     trap = 0;
     (void)*trap;
 }

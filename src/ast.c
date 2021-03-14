@@ -543,6 +543,101 @@ too_few:
     ASTP(expr)->type = get_ret_type(expr->left->type);
 }
 
+static void check_ident(ast_ident_t *ident, scope_t *scope, scope_t **out_resolved_ident_scope) {
+    ast_t   *resolved_node;
+    scope_t *resolved_ident_scope;
+
+    if (ident->str_rep == UNDERSCORE_ID) {
+        report_range_err_no_exit(&ASTP(ident)->loc, "'_' can be assigned to, but not referenced");
+        report_simple_info("'_' acts as an assignment sink for values meant to be unreferenceable");
+        return;
+    }
+
+    resolved_node = ident->resolved_node;
+
+    if (resolved_node == NULL || out_resolved_ident_scope != NULL) {
+        resolved_node = search_up_scopes_return_scope(scope, ident->str_rep, &resolved_ident_scope);
+
+#ifdef SIMON_DO_ASSERTIONS
+        if (ident->resolved_node != NULL) {
+            ASSERT(ident->resolved_node == resolved_node, "resolved_node mismatch");
+        }
+#endif
+
+        if (resolved_node == NULL) {
+            report_range_err(&ASTP(ident)->loc,
+                             "use of undeclared identifier '%s'", get_string(ident->str_rep));
+            return;
+        }
+
+        if (out_resolved_ident_scope != NULL) {
+            *out_resolved_ident_scope = resolved_ident_scope;
+        }
+
+        ident->resolved_node = resolved_node;
+
+        check_node(resolved_node, resolved_ident_scope, NULL);
+
+        ASTP(ident)->type  = resolved_node->type;
+        ASTP(ident)->value = resolved_node->value;
+    }
+}
+
+static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
+    /* @note:
+    ** expr->left must have been checked by this point.
+    ** Also, it can't be anything other than an identifier since there are
+    ** no operators that do anything to modules other than assignment.
+    */
+
+    ast_ident_t *left_ident;
+    scope_t     *resolved_ident_scope;
+    scope_t     *module_scope;
+
+
+    ASSERT(expr->left->kind == AST_IDENT, "expr->left must be an identifier in check_module_dot()");
+    left_ident = (ast_ident_t*)expr->left;
+
+    /* @bad @performance
+    ** We need to know the scope of the resolved node.
+    ** That means we need to run check_ident again, which incurs another symbol lookup.
+    */
+    resolved_ident_scope = NULL;
+    check_ident(left_ident, scope, &resolved_ident_scope);
+
+
+    ASSERT(left_ident->resolved_node != NULL, "module identifier does not have a resolved_node");
+    ASSERT(resolved_ident_scope      != NULL, "did not get resolved_ident_scope");
+
+    /* @here
+    ** We have the scope now, so we can get the scope that the left-hand-side
+    ** creates and lookup the right-hand-side ident in that scope.
+    **
+    ** I'm not sure how this is gonna work out with multi-level dots...
+    ** For example, if we have foo.bar.zap, we'd find foo, lookup bar in
+    ** it, and replace foo.bar, with some ident that resolves to whatever
+    ** foo.bar is.
+    ** But then, we'd need to find zap in _that_ scope.
+    ** So, we need to make sure that either:
+    **     1. The thing that we replace the foo.bar expr with can be used
+    **        to search for zip.
+    ** OR
+    **     2. We carry some of that info along (maybe in the ast_ident_t?).
+    */
+    (void)module_scope;
+    ASSERT(0, "HERE");
+}
+
+static void check_dot(ast_bin_expr_t *expr, scope_t *scope) {
+    check_node(expr->left, scope, NULL);
+
+    if (expr->left->type == TY_MODULE) {
+        check_module_dot(expr, scope);
+    } else {
+        ASSERT(0, "unimlemented");
+    }
+}
+
 static void binop_bad_type_error(ast_bin_expr_t *expr) {
     u32 lt;
     u32 rt;
@@ -592,11 +687,46 @@ static void check_add(ast_bin_expr_t *expr) {
     }
 }
 
+static void check_sub(ast_bin_expr_t *expr) {
+    u32 t1;
+    u32 t2;
+    u32 tk1;
+    u32 tk2;
+
+    t1  = expr->left->type;
+    t2  = expr->right->type;
+    tk1 = type_kind(t1);
+    tk2 = type_kind(t2);
+
+    if (tk1 == TY_GENERIC_INT && tk2 == TY_GENERIC_INT) {
+        /* @todo check for width incompat */
+        /* @todo How to handle this case? Do we promote the type? */
+        ASTP(expr)->type = t1;
+    } else if (tk1 == TY_PTR && tk2 == TY_GENERIC_INT) {
+        ASTP(expr)->type = t1;
+    } else {
+        binop_bad_type_error(expr);
+        return;
+    }
+}
+
 static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
+    /*
+    ** OP_DOT is special because the right operand could fail in symbol resolution
+    ** if checked alone.
+    */
+    if (expr->op == OP_DOT) {
+        check_dot(expr, scope);
+        return;
+    }
+
+
     check_node(expr->left, scope, NULL);
     check_node(expr->right, scope, NULL);
 
     switch (expr->op) {
+        case OP_DOT: /* Handled above. */ break;
+
         case OP_CALL:
             check_call(expr, scope);
             break;
@@ -623,6 +753,9 @@ static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
         case OP_PLUS:
             check_add(expr);
             break;
+        case OP_MINUS:
+            check_sub(expr);
+            break;
 
         case OP_EQU:
         case OP_NEQ:
@@ -637,6 +770,11 @@ static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
             check_add(expr);
             ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
             break;
+        case OP_MINUS_ASSIGN:
+            check_sub(expr);
+            ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
+            break;
+
         default:
             ASSERT(0, "unandled binary operator");
             return;
@@ -680,36 +818,6 @@ static void check_unary_expr(ast_unary_expr_t *expr, scope_t *scope) {
         default:
             ASSERT(0, "unandled unary operator");
             return;
-    }
-}
-
-static void check_ident(ast_ident_t *ident, scope_t *scope) {
-    ast_t   *resolved_node;
-    scope_t *resolved_ident_scope;
-
-    if (ident->str_rep == UNDERSCORE_ID) {
-        report_range_err_no_exit(&ASTP(ident)->loc, "'_' can be assigned to, but not referenced");
-        report_simple_info("'_' acts as an assignment sink for values meant to be unreferenceable");
-        return;
-    }
-
-    resolved_node = ident->resolved_node;
-
-    if (resolved_node == NULL) {
-        resolved_node = search_up_scopes_return_scope(scope, ident->str_rep, &resolved_ident_scope);
-
-        if (resolved_node == NULL) {
-            report_range_err(&ASTP(ident)->loc,
-                             "use of undeclared identifier '%s'", get_string(ident->str_rep));
-            return;
-        }
-
-        ident->resolved_node = resolved_node;
-
-        check_node(resolved_node, resolved_ident_scope, NULL);
-
-        ASTP(ident)->type  = resolved_node->type;
-        ASTP(ident)->value = resolved_node->value;
     }
 }
 
@@ -808,7 +916,7 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
             break;
 
         case AST_IDENT:
-            check_ident((ast_ident_t*)node, scope);
+            check_ident((ast_ident_t*)node, scope, NULL);
             break;
 
         case AST_ARG_LIST:
