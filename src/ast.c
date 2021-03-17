@@ -51,8 +51,13 @@ static array_t get_declaration_path(ast_ident_t *ident) {
     path = array_make(ast_t*);
 
     while (ident->resolved_node != NULL) {
-        ASSERT(ast_kind_is_assign(ident->resolved_node->kind),
-               "resolved_node is not an assignment");
+        if (ident->resolved_node->kind == AST_BUILTIN) {
+            array_push(path, ident->resolved_node);
+            break;
+        } else {
+            ASSERT(ast_kind_is_assign(ident->resolved_node->kind),
+                   "resolved_node is not an assignment");
+        }
 
         assign = (ast_assign_t*)ident->resolved_node;
 
@@ -84,13 +89,23 @@ static void _report_declaration_path(int should_exit, array_t path) {
 
         if (i == 0) {
             if (i == array_len(path) - 1 && should_exit) {
-                report_range_info_no_context(&ASTP(assign)->loc,
-                                             "'%s' originally assigned here:",
-                                             get_string(assign->name));
+                if ((*it)->kind == AST_BUILTIN) {
+                    report_simple_info("'%s' originally assigned as a compiler builtin",
+                                       get_string(((ast_builtin_t*)*it)->name));
+                } else {
+                    report_range_info_no_context(&ASTP(assign)->loc,
+                                                 "'%s' originally assigned here:",
+                                                 get_string(assign->name));
+                }
             } else {
-                report_range_info_no_context_no_exit(&ASTP(assign)->loc,
-                                                     "'%s' originally assigned here:",
-                                                     get_string(assign->name));
+                if ((*it)->kind == AST_BUILTIN) {
+                    report_simple_info_no_exit("'%s' originally assigned as a compiler builtin",
+                                               get_string(((ast_builtin_t*)*it)->name));
+                } else {
+                    report_range_info_no_context_no_exit(&ASTP(assign)->loc,
+                                                         "'%s' originally assigned here:",
+                                                         get_string(assign->name));
+                }
             }
         } else if (i == array_len(path) - 1 && should_exit) {
             report_range_info_no_context(&ASTP(assign)->loc,
@@ -108,9 +123,6 @@ static void _report_declaration_path(int should_exit, array_t path) {
 #define report_declaration_path(_path)         (_report_declaration_path(1, (_path)))
 #define report_declaration_path_no_exit(_path) (_report_declaration_path(0, (_path)))
 
-
-static void type_builtin(ast_builtin_t *node, scope_t *scope) {
-}
 
 static void typecheck_assign(ast_assign_t *assign, ast_t *origin, scope_t *scope) {
     ASSERT(ASTP(assign)->type != TY_UNKNOWN, "right hand side of assignment doesn't have a type");
@@ -207,6 +219,8 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_assign_t *parent_as
     int       i;
     u32       ret_type;
 
+    ASTP(proc)->value.a = ASTP(proc);
+
     ASSERT(!(ASTP(proc)->flags & AST_FLAG_POLYMORPH), "TODO");
 
     new_scope = get_subscope_from_node(scope, ASTP(proc));
@@ -295,25 +309,134 @@ static void check_proc_param(ast_proc_param_t *param, scope_t *scope) {
 
 static void check_int(ast_int_t *integer, scope_t *scope) {
     ASTP(integer)->type = TY_S64;
+    ASTP(integer)->value.i = strtoll(get_string(integer->str_rep), NULL, 10);
+}
+
+static void check_string(ast_string_t *string, scope_t *scope) {
+    const char *contents;
+    u32         len;
+    char       *buff;
+    u32         new_len;
+    u32         i;
+    char        c;
+
+    contents = get_string(string->str_rep);
+    len      = strlen(contents);
+    buff     = alloca(len);
+    new_len  = 0;
+
+    ASSERT(contents[0] == '"', "string doesn't start with quote");
+
+    i = 1;
+    for (; i < len; i += 1) {
+        c = contents[i];
+
+        if (c == '"') { break; }
+        if (c == '\\') {
+            i += 1;
+            if (i < len) {
+                c = contents[i];
+                switch (c) {
+                    case 'n':
+                        c = '\n';
+                        break;
+                    case 'r':
+                        c = '\r';
+                        break;
+                    case 't':
+                        c = '\t';
+                        break;
+                    case '"':
+                        c = '"';
+                        break;
+                    default:
+                        report_range_err(&ASTP(string)->loc, "unknown escape character '%c'", c);
+                        return;
+                }
+            }
+            goto add_char;
+        } else {
+add_char:;
+            buff[new_len] = c;
+        }
+        new_len += 1;
+    }
+
+    ASTP(string)->value.s = get_string_id_n(buff, new_len);
+    ASTP(string)->type    = get_ptr_type(TY_CHAR);
 }
 
 static void check_bool(ast_bool_t *b, scope_t *scope) {
     ASTP(b)->type = TY_BOOL;
 }
 
-static ast_assign_t * try_get_decl_and_path(ast_ident_t *ident, array_t *path) {
+static ast_t * try_get_decl_and_path(ast_ident_t *ident, array_t *path) {
     if (ident->resolved_node == NULL) { return NULL; }
 
-    ASSERT(ast_kind_is_assign(ident->resolved_node->kind),
-           "resolved_node is not an assignment");
+    ASSERT(   ast_kind_is_assign(ident->resolved_node->kind)
+           || ident->resolved_node->kind == AST_BUILTIN,
+           "resolved_node is not an assignment or a builtin");
 
     *path = get_declaration_path(ident);
 
     if (array_len(*path) == 0) {
-        return (ast_assign_t*)ident->resolved_node;
+        return ident->resolved_node;
     }
 
-    return (ast_assign_t*)*(ast_t**)array_last(*path);
+    return *(ast_t**)array_last(*path);
+}
+
+static void check_builtin_special_call(ast_bin_expr_t *expr, scope_t *scope) {
+    ast_ident_t    *left_ident;
+    ast_t          *builtin_origin;
+    array_t         path;
+    ast_builtin_t  *builtin;
+    ast_arg_list_t *arg_list;
+    arg_t          *arg_p;
+
+    ASSERT(expr->left->kind == AST_IDENT, "call to builtin must be through an identifier");
+
+    left_ident     = (ast_ident_t*)expr->left;
+    builtin_origin = try_get_decl_and_path(left_ident, &path);
+
+    ASSERT(builtin_origin != NULL,              "didn't get builtin_origin");
+    ASSERT(builtin_origin->kind == AST_BUILTIN, "builtin_origin is not an AST_BUILTIN");
+
+    builtin = (ast_builtin_t*)builtin_origin;
+
+    ASSERT(expr->right->kind == AST_ARG_LIST, "expr->right is not an AST_ARG_LIST in call");
+
+    arg_list = (ast_arg_list_t*)expr->right;
+
+    if (builtin->name == CAST_ID) {
+        if (array_len(arg_list->args) < 2) {
+            report_loc_err_no_exit(expr->right->loc.end,
+                                   "too few arguments in cast");
+            report_simple_info("expected 2, but got %d", array_len(arg_list->args));
+        }
+        if (array_len(arg_list->args) > 2) {
+            arg_p = array_item(arg_list->args, 2);
+            report_range_err_no_exit(&arg_p->expr->loc,
+                                     "too many arguments in cast");
+            report_simple_info("expected 2, but got %d", array_len(arg_list->args));
+        }
+
+        arg_p = array_item(arg_list->args, 0);
+        if (arg_p->expr->type != TY_TYPE) {
+            report_range_err_no_exit(&arg_p->expr->loc,
+                                     "first argument in cast must be the destination type");
+            report_simple_info("expected a type, but got %s",
+                               get_string(get_type_string_id(arg_p->expr->type)));
+        }
+
+        ASTP(expr)->type = arg_p->expr->value.t;
+
+        /* @todo -- check that they types can actually cast */
+    } else {
+        ASSERT(0, "unahandled builtin special");
+    }
+
+    array_free(path);
 }
 
 static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
@@ -328,12 +451,17 @@ static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
     u32             arg_type;
     u32             varg_ty;
     u32             last_ty;
-    ast_assign_t   *proc_assign;
+    ast_t          *proc_origin;
     array_t         path;
     ast_proc_t     *proc;
     ast_t          *parm_decl;
 
     proc_ty = expr->left->type;
+
+    if (proc_ty == TY_BUILTIN_SPECIAL) {
+        check_builtin_special_call(expr, scope);
+        return;
+    }
 
     if (type_kind(proc_ty) != TY_PROC) {
         report_range_err_no_exit(&ASTP(expr)->loc,
@@ -345,7 +473,7 @@ static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
     }
 
     left_ident  = NULL;
-    proc_assign = NULL;
+    proc_origin = NULL;
     proc        = NULL;
     if (expr->left->kind == AST_IDENT) {
         left_ident = (ast_ident_t*)expr->left;
@@ -378,14 +506,19 @@ too_few:
                 report_simple_info("indirect call with procedure type %s",
                                    get_string(get_type_string_id(proc_ty)));
             } else {
-                proc_assign = try_get_decl_and_path(left_ident, &path);
-                proc        = (ast_proc_t*)proc_assign->val;
+                proc_origin = try_get_decl_and_path(left_ident, &path);
 
-                if (left_ident->resolved_node == ASTP(proc_assign)) {
+                if (left_ident->resolved_node == proc_origin) {
                     report_simple_info_no_exit("expected %s %d, but got %d",
                                                varg_ty != TY_NONE ? "at least" : "", n_params, n_args);
-                    report_range_info_no_context(&ASTP(proc_assign)->loc,
-                                                 "'%s' defined here:", get_string(proc_assign->name));
+                    if (proc_origin->kind == AST_BUILTIN) {
+                        report_simple_info("'%s' is a compiler builtin",
+                                           get_string(((ast_builtin_t*)proc_origin)->name));
+                    } else {
+                        report_range_info_no_context(&proc_origin->loc,
+                                                     "'%s' defined here:",
+                                                     get_string(((ast_assign_t*)proc_origin)->name));
+                    }
                 } else {
                     report_simple_info_no_exit("expected %s %d, but got %d",
                                                varg_ty != TY_NONE ? "at least" : "", n_params, n_args);
@@ -403,13 +536,19 @@ too_few:
                 report_simple_info("indirect call with procedure type %s",
                                    get_string(get_type_string_id(proc_ty)));
             } else {
-                proc_assign = try_get_decl_and_path(left_ident, &path);
-                proc        = (ast_proc_t*)proc_assign->val;
+                proc_origin = try_get_decl_and_path(left_ident, &path);
 
-                if (left_ident->resolved_node == ASTP(proc_assign)) {
+                if (left_ident->resolved_node == proc_origin) {
                     report_simple_info_no_exit("expected %d, but got %d", n_params, n_args);
-                    report_range_info_no_context(&ASTP(proc_assign)->loc,
-                                                 "'%s' defined here:", get_string(proc_assign->name));
+
+                    if (proc_origin->kind == AST_BUILTIN) {
+                        report_simple_info("'%s' is a compiler builtin",
+                                           get_string(((ast_builtin_t*)proc_origin)->name));
+                    } else {
+                        report_range_info_no_context(&proc_origin->loc,
+                                                     "'%s' defined here:",
+                                                     get_string(((ast_assign_t*)proc_origin)->name));
+                    }
                 } else {
                     report_simple_info_no_exit("expected %d, but got %d", n_params, n_args);
                     report_declaration_path(path);
@@ -438,14 +577,23 @@ too_few:
                                          get_string(get_type_string_id(param_type)),
                                          get_string(get_type_string_id(arg_type)));
 
-                proc_assign = try_get_decl_and_path(left_ident, &path);
-                proc        = (ast_proc_t*)proc_assign->val;
-                parm_decl   = *(ast_t**)array_item(proc->params, i);
-                if (left_ident->resolved_node == ASTP(proc_assign)) {
-                    report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
+                proc_origin = try_get_decl_and_path(left_ident, &path);
+                if (proc_origin->kind == AST_BUILTIN) {
+                    if (left_ident->resolved_node == proc_origin) {
+                        report_simple_info("'%s' is a compiler builtin",
+                                            get_string(((ast_builtin_t*)proc_origin)->name));
+                    } else {
+                        report_declaration_path(path);
+                    }
                 } else {
-                    report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declaration here:");
-                    report_declaration_path(path);
+                    proc        = (ast_proc_t*)((ast_assign_t*)proc_origin)->val;
+                    parm_decl   = *(ast_t**)array_item(proc->params, i);
+                    if (left_ident->resolved_node == proc_origin) {
+                        report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
+                    } else {
+                        report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declaration here:");
+                        report_declaration_path(path);
+                    }
                 }
             }
 
@@ -457,9 +605,23 @@ too_few:
                 report_range_err(&arg_p->expr->loc, "named arguments are not allowed in indirect calls");
                 return;
             } else {
-                if (proc == NULL) {
-                    proc_assign = try_get_decl_and_path(left_ident, &path);
-                    proc        = (ast_proc_t*)proc_assign->val;
+                if (proc_origin == NULL) {
+                    proc_origin = try_get_decl_and_path(left_ident, &path);
+
+                    if (proc_origin->kind == AST_BUILTIN) {
+                        report_range_err_no_exit(&arg_p->expr->loc,
+                                                 "using argument name '%s' for a call to a compiler builtin, which does not have named parameters",
+                                                 get_string(arg_p->name));
+                        if (left_ident->resolved_node == proc_origin) {
+                            report_simple_info("'%s' is a compiler builtin",
+                                               get_string(((ast_builtin_t*)proc_origin)->name));
+                        } else {
+                            report_declaration_path(path);
+                        }
+                        return;
+                    }
+
+                    proc = (ast_proc_t*)((ast_assign_t*)proc_origin)->val;
                 }
 
                 parm_decl = *(ast_t**)array_item(proc->params, i);
@@ -468,7 +630,7 @@ too_few:
                                                 "argument name '%s' does not match parameter name '%s'",
                                                 get_string(arg_p->name),
                                                 get_string(((ast_proc_param_t*)parm_decl)->name));
-                    if (left_ident->resolved_node == ASTP(proc_assign)) {
+                    if (left_ident->resolved_node == proc_origin) {
                         report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
                     } else {
                         report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declaration here:");
@@ -495,12 +657,23 @@ too_few:
                     report_simple_info("indirect call with procedure type %s",
                                        get_string(get_type_string_id(proc_ty)));
                 } else {
-                    proc_assign = try_get_decl_and_path(left_ident, &path);
-                    proc        = (ast_proc_t*)proc_assign->val;
+                    proc_origin = try_get_decl_and_path(left_ident, &path);
+
+                    if (proc_origin->kind == AST_BUILTIN) {
+                        if (left_ident->resolved_node == proc_origin) {
+                            report_simple_info("'%s' is a compiler builtin",
+                                               get_string(((ast_builtin_t*)proc_origin)->name));
+                        } else {
+                            report_declaration_path(path);
+                        }
+                        return;
+                    }
+
+                    proc        = (ast_proc_t*)((ast_assign_t*)proc_origin)->val;
                     parm_decl   = *(ast_t**)array_last(proc->params);
-                    if (left_ident->resolved_node == ASTP(proc_assign)) {
+                    if (left_ident->resolved_node == proc_origin) {
                         report_range_info_no_context(&parm_decl->loc, "variadic parameter list declared here:");
-                    } else if (left_ident->resolved_node != ASTP(proc_assign)) {
+                    } else if (left_ident->resolved_node != proc_origin) {
                         report_range_info_no_context_no_exit(&parm_decl->loc, "variadic parameter list declared here:");
                         report_declaration_path(path);
                     }
@@ -508,23 +681,37 @@ too_few:
             }
 
             if (arg_p->name != STRING_ID_NULL) {
+                if (proc == NULL) {
+                    proc_origin = try_get_decl_and_path(left_ident, &path);
+
+                    if (proc_origin->kind == AST_BUILTIN) {
+                        report_range_err_no_exit(&arg_p->expr->loc,
+                                                    "using argument name '%s' for a call to a compiler builtin, which does not have named parameters",
+                                                    get_string(arg_p->name));
+                        if (left_ident->resolved_node == proc_origin) {
+                            report_simple_info("'%s' is a compiler builtin",
+                                            get_string(((ast_builtin_t*)proc_origin)->name));
+                        } else {
+                            report_declaration_path(path);
+                        }
+                        return;
+                    }
+
+                    proc = (ast_proc_t*)((ast_assign_t*)proc_origin)->val;
+                }
+
                 if (i == n_params) {
                     if (left_ident == NULL) {
                         report_range_err(&arg_p->expr->loc, "named arguments are not allowed in indirect calls");
                         return;
                     } else {
-                        if (proc == NULL) {
-                            proc_assign = try_get_decl_and_path(left_ident, &path);
-                            proc        = (ast_proc_t*)proc_assign->val;
-                        }
-
                         parm_decl = *(ast_t**)array_last(proc->params);
                         if (arg_p->name != ((ast_proc_param_t*)parm_decl)->name) {
                             report_range_err_no_exit(&arg_p->expr->loc,
                                                         "argument name '%s' does not match variadic parameter list name '%s'",
                                                         get_string(arg_p->name),
                                                         get_string(((ast_proc_param_t*)parm_decl)->name));
-                            if (left_ident->resolved_node == ASTP(proc_assign)) {
+                            if (left_ident->resolved_node == proc_origin) {
                                 report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
                             } else {
                                 report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declaration here:");
@@ -534,7 +721,7 @@ too_few:
                     }
                 } else {
                     report_range_err_no_exit(&arg_p->expr->loc, "only the first argument for a variadic parameter list may be named");
-                    if (left_ident->resolved_node == ASTP(proc_assign)) {
+                    if (left_ident->resolved_node == proc_origin) {
                         report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
                     } else {
                         report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declaration here:");
@@ -584,6 +771,7 @@ static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
     */
 
     ast_ident_t  *left_ident;
+    ast_t        *resolved_origin;
     ast_assign_t *resolved_assign;
     array_t       path;
     scope_t      *module_scope;
@@ -603,7 +791,12 @@ static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
 
     left_ident = (ast_ident_t*)expr->left;
 
-    resolved_assign = try_get_decl_and_path(left_ident, &path);
+    resolved_origin = try_get_decl_and_path(left_ident, &path);
+
+    ASSERT(ast_kind_is_assign(resolved_origin->kind),
+           "resolved_origin is not an assignment");
+
+    resolved_assign = (ast_assign_t*)resolved_origin;
 
     ASSERT(resolved_assign != NULL, "did not get resolved assign");
 
@@ -763,6 +956,27 @@ static void check_sub(ast_bin_expr_t *expr) {
     }
 }
 
+static void check_mul(ast_bin_expr_t *expr) {
+    u32 t1;
+    u32 t2;
+    u32 tk1;
+    u32 tk2;
+
+    t1  = expr->left->type;
+    t2  = expr->right->type;
+    tk1 = type_kind(t1);
+    tk2 = type_kind(t2);
+
+    if (tk1 != TY_GENERIC_INT || tk2 != TY_GENERIC_INT) {
+        binop_bad_type_error(expr);
+        return;
+    }
+
+    /* @todo check for width incompat */
+    /* @todo How to handle this case? Do we promote the type? */
+    ASTP(expr)->type = t1;
+}
+
 static void operand_not_typed_error(ast_t *expr, ast_t *operand) {
     int op;
 
@@ -834,6 +1048,9 @@ static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
         case OP_MINUS:
             check_sub(expr);
             break;
+        case OP_MULT:
+            check_mul(expr);
+            break;
 
         case OP_EQU:
         case OP_NEQ:
@@ -851,6 +1068,17 @@ static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
         case OP_MINUS_ASSIGN:
             check_sub(expr);
             ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
+            break;
+        case OP_ASSIGN:
+            if (expr->left->type != expr->right->type) {
+                report_range_err(&ASTP(expr)->loc,
+                                "left-hand-side operand has type %s, but you're trying to assign it a value of type %s",
+                                get_string(get_type_string_id(expr->left->type)),
+                                get_string(get_type_string_id(expr->right->type)));
+                return;
+            }
+            ASTP(expr)->type  = expr->left->type;
+            ASTP(expr)->value = expr->right->value;
             break;
 
         default:
@@ -915,6 +1143,28 @@ static void check_arg_list(ast_arg_list_t *arg_list, scope_t *scope) {
 
     array_traverse(arg_list->args, arg) {
         check_node(arg->expr, scope, NULL);
+    }
+}
+
+static void check_if(ast_if_t *_if, scope_t *scope) {
+    scope_t *new_scope;
+
+    ASTP(_if)->type = TY_NOT_TYPED;
+
+    new_scope = get_subscope_from_node(scope, ASTP(_if));
+    ASSERT(new_scope != NULL, "didn't get scope");
+
+    check_node(_if->expr, new_scope, NULL);
+
+    if (_if->expr->type != TY_BOOL) {
+        report_range_err(&_if->expr->loc, "'if' condition must have type bool");
+        return;
+    }
+
+    check_node(_if->then_block, new_scope, NULL);
+
+    if (_if->els != NULL) {
+        check_node(_if->els, new_scope, NULL);
     }
 }
 
@@ -995,7 +1245,7 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
             check_int((ast_int_t*)node, scope);
             break;
         case AST_STRING:
-            node->type = get_ptr_type(TY_CHAR);
+            check_string((ast_string_t*)node, scope);
             break;
 
         case AST_IDENT:
@@ -1006,12 +1256,15 @@ void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
             check_arg_list((ast_arg_list_t*)node, scope);
             break;
 
+        case AST_IF:
+            check_if((ast_if_t*)node, scope);
+            break;
+
         case AST_LOOP:
             check_loop((ast_loop_t*)node, scope);
             break;
 
         case AST_BUILTIN:
-            type_builtin((ast_builtin_t*)node, scope);
             break;
 
         default:;

@@ -5,17 +5,52 @@
 #include "type.h"
 
 static void insert_builtin_type(const char *name, u32 type_value) {
+    string_id      name_id;
     ast_builtin_t *b;
 
+    name_id          = get_string_id(name);
     b                = mem_alloc(sizeof(*b));
     ASTP(b)->kind    = AST_BUILTIN;
     ASTP(b)->type    = TY_TYPE;
     ASTP(b)->value.t = type_value;
+    b->name          = name_id;
 
-    add_symbol_if_new(global_scope, get_string_id(name), ASTP(b));
+    add_symbol_if_new(global_scope, name_id, ASTP(b));
 }
 
+static void _insert_builtin_proc_like(const char *name, u32 ret_type_or_special, u32 n_params, u32 *param_types) {
+    string_id      name_id;
+    ast_builtin_t *b;
+    u32            proc_type;
+
+    name_id       = get_string_id(name);
+    b             = mem_alloc(sizeof(*b));
+    ASTP(b)->kind = AST_BUILTIN;
+    b->name       = name_id;
+
+    if (ret_type_or_special == TY_BUILTIN_SPECIAL) {
+        proc_type = TY_BUILTIN_SPECIAL;
+    } else {
+        proc_type = get_proc_type(n_params, param_types, ret_type_or_special);
+    }
+
+    ASTP(b)->type    = proc_type;
+    ASTP(b)->value.a = ASTP(b);
+
+    add_symbol_if_new(global_scope, name_id, ASTP(b));
+}
+
+#define INSERT_BUILTIN_PROC_LIKE(_name, _ret_type, ...)          \
+do {                                                             \
+    u32 _param_types[] = { __VA_ARGS__ };                        \
+    _insert_builtin_proc_like((_name),                           \
+                             (_ret_type),                        \
+                             sizeof(_param_types) / sizeof(u32), \
+                             _param_types);                      \
+} while (0)
+
 void init_scopes(void) {
+
     global_scope = create_named_scope(NULL, AST_INVALID, NULL, get_string_id("<global scope>"));
 
     insert_builtin_type("bool", TY_BOOL);
@@ -28,6 +63,13 @@ void init_scopes(void) {
     insert_builtin_type("s16",  TY_S16);
     insert_builtin_type("s32",  TY_S32);
     insert_builtin_type("s64",  TY_S64);
+
+
+    INSERT_BUILTIN_PROC_LIKE("cast", TY_BUILTIN_SPECIAL); /* This gets custom typechecking in ast.c */
+    INSERT_BUILTIN_PROC_LIKE("__builtin_prints", TY_NOT_TYPED, get_ptr_type(TY_CHAR));
+    INSERT_BUILTIN_PROC_LIKE("__builtin_printp", TY_NOT_TYPED, get_ptr_type(TY_U8));
+    INSERT_BUILTIN_PROC_LIKE("__builtin_printi", TY_NOT_TYPED, TY_S64);
+    INSERT_BUILTIN_PROC_LIKE("__builtin_stack_alloc", get_ptr_type(TY_U8), TY_U64);
 }
 
 scope_t *create_scope(scope_t *parent, int kind, ast_t *node) {

@@ -8,6 +8,7 @@
 #include <stdarg.h>
 #include <math.h>
 #include <errno.h>
+#include <ctype.h>
 
 #include <sys/stat.h>
 #include <sys/mman.h>

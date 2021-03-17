@@ -9,6 +9,8 @@ typedef struct {
     int         verbose;
     int         dump_symbols;
     int         n_threads;
+    int         interp;
+    array_t     interp_args;
     const char *output_name;
 } options_t;
 

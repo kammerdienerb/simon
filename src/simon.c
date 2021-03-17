@@ -11,6 +11,7 @@
 #include "memory.h"
 #include "scope.h"
 #include "type.h"
+#include "interp.h"
 
 void do_sanity_checks(void);
 int  do_options(int argc, char **argv);
@@ -18,6 +19,8 @@ void do_init(void);
 void do_parse(void);
 void do_resolve_symbols(void);
 void do_check(void);
+void do_interp(void);
+void do_backend(void);
 
 int main(int argc, char **argv) {
     u64 start_us;
@@ -28,6 +31,11 @@ int main(int argc, char **argv) {
 
     if (do_options(argc, argv)) { return 1; }
     if (options.help)           { return 0; }
+
+    if (options.interp && options.output_name != NULL) {
+        report_simple_err("--output (-o) can't be specified with --interp");
+        return 1;
+    }
 
     do_init();
 
@@ -42,6 +50,12 @@ int main(int argc, char **argv) {
 
     if (options.dump_symbols) {
         show_scope(global_scope);
+    }
+
+    if (options.interp) {
+        do_interp();
+    } else {
+        do_backend();
     }
 
     verb_message("total time: %lu us\n", measure_time_now_us() - start_us);
@@ -155,4 +169,20 @@ void do_check(void) {
     }
 
     verb_message("type-checking and semantic analysis took %lu us\n", measure_time_now_us() - start_us);
+}
+
+void do_interp(void) {
+    u64 start_us;
+
+    verb_message("starting program interpretation\n");
+
+    start_us = measure_time_now_us();
+
+    interp();
+
+    verb_message("interpretation took %lu us\n", measure_time_now_us() - start_us);
+}
+
+void do_backend(void) {
+    ASSERT(0, "unimplemented");
 }

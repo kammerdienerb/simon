@@ -60,6 +60,7 @@ static u32 get_or_insert_type_list(type_t t) {
 
             next:;
         }
+        id += 1;
     }
 
     id = insert_new_type(t);

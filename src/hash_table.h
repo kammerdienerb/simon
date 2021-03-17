@@ -362,7 +362,7 @@ static uint64_t ht_prime_sizes[] = {
                                                                                              \
         uint64_t data_size                                                                   \
             = ht_prime_sizes[DEFAULT_START_SIZE_IDX] * sizeof(hash_table_slot(K_T, V_T));    \
-        hash_table_slot(K_T, V_T) *the_data = calloc(data_size, 1);                          \
+        hash_table_slot(K_T, V_T) *the_data = tmp_mem_calloc(data_size, 1);                  \
                                                                                              \
         struct _hash_table(K_T, V_T)                                                         \
             init = {._size_idx = DEFAULT_START_SIZE_IDX,                                     \

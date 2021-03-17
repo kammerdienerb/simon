@@ -7,6 +7,11 @@
 
 
 string_id UNDERSCORE_ID;
+string_id __BUILTIN_PRINTS_ID;
+string_id __BUILTIN_PRINTP_ID;
+string_id __BUILTIN_PRINTI_ID;
+string_id __BUILTIN_STACK_ALLOC_ID;
+string_id CAST_ID;
 
 static char *cstr_dup(const char *str) {
     u64   len;
@@ -88,7 +93,12 @@ void init_strings(void) {
         array_push(kwd_ids, kwd_id);
     }
 
-    UNDERSCORE_ID = get_string_id("_");
+    UNDERSCORE_ID            = get_string_id("_");
+    __BUILTIN_PRINTS_ID      = get_string_id("__builtin_prints");
+    __BUILTIN_PRINTP_ID      = get_string_id("__builtin_printp");
+    __BUILTIN_PRINTI_ID      = get_string_id("__builtin_printi");
+    __BUILTIN_STACK_ALLOC_ID = get_string_id("__builtin_stack_alloc");
+    CAST_ID                  = get_string_id("cast");
 }
 
 string_id get_string_id(const char *string) {
@@ -221,4 +231,95 @@ void print_all_strings(void) {
         printf("%s\n", tree_it_key(it));
     }
 #endif
+}
+
+
+array_t sh_split(char *s) {
+    array_t  r;
+    char    *copy,
+            *sub,
+            *sub_p;
+    char     c, prev;
+    int      len,
+             start,
+             end,
+             q,
+             sub_len,
+             i;
+
+    r     = array_make(char*);
+    copy  = strdup(s);
+    len   = strlen(copy);
+    start = 0;
+    end   = 0;
+    prev  = 0;
+
+    while (start < len && isspace(copy[start])) { start += 1; }
+
+    while (start < len) {
+        c   = copy[start];
+        q   = 0;
+        end = start;
+
+        if (c == '#' && prev != '\\') {
+            break;
+        } else if (c == '"') {
+            start += 1;
+            prev   = copy[end];
+            while (end + 1 < len
+            &&    (copy[end + 1] != '"' || prev == '\\')) {
+                end += 1;
+                prev = copy[end];
+            }
+            q = 1;
+        } else if (c == '\'') {
+            start += 1;
+            prev   = copy[end];
+            while (end + 1 < len
+            &&    (copy[end + 1] != '\'' || prev == '\\')) {
+                end += 1;
+                prev = copy[end];
+            }
+            q = 1;
+        } else {
+            while (end + 1 < len
+            &&     !isspace(copy[end + 1])) {
+                end += 1;
+            }
+        }
+
+        sub_len = end - start + 1;
+        if (q && sub_len == 0 && start == len) {
+            sub    = malloc(2);
+            sub[0] = copy[end];
+            sub[1] = 0;
+        } else {
+            sub   = malloc(sub_len + 1);
+            sub_p = sub;
+            for (i = 0; i < sub_len; i += 1) {
+                c = copy[start + i];
+                if (c == '\\'
+                &&  i < sub_len - 1
+                &&  (copy[start + i + 1] == '"'
+                || copy[start + i + 1] == '\''
+                || copy[start + i + 1] == '#')) {
+                    continue;
+                }
+                *sub_p = c;
+                sub_p += 1;
+            }
+            *sub_p = 0;
+        }
+
+        array_push(r, sub);
+
+        end  += q;
+        start = end + 1;
+
+        while (start < len && isspace(copy[start])) { start += 1; }
+    }
+
+    free(copy);
+
+    return r;
 }

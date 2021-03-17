@@ -64,21 +64,26 @@ X_AST
 #undef X
 };
 
-#define AST_FLAG_CHECKED   (1 << 0)
-#define AST_FLAG_POLYMORPH (1 << 1)
-#define AST_FLAG_VARARGS   (1 << 2)
-#define AST_FLAG_ORIGIN    (1 << 3)
+#define AST_FLAG_CHECKED              (1 << 0)
+#define AST_FLAG_POLYMORPH            (1 << 1)
+#define AST_FLAG_VARARGS              (1 << 2)
+#define AST_FLAG_ORIGIN               (1 << 3)
+
+struct ast;
 
 typedef union {
-    u64        u;
-    i64        i;
-    double     f;
-    string_id  s;
-    void      *v;
-    u32        t;
+    i32         b;
+    char        c;
+    u64         u;
+    i64         i;
+    double      f;
+    string_id   s;
+    void       *v;
+    u32         t;
+    struct ast *a;
 } value_t;
 
-typedef struct {
+typedef struct ast {
     src_range_t loc;   /*        48 bytes                  */
     u32         type;  /*        +4 bytes                  */
     u16         kind;  /*        +2 bytes                  */
