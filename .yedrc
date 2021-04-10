@@ -1,7 +1,7 @@
 set builder-build-command           './build.sh'
 vimish-bind normal ctrl-y           'builder-start'
-vimish-bind normal ctrl-t           multi       \
-    "shell-run build/bin/simon --interp foo.si" \
+vimish-bind normal ctrl-t           multi          \
+    "shell-run build/bin/simon foo.si"             \
     "special-buffer-prepare-unfocus *shell-output"
 set use-ctags                       'yes'
 set ctags-enable-extra-highlighting 'yes'
