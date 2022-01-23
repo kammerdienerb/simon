@@ -6,6 +6,7 @@
 #include "src_range.h"
 
 void init_ui(void);
+void set_output_is_tty(void);
 void verb_message(const char *fmt, ...);
 void _report_simple_err(int should_exit, const char *fmt, ...);
 void _report_simple_info(int should_exit, const char *fmt, ...);
@@ -17,7 +18,7 @@ void _report_loc_err_no_context(int should_exit, src_point_t pt, const char *fmt
 void _report_loc_info_no_context(int should_exit, src_point_t pt, const char *fmt, ...);
 void _report_range_err_no_context(int should_exit, src_range_t *range, const char *fmt, ...);
 void _report_range_info_no_context(int should_exit, src_range_t *range, const char *fmt, ...);
-void report_file_err(file_t *file, int err);
+void report_file_err(const char *path, int err);
 
 #define report_simple_err(...)                     (_report_simple_err(1, __VA_ARGS__))
 #define report_simple_info(...)                    (_report_simple_info(1, __VA_ARGS__))

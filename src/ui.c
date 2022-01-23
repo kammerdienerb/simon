@@ -31,7 +31,9 @@ do {                                  \
     }                                 \
 } while (0)
 
-void init_ui(void) {
+void init_ui(void) { }
+
+void set_output_is_tty(void) {
     output_is_tty = isatty(1);
 }
 
@@ -104,24 +106,24 @@ static int n_digits(u64 num) {
 }
 
 static void print_range(src_range_t *range, const char *all_color, const char *range_color, const char *loc_color, int n_context_lines) {
-    file_t *f;
-    int     n_nl;
-    char   *context_start;
-    char   *context_end;
-    char   *p;
-    char   *line_start;
-    int     underline;
-    int     line_nr;
-    int     line_nr_digits;
-    int     i;
+    ifile_t *f;
+    int      n_nl;
+    char    *context_start;
+    char    *context_end;
+    char    *p;
+    char    *line_start;
+    int      underline;
+    int      line_nr;
+    int      line_nr_digits;
+    int      i;
 
 
-    f = get_file(range->beg.path_id);
+    f = get_ifile(range->beg.path_id);
 
     n_nl          = 0;
     context_start = range->beg.buff_ptr;
     while (context_start > f->buff) {
-        if (*(context_start - 1) == '\n') {
+        if (*(context_start - 1) == '\n' && context_start) {
             n_nl += 1;
             if (n_nl == n_context_lines + 1) { break; }
         }
@@ -495,13 +497,10 @@ void _report_range_info_no_context(int should_exit, src_range_t *range, const ch
     UNLOCK_OUTPUT();
 }
 
-void report_file_err(file_t *file, int err) {
-    const char *path;
+void report_file_err(const char *path, int err) {
     const char *err_str;
 
     LOCK_OUTPUT();
-
-    path = get_string(file->path_id);
 
     switch (err) {
         case FILE_NO_ERR:  err_str = "no error???";               break;

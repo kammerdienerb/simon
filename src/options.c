@@ -19,6 +19,8 @@ void print_usage(void) {
 "    Run compilation with NUM threads.\n"
 "--output=NAME, -o NAME\n"
 "    Output to file NAME.\n"
+"    If not provided, the basename of the first input file\n"
+"    will be used with the appropriate extension.\n"
 "--help\n"
 "    Show this information.\n"
 "\n"
@@ -27,7 +29,11 @@ void print_usage(void) {
 }
 
 int parse_options(int argc, char **argv) {
-    int i;
+    int         i;
+    char        output_name_buff[4096];
+    const char *last_input;
+    int         last_input_len;
+    int         j;
 
     options.input_files  = array_make(char*);
     options.verbose      = 0;
@@ -72,6 +78,32 @@ int parse_options(int argc, char **argv) {
         report_simple_err_no_exit("invalid backend value '%s'", options.backend);
         report_simple_info("options are: c");
         return 1;
+    }
+
+    if (options.output_name == NULL) {
+        if (array_len(options.input_files) > 0) {
+            output_name_buff[0] = 0;
+
+            last_input     = *(char**)array_item(options.input_files, 0);
+            last_input_len = strlen(last_input);
+
+            for (j = last_input_len; j > 0 && last_input[j - 1] != '/'; j -= 1) {}
+
+            strcpy(output_name_buff, last_input + j);
+
+            for (j = strlen(output_name_buff); j >= 0; j -= 1) {
+                if (output_name_buff[j] == '.') {
+                    output_name_buff[j] = 0;
+                    break;
+                }
+            }
+
+            if (strcmp(options.backend, "c") == 0) {
+                strcat(output_name_buff, ".c");
+            }
+
+            options.output_name = strdup(output_name_buff);
+        }
     }
 
     return 0;

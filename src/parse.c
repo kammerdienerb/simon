@@ -13,7 +13,7 @@
 
 typedef struct {
     tls_t        *tls;
-    file_t       *file;
+    ifile_t      *file;
     char         *end;
     char         *cursor;
     src_point_t   cur_point;
@@ -23,7 +23,7 @@ typedef struct {
     array_t       top_level_nodes;
     scope_t      *global_scope;
     array_t       scope_stack;
-    ast_assign_t *program_entry;
+    ast_decl_t   *program_entry;
 } parse_context_t;
 
 
@@ -51,7 +51,7 @@ const char * op_str_table[] = {
 
 
 
-void multiple_entry_error(ast_assign_t *new, ast_assign_t *old) {
+void multiple_entry_error(ast_decl_t *new, ast_decl_t *old) {
     report_range_err_no_exit(&ASTP(new)->loc, "only one procedure can be delcared as 'program_entry'");
     report_range_info(&ASTP(old)->loc, "another 'program_entry' procedure defined here:");
 }
@@ -195,7 +195,7 @@ static int parse_identifier(parse_context_t *cxt, string_id *string_out) {
     return len;
 }
 
-static int parse_identifier_assign(parse_context_t *cxt) {
+static int parse_declaration_begin(parse_context_t *cxt) {
     int       has_alnum;
     int       len;
     char      c;
@@ -234,13 +234,13 @@ static int parse_identifier_assign(parse_context_t *cxt) {
         len += 1;
     }
 
-    if ((cxt->cursor + len) >= cxt->end || *(cxt->cursor + len) != '=') {
+    if ((cxt->cursor + len) >= cxt->end || *(cxt->cursor + len) != ':') {
         return 0;
     }
 
     len += 1;
 
-    if ((cxt->cursor + len) < cxt->end && (*(cxt->cursor + len) == '=')) {
+    if ((cxt->cursor + len) < cxt->end && (*(cxt->cursor + len) == ':')) {
         return 0;
     }
 
@@ -268,6 +268,8 @@ static int parse_literal(parse_context_t *cxt, const char *lit) {
         }
     }
 
+    if (*lit) { return 0; }
+
     return len;
 }
 
@@ -283,6 +285,8 @@ static int parse_word(parse_context_t *cxt, const char *word) {
             return 0;
         }
     }
+
+    if (*word) { return 0; }
 
     if (cxt->cursor + len < cxt->end) {
         if (IS_IDENT_CHAR(*(cxt->cursor + len))) {
@@ -423,8 +427,8 @@ static int parse_string_literal(parse_context_t *cxt, string_id *string_out) {
 #define OPTIONAL_IDENT(cxt, id_ptr) \
     OPTIONAL((cxt), parse_identifier((cxt), (id_ptr)))
 
-#define OPTIONAL_NO_EAT_IDENT_ASSIGN(cxt) \
-    OPTIONAL_NO_EAT((cxt), parse_identifier_assign((cxt)))
+#define OPTIONAL_NO_EAT_DECLARATION(cxt) \
+    OPTIONAL_NO_EAT((cxt), parse_declaration_begin((cxt)))
 
 #define EXPECT_CHAR(cxt, c, fmt, ...) \
     EXPECT((cxt), parse_char((cxt), (c)), (fmt), ##__VA_ARGS__)
@@ -667,9 +671,9 @@ static ast_t * parse_arg_list(parse_context_t *cxt) {
 
     while (!OPTIONAL_NO_EAT_CHAR(cxt, ')')) {
         arg.name = STRING_ID_NULL;
-        if (OPTIONAL_NO_EAT_IDENT_ASSIGN(cxt)) {
-            ASSERT(OPTIONAL_IDENT(cxt, &arg.name), "parse_identifier_assign must be wrong");
-            ASSERT(OPTIONAL_CHAR(cxt, '='), "parse_identifier_assign must be wrong");
+        if (OPTIONAL_NO_EAT_DECLARATION(cxt)) {
+            ASSERT(OPTIONAL_IDENT(cxt, &arg.name), "parse_declaration_begin must be wrong");
+            ASSERT(OPTIONAL_CHAR(cxt, ':'), "parse_declaration_begin must be wrong");
         }
 
         arg.expr = parse_expr(cxt);
@@ -721,12 +725,7 @@ static int lookahead_binary_op(parse_context_t *cxt) {
     ** (Obviously applies to other operators too.)
     */
 
-    if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_CALL))) {
-        /* Calls must be on the same line. */
-        if (line == cxt->cur_point.line) {
-            op = OP_CALL;
-        }
-    }
+    if      (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_CALL)))         { op = OP_CALL;         }
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_DOT)))          { op = OP_DOT;          }
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_SUBSCRIPT)))    { op = OP_SUBSCRIPT;    }
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_EQU)))          { op = OP_EQU;          }
@@ -895,11 +894,11 @@ static ast_t * parse_expr_more(parse_context_t *cxt, ast_t *left, int min_prec) 
         if (op == OP_CALL) {
             ASSERT(OPTIONAL_CHAR(cxt, '('), "eat");
             right = parse_arg_list(cxt);
-            EXPECT_CHAR(cxt, ')', "expected ')'");
 
             if (right == NULL) {
                 return NULL;
             } else {
+                EXPECT_CHAR(cxt, ')', "expected ')'");
                 split     = 1;
                 split_end = GET_END_POINT(cxt);
             }
@@ -988,17 +987,92 @@ static ast_t * parse_expr(parse_context_t *cxt) {
     return parse_expr_prec(cxt, 0);
 }
 
-static ast_t * parse_assign(parse_context_t *cxt);
+static ast_t * parse_declaration(parse_context_t *cxt);
 
 static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
-    ast_struct_t       *result;
-    ast_struct_field_t *field;
+    ast_struct_t              *result;
+    ast_param_t               *param;
+    ast_polymorph_type_name_t *poly_ty_name;
+    ast_t                     *existing;
+    ast_struct_field_t        *field;
 
     result                = AST_ALLOC(cxt, ast_struct_t);
     ASTP(result)->type    = TY_TYPE;
     ASTP(result)->kind    = AST_STRUCT;
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
+    result->params        = array_make(ast_t*);
     result->fields        = array_make(ast_t*);
+
+    SCOPE_PUSH_NAMED(cxt, AST_STRUCT, ASTP(result), name);
+
+    if (OPTIONAL_CHAR(cxt, '(')) {
+        while (!OPTIONAL_CHAR(cxt, ')')) {
+            param                = AST_ALLOC(cxt, ast_param_t);
+            ASTP(param)->kind    = AST_PARAM;
+            ASTP(param)->loc.beg = GET_BEG_POINT(cxt);
+            param->name          = STRING_ID_NULL;
+
+            if (OPTIONAL_CHAR(cxt, '%')) { ASTP(param)->flags |= AST_FLAG_POLYMORPH; }
+
+            EXPECT_IDENT(cxt, &param->name, "expected parameter name");
+
+            ASTP(param)->loc.end = GET_END_POINT(cxt);
+
+            if (!(ASTP(param)->flags & AST_FLAG_POLYMORPH)) {
+                report_range_err_no_exit(&ASTP(param)->loc, "struct parameters must be polymorphic");
+                report_simple_info("to fix, change '%s' to '%%%s'", get_string(param->name), get_string(param->name));
+            }
+
+            EXPECT_CHAR(cxt, ':', "expected ':'");
+
+            poly_ty_name = NULL;
+            if (OPTIONAL_CHAR(cxt, '%')) {
+                poly_ty_name                 = AST_ALLOC(cxt, ast_polymorph_type_name_t);
+                ASTP(poly_ty_name)->kind     = AST_POLYMORPH_TYPE_NAME;
+                ASTP(poly_ty_name)->loc.beg  = GET_BEG_POINT(cxt);
+                ASTP(poly_ty_name)->flags   |= AST_FLAG_POLYMORPH;
+                ASTP(result)->flags         |= AST_FLAG_POLYMORPH;
+
+                EXPECT_IDENT(cxt, &poly_ty_name->name,
+                                "expected identifier as polymorph type name for parameter '%s'",
+                                get_string(param->name));
+
+                ASTP(poly_ty_name)->loc.end = GET_END_POINT(cxt);
+
+                param->type_expr_or_polymorph_type_name = ASTP(poly_ty_name);
+            } else {
+                param->type_expr_or_polymorph_type_name = parse_expr_prec(cxt, ASSIGNMENT_PREC + 1);
+                if (param->type_expr_or_polymorph_type_name == NULL) {
+                    report_loc_err(GET_BEG_POINT(cxt),
+                                "expected valid type expression for parameter '%s'",
+                                get_string(param->name));
+                    return NULL;
+                }
+            }
+
+            if ((existing = find_in_scope(SCOPE(cxt), param->name)) != NULL) {
+                report_range_err_no_exit(&ASTP(param)->loc, "struct '%s' already has a parameter named '%s'", get_string(name), get_string(param->name));
+                report_range_info(&existing->loc, "first declared here:");
+                return NULL;
+            }
+            INSTALL_IF_NEW(cxt, param->name, ASTP(param));
+            if (poly_ty_name != NULL) {
+                if ((existing = find_in_scope(SCOPE(cxt), poly_ty_name->name)) != NULL) {
+                    report_range_err_no_exit(&ASTP(param)->loc, "struct '%s' already has a parameter named '%s'", get_string(name), get_string(poly_ty_name->name));
+                    report_range_info(&existing->loc, "first declared here:");
+                    return NULL;
+                }
+                INSTALL_IF_NEW(cxt, poly_ty_name->name, ASTP(poly_ty_name));
+            }
+
+            array_push(result->params, param);
+
+            if (!OPTIONAL_CHAR(cxt, ',')) {
+                EXPECT_CHAR(cxt, ')', "expected ')' to close the parameter list for struct '%s' or ',' to add more", get_string(name));
+                break;
+            }
+        }
+    }
 
     EXPECT_CHAR(cxt, '{', "expected '{' to open struct '%s'", get_string(name));
 
@@ -1008,10 +1082,19 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
         ASTP(field)->loc.beg = GET_BEG_POINT(cxt);
         field->name          = STRING_ID_NULL;
 
-        if (OPTIONAL_CHAR(cxt, '%')) { ASTP(field)->flags |= AST_FLAG_POLYMORPH; }
         EXPECT_IDENT(cxt, &field->name, "expected field name in struct '%s'", get_string(name));
 
+        EXPECT_CHAR(cxt, ':', "expected ':'");
+
         ASTP(field)->loc.end = GET_END_POINT(cxt);
+
+        field->type_expr = parse_expr_prec(cxt, ASSIGNMENT_PREC + 1);
+        if (field->type_expr == NULL) {
+            report_loc_err(GET_BEG_POINT(cxt),
+                        "expected valid type expression for field '%s' of struct '%s'",
+                        get_string(field->name), get_string(name));
+            return NULL;
+        }
 
         array_push(result->fields, field);
 
@@ -1020,6 +1103,8 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
             break;
         }
     }
+
+    SCOPE_POP(cxt);
 
     ASTP(result)->loc.end = GET_END_POINT(cxt);
 
@@ -1041,16 +1126,13 @@ static ast_t * parse_module_body(parse_context_t *cxt, string_id name) {
     SCOPE_PUSH_NAMED(cxt, AST_MODULE, ASTP(result), name);
 
     while (!OPTIONAL_CHAR(cxt, '}')) {
-        child = parse_assign(cxt);
+        child = parse_declaration(cxt);
         if (child == NULL) {
             child = parse_static_directive(cxt);
             if (child == NULL) {
                 report_loc_err(GET_BEG_POINT(cxt), "expected valid assigment inside module '%s'", get_string(name));
                 return NULL;
             }
-        }
-        if (child->kind == AST_ASSIGN_EXPR) {
-            EXPECT_CHAR(cxt, ';', "expected ';'");
         }
         array_push(result->children, child);
     }
@@ -1156,7 +1238,7 @@ static ast_t * parse_loop(parse_context_t *cxt) {
 
     result->init = result->cond = result->post = NULL;
 
-    result->init = parse_assign(cxt);
+    result->init = parse_declaration(cxt);
     if (result->init == NULL) {
         if (OPTIONAL_CHAR(cxt, ';')) { goto cond; }
         report_loc_err(GET_BEG_POINT(cxt), "expected valid assignment expression for 'loop'");
@@ -1275,7 +1357,7 @@ static ast_t *parse_continue(parse_context_t *cxt) {
 static ast_t *parse_stmt(parse_context_t *cxt) {
     ast_t *result;
 
-    if ((result = parse_assign(cxt)))           { EXPECT_CHAR(cxt, ';', "expected ';'"); goto out; }
+    if ((result = parse_declaration(cxt)))      { /* Parses own semicolons. */           goto out; }
     if ((result = parse_if(cxt)))               {                                        goto out; }
     if ((result = parse_loop(cxt)))             {                                        goto out; }
     if ((result = parse_return(cxt)))           { EXPECT_CHAR(cxt, ';', "expected ';'"); goto out; }
@@ -1292,8 +1374,9 @@ out:;
 static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_parse_block) {
     ast_proc_t                *result;
     int                        seen_vargs;
-    ast_proc_param_t          *param;
+    ast_param_t               *param;
     ast_polymorph_type_name_t *poly_ty_name;
+    ast_t                     *existing;
 
     result                = AST_ALLOC(cxt, ast_proc_t);
     ASTP(result)->kind    = AST_PROC;
@@ -1312,8 +1395,8 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
                            "parameters following a variadic argument list are not allowed");
         }
 
-        param                = AST_ALLOC(cxt, ast_proc_param_t);
-        ASTP(param)->kind    = AST_PROC_PARAM;
+        param                = AST_ALLOC(cxt, ast_param_t);
+        ASTP(param)->kind    = AST_PARAM;
         ASTP(param)->loc.beg = GET_BEG_POINT(cxt);
         param->name          = STRING_ID_NULL;
 
@@ -1366,8 +1449,18 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
             }
         }
 
+        if ((existing = find_in_scope(SCOPE(cxt), param->name)) != NULL) {
+            report_range_err_no_exit(&ASTP(param)->loc, "procedure '%s' already has a parameter named '%s'", get_string(name), get_string(param->name));
+            report_range_info(&existing->loc, "first declared here:");
+            return NULL;
+        }
         INSTALL_IF_NEW(cxt, param->name, ASTP(param));
         if (poly_ty_name != NULL) {
+            if ((existing = find_in_scope(SCOPE(cxt), poly_ty_name->name)) != NULL) {
+                report_range_err_no_exit(&ASTP(param)->loc, "procedure '%s' already has a parameter named '%s'", get_string(name), get_string(poly_ty_name->name));
+                report_range_info(&existing->loc, "first declared here:");
+                return NULL;
+            }
             INSTALL_IF_NEW(cxt, poly_ty_name->name, ASTP(poly_ty_name));
         }
 
@@ -1414,16 +1507,16 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
     return ASTP(result);
 }
 
-static ast_t * parse_assign(parse_context_t *cxt) {
-    array_t       tags;
-    string_id     tag;
-    int           has_tags;
-    src_range_t   loc;
-    int           is_extern;
-    int           is_program_entry;
-    string_id     name;
-    int           kind;
-    ast_assign_t *result;
+static ast_t * parse_declaration(parse_context_t *cxt) {
+    array_t      tags;
+    string_id    tag;
+    int          has_tags;
+    src_range_t  loc;
+    int          is_extern;
+    int          is_program_entry;
+    string_id    name;
+    int          kind;
+    ast_decl_t  *result;
 
     tags             = array_make(string_id);
     has_tags         = 0;
@@ -1443,20 +1536,20 @@ static ast_t * parse_assign(parse_context_t *cxt) {
 
     loc.beg = GET_BEG_POINT(cxt);
 
-    if (!OPTIONAL_NO_EAT_IDENT_ASSIGN(cxt)) {
+    if (!OPTIONAL_NO_EAT_DECLARATION(cxt)) {
         if (has_tags) {
             EXPECT_IDENT(cxt, &name, "expected identifier after an assignment tag");
-            EXPECT_CHAR(cxt, '=', "expected '='");
+            EXPECT_CHAR(cxt, ':', "expected ':'");
 
             ASSERT(0, "should never get here");
         }
         return NULL;
     }
 
-    ASSERT(OPTIONAL_IDENT(cxt, &name), "parse_identifier_assign must be wrong");
-    ASSERT(OPTIONAL_CHAR(cxt, '='), "parse_identifier_assign must be wrong");
+    ASSERT(OPTIONAL_IDENT(cxt, &name), "parse_declaration_begin must be wrong");
+    ASSERT(OPTIONAL_CHAR(cxt, ':'), "parse_declaration_begin must be wrong");
 
-    result = AST_ALLOC(cxt, ast_assign_t);
+    result = AST_ALLOC(cxt, ast_decl_t);
 
     result->scope = SCOPE(cxt);
     if (result->scope == cxt->global_scope) {
@@ -1467,33 +1560,48 @@ static ast_t * parse_assign(parse_context_t *cxt) {
         result->tags = tags;
     }
 
-    if        (OPTIONAL_LIT(cxt, "proc"))       { kind = AST_ASSIGN_PROC;
-        loc.end            = GET_END_POINT(cxt);
-        result->val        = parse_proc_body(cxt, name, !is_extern);
-        ASTP(result)->type = TY_PROC;
-    } else if (OPTIONAL_LIT(cxt, "struct"))     { kind = AST_ASSIGN_STRUCT;
-        loc.end            = GET_END_POINT(cxt);
-        result->val        = parse_struct_body(cxt, name);
-        ASTP(result)->type = TY_TYPE;
-    } else if (OPTIONAL_LIT(cxt, "macro"))      { kind = AST_ASSIGN_MACRO;
-        loc.end            = GET_END_POINT(cxt);
-        ASTP(result)->type = TY_MACRO;
-    } else if (OPTIONAL_LIT(cxt, "module"))     { kind = AST_ASSIGN_MODULE;
-        loc.end            = GET_END_POINT(cxt);
-        result->val        = parse_module_body(cxt, name);
-        ASTP(result)->type = TY_MODULE;
-    } else if ((result->val = parse_expr(cxt))) { kind = AST_ASSIGN_EXPR;
-        loc.end = result->val->loc.end;
-    } else {
-        report_loc_err(GET_END_POINT(cxt),
-                       "expected 'module', 'proc', 'type', 'macro', or a valid expression to assign to '%s'",
-                       get_string(name));
-        return NULL;
+    if (!OPTIONAL_NO_EAT_CHAR(cxt, '=')) {
+        if ((result->type_expr = parse_expr_prec(cxt, LOWEST_TYPE_EXPR_PREC)) == NULL) {
+            report_loc_err(GET_END_POINT(cxt),
+                        "expected initialization or a valid type expression in declaration of '%s'",
+                        get_string(name));
+            return NULL;
+        }
     }
 
-    if (result->val == NULL) {
-        report_loc_err(GET_BEG_POINT(cxt), "missing valid value to assignment of '%s'", get_string(name));
-        return NULL;
+    if (OPTIONAL_CHAR(cxt, '=')) {
+        if        (OPTIONAL_LIT(cxt, "proc"))       { kind = AST_DECL_PROC;
+            loc.end            = GET_END_POINT(cxt);
+            result->val_expr   = parse_proc_body(cxt, name, !is_extern);
+            ASTP(result)->type = TY_PROC;
+            OPTIONAL_CHAR(cxt, ';');
+        } else if (OPTIONAL_LIT(cxt, "struct"))     { kind = AST_DECL_STRUCT;
+            loc.end            = GET_END_POINT(cxt);
+            result->val_expr   = parse_struct_body(cxt, name);
+            ASTP(result)->type = TY_TYPE;
+            OPTIONAL_CHAR(cxt, ';');
+        } else if (OPTIONAL_LIT(cxt, "macro"))      { kind = AST_DECL_MACRO;
+            loc.end            = GET_END_POINT(cxt);
+            ASTP(result)->type = TY_MACRO;
+            OPTIONAL_CHAR(cxt, ';');
+        } else if (OPTIONAL_LIT(cxt, "module"))     { kind = AST_DECL_MODULE;
+            loc.end            = GET_END_POINT(cxt);
+            result->val_expr   = parse_module_body(cxt, name);
+            ASTP(result)->type = TY_MODULE;
+            OPTIONAL_CHAR(cxt, ';');
+        } else if ((result->val_expr = parse_expr(cxt))) { kind = AST_DECL_VAR;
+            loc.end = result->val_expr->loc.end;
+            EXPECT_CHAR(cxt, ';', "expected ';'");
+        } else {
+            report_loc_err(GET_BEG_POINT(cxt),
+                        "expected 'module', 'proc', 'type', 'macro', or a valid expression in initialization of '%s'",
+                        get_string(name));
+            return NULL;
+        }
+    } else {
+        kind    = AST_DECL_VAR;
+        loc.end = GET_END_POINT(cxt);
+        EXPECT_CHAR(cxt, ';', "expected ';' or '=' followed by an initialization expression");
     }
 
     ASTP(result)->kind = kind;
@@ -1501,7 +1609,7 @@ static ast_t * parse_assign(parse_context_t *cxt) {
     result->name       = name;
 
     if (is_program_entry) {
-        if (kind != AST_ASSIGN_PROC) {
+        if (kind != AST_DECL_PROC) {
             report_range_err(&ASTP(result)->loc, "'%s' is tagged 'program_entry', but is not a procedure", get_string(name));
             return NULL;
         }
@@ -1539,27 +1647,32 @@ static void setup_cxt(parse_context_t *cxt) {
 }
 
 static void parse(parse_context_t *cxt) {
-    ast_t      *node;
-    ast_t     **node_it;
-    int         i;
-    string_id  *name_it;
-    scope_t   **subscope_it;
-    int         final_scope_kind;
+    ast_t        *node;
+    string_id     unexpected_identifier;
+    src_range_t   unexpected_loc;
+    ast_t       **node_it;
+    int           i;
+    string_id    *name_it;
+    scope_t     **subscope_it;
+    int           final_scope_kind;
 
     setup_cxt(cxt);
 
     clean(cxt, 0);
 
     while (cxt->cursor < cxt->end) {
-        node = parse_assign(cxt);
+        node = parse_declaration(cxt);
         if (node == NULL) {
             node = parse_static_directive(cxt);
             if (node == NULL) {
-                report_loc_err(GET_END_POINT(cxt), "unexpected token");
+                unexpected_loc.beg = GET_BEG_POINT(cxt);
+                if (OPTIONAL_IDENT(cxt, &unexpected_identifier)) {
+                    unexpected_loc.end = GET_END_POINT(cxt);
+                    report_range_err(&unexpected_loc, "unexpected identifier '%s'", get_string(unexpected_identifier));
+                } else {
+                    report_loc_err(GET_END_POINT(cxt), "unexpected token '%c'", *cxt->cursor);
+                }
             }
-        }
-        if (node->kind == AST_ASSIGN_EXPR) {
-            EXPECT_CHAR(cxt, ';', "expected ';'");
         }
         clean(cxt, 0);
         array_push(cxt->top_level_nodes, node);
@@ -1623,7 +1736,7 @@ static void parse_file_thread(void *_path) {
 
     start_us = measure_time_now_us();
 
-    cxt.file = add_file_readonly(get_string_id(path));
+    cxt.file = add_ifile_readonly(get_string_id(path));
 
     parse(&cxt);
 
@@ -1640,7 +1753,7 @@ void parse_file(const char *path) {
 
     start_us = measure_time_now_us();
 
-    cxt.file = add_file_readonly(get_string_id(path));
+    cxt.file = add_ifile_readonly(get_string_id(path));
 
     parse(&cxt);
 

@@ -6,109 +6,16 @@
 #include "hash_table.h"
 #include "hash_utilities.h"
 
-use_hash_table(string_id, file_t);
+use_hash_table(string_id, ifile_t);
 
 
-static hash_table(string_id, file_t) file_table;
+static hash_table(string_id, ifile_t) ifile_table;
 
-void init_file_table(void) {
-    file_table = hash_table_make(string_id, file_t, str_id_hash);
+void init_ifile_table(void) {
+    ifile_table = hash_table_make(string_id, ifile_t, str_id_hash);
 }
 
-file_t * add_file_readonly(string_id path_id) {
-    file_t *f;
-    int     err;
-    file_t  new;
-
-    f = hash_table_get_val(file_table, path_id);
-
-    if (f != NULL) {
-        return f->free_buff
-                ? NULL
-                : f;
-    }
-
-    err = map_file_into_readonly_memory(get_string(path_id), &new);
-
-    if (err) { report_file_err(&new, err); }
-
-    hash_table_insert(file_table, path_id, new);
-
-    f = hash_table_get_val(file_table, path_id);
-
-    ASSERT(f != NULL, "didn't insert file");
-
-    return f;
-}
-
-file_t * add_file_rw(string_id path_id) {
-    file_t *f;
-    int     err;
-    file_t  new;
-
-    f = hash_table_get_val(file_table, path_id);
-
-    if (f != NULL) {
-        return f->free_buff
-                ? NULL
-                : f;
-    }
-
-    err = copy_file_into_memory(get_string(path_id), &new);
-
-    if (err) { report_file_err(&new, err); }
-
-    hash_table_insert(file_table, path_id, new);
-
-    f = hash_table_get_val(file_table, path_id);
-
-    ASSERT(f != NULL, "didn't insert file");
-
-    return f;
-}
-
-file_t * get_file(string_id path_id) {
-    return hash_table_get_val(file_table, path_id);
-}
-
-int checked_open_FILE(const char *path, const char *mode, FILE **f, u64 *file_size) {
-    struct stat fs;
-    int         fd;
-    int         status;
-
-    status = FILE_NO_ERR;
-    errno  = 0;
-    *f     = fopen(path, mode);
-    if (*f) {
-        fd = fileno(*f);
-        if (fstat(fd, &fs) != 0) {
-            errno  = 0;
-            status = FILE_ERR_NOF;
-            goto out;
-        } else if (S_ISDIR(fs.st_mode)) {
-            errno  = 0;
-            status = FILE_ERR_DIR;
-            goto out;
-        }
-
-        *file_size = fs.st_size;
-    }
-
-    if (errno) {
-        switch (errno) {
-            case ENOENT: status = FILE_ERR_NOF; break;
-            case EISDIR: status = FILE_ERR_DIR; break;
-            case EACCES: status = FILE_ERR_PER; break;
-            default:     status = FILE_ERR_UNK; break;
-        }
-        errno = 0;
-    }
-
-out:
-    return status;
-}
-
-int copy_file_into_memory(const char *path, file_t *file) {
+int copy_file_into_memory(const char *path, ifile_t *file) {
     int   status;
     FILE *f;
     int   fd;
@@ -163,7 +70,7 @@ out:
     return status;
 }
 
-int map_file_into_readonly_memory(const char *path, file_t *file) {
+int map_file_into_readonly_memory(const char *path, ifile_t *file) {
     int   status;
     FILE *f;
     int   fd;
@@ -192,6 +99,125 @@ int map_file_into_readonly_memory(const char *path, file_t *file) {
 
 out_fclose:
     fclose(f);
+
+out:
+    return status;
+}
+
+ifile_t * add_ifile_readonly(string_id path_id) {
+    ifile_t *f;
+    int     err;
+    ifile_t  new;
+
+    f = hash_table_get_val(ifile_table, path_id);
+
+    if (f != NULL) {
+        return f->free_buff
+                ? NULL
+                : f;
+    }
+
+    err = map_file_into_readonly_memory(get_string(path_id), &new);
+
+    if (err) { report_file_err(get_string(path_id), err); }
+
+    if (new.len >= 1 && *(new.end - 1) == '\n') { new.end -= 1; }
+
+    hash_table_insert(ifile_table, path_id, new);
+
+    f = hash_table_get_val(ifile_table, path_id);
+
+    ASSERT(f != NULL, "didn't insert file");
+
+    return f;
+}
+
+ifile_t * add_ifile_writeonly(string_id path_id) {
+    ifile_t *f;
+    int     err;
+    ifile_t  new;
+
+    f = hash_table_get_val(ifile_table, path_id);
+
+    if (f != NULL) { return NULL; }
+
+    err = map_file_into_readonly_memory(get_string(path_id), &new);
+
+    if (err) { report_file_err(get_string(path_id), err); }
+
+    hash_table_insert(ifile_table, path_id, new);
+
+    f = hash_table_get_val(ifile_table, path_id);
+
+    ASSERT(f != NULL, "didn't insert file");
+
+    return f;
+}
+
+ifile_t * add_ifile_rw(string_id path_id) {
+    ifile_t *f;
+    int     err;
+    ifile_t  new;
+
+    f = hash_table_get_val(ifile_table, path_id);
+
+    if (f != NULL) {
+        return f->free_buff
+                ? NULL
+                : f;
+    }
+
+    err = copy_file_into_memory(get_string(path_id), &new);
+
+    if (err) { report_file_err(get_string(path_id), err); }
+
+    hash_table_insert(ifile_table, path_id, new);
+
+    f = hash_table_get_val(ifile_table, path_id);
+
+    ASSERT(f != NULL, "didn't insert file");
+
+    return f;
+}
+
+ifile_t * get_ifile(string_id path_id) {
+    return hash_table_get_val(ifile_table, path_id);
+}
+
+int checked_open_FILE(const char *path, const char *mode, FILE **f, u64 *file_size) {
+    struct stat fs;
+    int         fd;
+    int         status;
+
+    status = FILE_NO_ERR;
+    errno  = 0;
+    *f     = fopen(path, mode);
+    if (*f) {
+        fd = fileno(*f);
+        if (fstat(fd, &fs) != 0) {
+            errno  = 0;
+            status = FILE_ERR_NOF;
+            goto out;
+        } else if (S_ISDIR(fs.st_mode)) {
+            errno  = 0;
+            status = FILE_ERR_DIR;
+            goto out;
+        }
+
+        if (file_size != NULL) {
+            *file_size = fs.st_size;
+        }
+    }
+
+    if (errno) {
+        switch (errno) {
+            case ENOENT: status = FILE_ERR_NOF; break;
+            case EISDIR: status = FILE_ERR_DIR; break;
+            case EACCES: status = FILE_ERR_PER; break;
+            default:     status = FILE_ERR_UNK; break;
+        }
+        errno = 0;
+    }
 
 out:
     return status;

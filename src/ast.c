@@ -5,19 +5,19 @@
 #include "parse.h"
 #include "array.h"
 
-int ast_kind_is_assign(int kind) {
+int ast_kind_is_decl(int kind) {
     return
 #define X(k) kind == (k) ||
-    X_AST_ASSIGNS
+    X_AST_DECLARATIONS
 #undef X
     0;
 }
 
 int ast_kind_can_be_symbol_origin(int kind) {
-    return    kind == AST_PROC_PARAM
+    return    kind == AST_PARAM
            || kind == AST_POLYMORPH_TYPE_NAME
            || kind == AST_BUILTIN
-           || ast_kind_is_assign(kind);
+           || ast_kind_is_decl(kind);
 }
 
 static const char *ast_kind_to_name[] = {
@@ -39,14 +39,16 @@ static void redecl_error(string_id name, ast_t *bad, ast_t *existing) {
     }
 }
 
+/* @tmp */
+__attribute__((used))
 static void undeclared_error(string_id name, ast_t *node) {
     report_range_err(&node->loc, "use of undeclared identifier '%s'", get_string(name));
 }
 
 static array_t get_declaration_path(ast_ident_t *ident) {
-    array_t    path;
-    ast_assign_t *assign;
-    ast_t        *assign_ast;
+    array_t     path;
+    ast_decl_t *decl;
+    ast_t      *decl_ast;
 
     path = array_make(ast_t*);
 
@@ -55,66 +57,66 @@ static array_t get_declaration_path(ast_ident_t *ident) {
             array_push(path, ident->resolved_node);
             break;
         } else {
-            ASSERT(ast_kind_is_assign(ident->resolved_node->kind),
-                   "resolved_node is not an assignment");
+            ASSERT(ast_kind_is_decl(ident->resolved_node->kind),
+                   "resolved_node is not a declaration");
         }
 
-        assign = (ast_assign_t*)ident->resolved_node;
+        decl = (ast_decl_t*)ident->resolved_node;
 
-        ASSERT(assign->val != NULL, "assign has no val");
+        ASSERT(decl->val_expr != NULL, "decl has no val");
 
-        assign_ast = ASTP(assign);
-        array_push(path, assign_ast);
+        decl_ast = ASTP(decl);
+        array_push(path, decl_ast);
 
-        if (ASTP(assign)->kind != AST_ASSIGN_EXPR
-        ||  assign->val->kind  != AST_IDENT) {
+        if (ASTP(decl)->kind != AST_DECL_VAR
+        ||  decl->val_expr->kind  != AST_IDENT) {
 
             break;
         }
 
-        ident = (ast_ident_t*)assign->val;
+        ident = (ast_ident_t*)decl->val_expr;
     }
 
     return path;
 }
 
 static void _report_declaration_path(int should_exit, array_t path) {
-    int            i;
-    ast_t        **it;
-    ast_assign_t  *assign;
+    int          i;
+    ast_t      **it;
+    ast_decl_t  *decl;
 
     i = 0;
     array_rtraverse(path, it) {
-        assign = (ast_assign_t*)*it;
+        decl = (ast_decl_t*)*it;
 
         if (i == 0) {
             if (i == array_len(path) - 1 && should_exit) {
                 if ((*it)->kind == AST_BUILTIN) {
-                    report_simple_info("'%s' originally assigned as a compiler builtin",
+                    report_simple_info("'%s' originally declared as a compiler builtin",
                                        get_string(((ast_builtin_t*)*it)->name));
                 } else {
-                    report_range_info_no_context(&ASTP(assign)->loc,
-                                                 "'%s' originally assigned here:",
-                                                 get_string(assign->name));
+                    report_range_info_no_context(&ASTP(decl)->loc,
+                                                 "'%s' originally declared here:",
+                                                 get_string(decl->name));
                 }
             } else {
                 if ((*it)->kind == AST_BUILTIN) {
-                    report_simple_info_no_exit("'%s' originally assigned as a compiler builtin",
+                    report_simple_info_no_exit("'%s' originally declared as a compiler builtin",
                                                get_string(((ast_builtin_t*)*it)->name));
                 } else {
-                    report_range_info_no_context_no_exit(&ASTP(assign)->loc,
-                                                         "'%s' originally assigned here:",
-                                                         get_string(assign->name));
+                    report_range_info_no_context_no_exit(&ASTP(decl)->loc,
+                                                         "'%s' originally declared here:",
+                                                         get_string(decl->name));
                 }
             }
         } else if (i == array_len(path) - 1 && should_exit) {
-            report_range_info_no_context(&ASTP(assign)->loc,
+            report_range_info_no_context(&ASTP(decl)->loc,
                                          "then to '%s' here:",
-                                         get_string(assign->name));
+                                         get_string(decl->name));
         } else {
             report_range_info_no_context_no_exit(&((*it)->loc),
                                                  "then to '%s' here:",
-                                                 get_string(assign->name));
+                                                 get_string(decl->name));
         }
         i += 1;
     }
@@ -124,99 +126,99 @@ static void _report_declaration_path(int should_exit, array_t path) {
 #define report_declaration_path_no_exit(_path) (_report_declaration_path(0, (_path)))
 
 
-static void typecheck_assign(ast_assign_t *assign, ast_t *origin, scope_t *scope) {
-    ASSERT(ASTP(assign)->type != TY_UNKNOWN, "right hand side of assignment doesn't have a type");
+/* static void typecheck_assign(ast_assign_t *assign, ast_t *origin, scope_t *scope) { */
+/*     ASSERT(ASTP(assign)->type != TY_UNKNOWN, "right hand side of assignment doesn't have a type"); */
+/*  */
+/*     if (origin->type == TY_UNKNOWN) { */
+/*         origin->type = ASTP(assign)->type; */
+/*     } else if (assign->val->type != origin->type) { */
+/*         report_range_err(&ASTP(assign)->loc, */
+/*                          "'%s' has type %s, but you're trying to assign it a value of type %s", */
+/*                          get_string(assign->name), */
+/*                          get_string(get_type_string_id(origin->type)), */
+/*                          get_string(get_type_string_id(assign->val->type))); */
+/*         return; */
+/*     } */
+/* } */
+/*  */
+/* static void check_assign(ast_assign_t *assign, scope_t *scope) { */
+/*     ast_t      *existing_node; */
+/*     const char *which; */
+/*  */
+/*     ASSERT(assign->val != NULL, "assignment has no value"); */
+/*  */
+/*     if (assign->name == UNDERSCORE_ID) { */
+/*         check_node(assign->val, scope, assign); */
+/*         ASTP(assign)->type = assign->val->type; */
+/*         return; */
+/*     } */
+/*  */
+/*     if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) { */
+/*         existing_node = search_up_scopes_stop_at_module(scope, assign->name); */
+/*         if (existing_node == NULL) { */
+/*             undeclared_error(assign->name, ASTP(assign)); */
+/*             return; */
+/*         } */
+/*         ASSERT(ast_kind_can_be_symbol_origin(existing_node->kind), "kind isn't allowed to be an origin"); */
+/*         ASSERT(ASTP(assign) != existing_node, "assign search found itself"); */
+/* #ifdef SIMON_DO_ASSERTIONS */
+/*         if (ast_kind_is_assign(existing_node->kind)) { */
+/*             ASSERT(existing_node->flags & AST_FLAG_ORIGIN, "existing node isn't an origin"); */
+/*         } */
+/* #endif */
+/*     } */
+/*  */
+/*     check_node(assign->val, scope, assign); */
+/*  */
+/*     if (assign->val->type == TY_NOT_TYPED) { */
+/*         report_range_err_no_exit(&assign->val->loc, */
+/*                                  "invalid expression in assignment of '%s'", */
+/*                                  get_string(assign->name)); */
+/*         report_simple_info("the expression does not have a type or value"); */
+/*         return; */
+/*     } */
+/*  */
+/*     ASTP(assign)->type  = assign->val->type; */
+/*     ASTP(assign)->value = assign->val->value; */
+/*  */
+/*     if (scope->in_proc) { */
+/*         if (assign->val->type == TY_PROC) { */
+/*             report_range_err(&ASTP(assign)->loc, "procedures may not be defined within another procedure"); */
+/*             return; */
+/*         } */
+/*  */
+/*         if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) { */
+/*             if (type_has_compile_time_only_values(existing_node->type)) { */
+/*                 switch (existing_node->type) { */
+/*                     case TY_MODULE: which = "module";    break; */
+/*                     case TY_MACRO:  which = "macro";     break; */
+/*                     case TY_TYPE:   which = "type";      break; */
+/*                     case TY_PROC:   which = "procedure"; break; */
+/*                     default: */
+/*                         which = "???"; */
+/*                         ASSERT(0, "unhandled type"); */
+/*                 } */
+/*                 report_range_err_no_exit(&ASTP(assign)->loc, */
+/*                                          "can't reassign to compile-time values ('%s' is a %s)", */
+/*                                          get_string(assign->name), which); */
+/*                 report_range_info(&existing_node->loc, "original definition is here:"); */
+/*                 return; */
+/*             } */
+/*  */
+/*             typecheck_assign(assign, existing_node, scope); */
+/*         } */
+/*     } else if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) { */
+/*         redecl_error(assign->name, ASTP(assign), existing_node); */
+/*         return; */
+/*     } */
+/* } */
 
-    if (origin->type == TY_UNKNOWN) {
-        origin->type = ASTP(assign)->type;
-    } else if (assign->val->type != origin->type) {
-        report_range_err(&ASTP(assign)->loc,
-                         "'%s' has type %s, but you're trying to assign it a value of type %s",
-                         get_string(assign->name),
-                         get_string(get_type_string_id(origin->type)),
-                         get_string(get_type_string_id(assign->val->type)));
-        return;
-    }
-}
-
-static void check_assign(ast_assign_t *assign, scope_t *scope) {
-    ast_t      *existing_node;
-    const char *which;
-
-    ASSERT(assign->val != NULL, "assignment has no value");
-
-    if (assign->name == UNDERSCORE_ID) {
-        check_node(assign->val, scope, assign);
-        ASTP(assign)->type = assign->val->type;
-        return;
-    }
-
-    if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) {
-        existing_node = search_up_scopes_stop_at_module(scope, assign->name);
-        if (existing_node == NULL) {
-            undeclared_error(assign->name, ASTP(assign));
-            return;
-        }
-        ASSERT(ast_kind_can_be_symbol_origin(existing_node->kind), "kind isn't allowed to be an origin");
-        ASSERT(ASTP(assign) != existing_node, "assign search found itself");
-#ifdef SIMON_DO_ASSERTIONS
-        if (ast_kind_is_assign(existing_node->kind)) {
-            ASSERT(existing_node->flags & AST_FLAG_ORIGIN, "existing node isn't an origin");
-        }
-#endif
-    }
-
-    check_node(assign->val, scope, assign);
-
-    if (assign->val->type == TY_NOT_TYPED) {
-        report_range_err_no_exit(&assign->val->loc,
-                                 "invalid expression in assignment of '%s'",
-                                 get_string(assign->name));
-        report_simple_info("the expression does not have a type or value");
-        return;
-    }
-
-    ASTP(assign)->type  = assign->val->type;
-    ASTP(assign)->value = assign->val->value;
-
-    if (scope->in_proc) {
-        if (assign->val->type == TY_PROC) {
-            report_range_err(&ASTP(assign)->loc, "procedures may not be defined within another procedure");
-            return;
-        }
-
-        if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) {
-            if (type_has_compile_time_only_values(existing_node->type)) {
-                switch (existing_node->type) {
-                    case TY_MODULE: which = "module";    break;
-                    case TY_MACRO:  which = "macro";     break;
-                    case TY_TYPE:   which = "type";      break;
-                    case TY_PROC:   which = "procedure"; break;
-                    default:
-                        which = "???";
-                        ASSERT(0, "unhandled type");
-                }
-                report_range_err_no_exit(&ASTP(assign)->loc,
-                                         "can't reassign to compile-time values ('%s' is a %s)",
-                                         get_string(assign->name), which);
-                report_range_info(&existing_node->loc, "original definition is here:");
-                return;
-            }
-
-            typecheck_assign(assign, existing_node, scope);
-        }
-    } else if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) {
-        redecl_error(assign->name, ASTP(assign), existing_node);
-        return;
-    }
-}
-
-static void check_proc(ast_proc_t *proc, scope_t *scope, ast_assign_t *parent_assign) {
-    ast_t   **it;
+static void check_proc(ast_proc_t *proc, scope_t *scope, ast_decl_t *parent_decl) {
     scope_t  *new_scope;
     u32       n_params;
     u32      *param_types;
     int       i;
+    ast_t   **it;
     u32       ret_type;
 
     ASTP(proc)->value.a = ASTP(proc);
@@ -240,7 +242,7 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_assign_t *parent_as
         if (proc->ret_type_expr->type != TY_TYPE) {
             report_range_err_no_exit(&proc->ret_type_expr->loc,
                                 "expression must be a type since it declares the return type of procedure '%s'",
-                                get_string(parent_assign->name));
+                                get_string(parent_decl->name));
             report_simple_info("got %s instead", get_string(get_type_string_id(proc->ret_type_expr->type)));
             return;
         }
@@ -254,22 +256,22 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_assign_t *parent_as
 
 
     /* @bad?, @refactor
-    ** We have to bubble this type up to the assignment so that identifier lookups
+    ** We have to bubble this type up to the declaration so that identifier lookups
     ** that occur before we return from this routine can get the right type.
     ** I'm not sure if this should just be done everywhere like this (shouldn't
     ** be _that_ many spots), or if something a little smarter should be done.
     */
-    ASTP(parent_assign)->type  = ASTP(proc)->type;
-    ASTP(parent_assign)->value = ASTP(proc)->value;
+    ASTP(parent_decl)->type  = ASTP(proc)->type;
+    ASTP(parent_decl)->value = ASTP(proc)->value;
 
     check_node(proc->block, new_scope, NULL);
 }
 
-static void check_proc_param(ast_proc_param_t *param, scope_t *scope) {
+static void check_param(ast_param_t *param, scope_t *scope) {
     ast_t                     *existing_node;
     ast_polymorph_type_name_t *poly;
 
-    ASSERT(scope->parent != NULL, "proc param in global scope??");
+    ASSERT(scope->parent != NULL, "param in global scope??");
 
     existing_node = search_up_scopes_stop_at_module(scope->parent, param->name);
 
@@ -373,7 +375,7 @@ static void check_bool(ast_bool_t *b, scope_t *scope) {
 static ast_t * try_get_decl_and_path(ast_ident_t *ident, array_t *path) {
     if (ident->resolved_node == NULL) { return NULL; }
 
-    ASSERT(   ast_kind_is_assign(ident->resolved_node->kind)
+    ASSERT(   ast_kind_is_decl(ident->resolved_node->kind)
            || ident->resolved_node->kind == AST_BUILTIN,
            "resolved_node is not an assignment or a builtin");
 
@@ -429,7 +431,8 @@ static void check_builtin_special_call(ast_bin_expr_t *expr, scope_t *scope) {
                                get_string(get_type_string_id(arg_p->expr->type)));
         }
 
-        ASTP(expr)->type = arg_p->expr->value.t;
+        ASTP(expr)->flags |= AST_FLAG_CALL_IS_CAST;
+        ASTP(expr)->type   = arg_p->expr->value.t;
 
         /* @todo -- check that they types can actually cast */
     } else {
@@ -517,7 +520,7 @@ too_few:
                     } else {
                         report_range_info_no_context(&proc_origin->loc,
                                                      "'%s' defined here:",
-                                                     get_string(((ast_assign_t*)proc_origin)->name));
+                                                     get_string(((ast_decl_t*)proc_origin)->name));
                     }
                 } else {
                     report_simple_info_no_exit("expected %s %d, but got %d",
@@ -547,7 +550,7 @@ too_few:
                     } else {
                         report_range_info_no_context(&proc_origin->loc,
                                                      "'%s' defined here:",
-                                                     get_string(((ast_assign_t*)proc_origin)->name));
+                                                     get_string(((ast_decl_t*)proc_origin)->name));
                     }
                 } else {
                     report_simple_info_no_exit("expected %d, but got %d", n_params, n_args);
@@ -586,7 +589,7 @@ too_few:
                         report_declaration_path(path);
                     }
                 } else {
-                    proc        = (ast_proc_t*)((ast_assign_t*)proc_origin)->val;
+                    proc        = (ast_proc_t*)((ast_decl_t*)proc_origin)->val_expr;
                     parm_decl   = *(ast_t**)array_item(proc->params, i);
                     if (left_ident->resolved_node == proc_origin) {
                         report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
@@ -621,15 +624,15 @@ too_few:
                         return;
                     }
 
-                    proc = (ast_proc_t*)((ast_assign_t*)proc_origin)->val;
+                    proc = (ast_proc_t*)((ast_decl_t*)proc_origin)->val_expr;
                 }
 
                 parm_decl = *(ast_t**)array_item(proc->params, i);
-                if (arg_p->name != ((ast_proc_param_t*)parm_decl)->name) {
+                if (arg_p->name != ((ast_param_t*)parm_decl)->name) {
                     report_range_err_no_exit(&arg_p->expr->loc,
                                                 "argument name '%s' does not match parameter name '%s'",
                                                 get_string(arg_p->name),
-                                                get_string(((ast_proc_param_t*)parm_decl)->name));
+                                                get_string(((ast_param_t*)parm_decl)->name));
                     if (left_ident->resolved_node == proc_origin) {
                         report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
                     } else {
@@ -669,7 +672,7 @@ too_few:
                         return;
                     }
 
-                    proc        = (ast_proc_t*)((ast_assign_t*)proc_origin)->val;
+                    proc        = (ast_proc_t*)((ast_decl_t*)proc_origin)->val_expr;
                     parm_decl   = *(ast_t**)array_last(proc->params);
                     if (left_ident->resolved_node == proc_origin) {
                         report_range_info_no_context(&parm_decl->loc, "variadic parameter list declared here:");
@@ -697,7 +700,7 @@ too_few:
                         return;
                     }
 
-                    proc = (ast_proc_t*)((ast_assign_t*)proc_origin)->val;
+                    proc = (ast_proc_t*)((ast_decl_t*)proc_origin)->val_expr;
                 }
 
                 if (i == n_params) {
@@ -706,11 +709,11 @@ too_few:
                         return;
                     } else {
                         parm_decl = *(ast_t**)array_last(proc->params);
-                        if (arg_p->name != ((ast_proc_param_t*)parm_decl)->name) {
+                        if (arg_p->name != ((ast_param_t*)parm_decl)->name) {
                             report_range_err_no_exit(&arg_p->expr->loc,
                                                         "argument name '%s' does not match variadic parameter list name '%s'",
                                                         get_string(arg_p->name),
-                                                        get_string(((ast_proc_param_t*)parm_decl)->name));
+                                                        get_string(((ast_param_t*)parm_decl)->name));
                             if (left_ident->resolved_node == proc_origin) {
                                 report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
                             } else {
@@ -771,8 +774,8 @@ static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
     */
 
     ast_ident_t  *left_ident;
-    ast_t        *resolved_origin;
-    ast_assign_t *resolved_assign;
+    ast_t        *resolved_node;
+    ast_decl_t   *resolved_decl;
     array_t       path;
     scope_t      *module_scope;
     ast_ident_t  *right_ident;
@@ -791,20 +794,19 @@ static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
 
     left_ident = (ast_ident_t*)expr->left;
 
-    resolved_origin = try_get_decl_and_path(left_ident, &path);
+    resolved_node = try_get_decl_and_path(left_ident, &path);
 
-    ASSERT(ast_kind_is_assign(resolved_origin->kind),
-           "resolved_origin is not an assignment");
+    ASSERT(resolved_node != NULL, "did not get resolved node");
+    ASSERT(ast_kind_is_decl(resolved_node->kind),
+           "resolved_node is not a declaration");
 
-    resolved_assign = (ast_assign_t*)resolved_origin;
+    resolved_decl = (ast_decl_t*)resolved_node;
 
-    ASSERT(resolved_assign != NULL, "did not get resolved assign");
+    ASSERT(resolved_decl->val_expr->kind == AST_MODULE,
+           "resolved_decl is not a module declaration");
 
-    ASSERT(ASTP(resolved_assign)->kind == AST_ASSIGN_MODULE,
-           "resolved_assign is not a module assignment");
-
-    module_scope = get_subscope_from_node(resolved_assign->scope,
-                                          resolved_assign->val);
+    module_scope = get_subscope_from_node(resolved_decl->scope,
+                                          resolved_decl->val_expr);
 
     ASSERT(module_scope != NULL, "did not find module scope");
 
@@ -813,7 +815,7 @@ static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
     found_node = find_in_scope(module_scope, right_ident->str_rep);
 
     if (found_node == NULL) {
-        if (left_ident->resolved_node == ASTP(resolved_assign)) {
+        if (left_ident->resolved_node == ASTP(resolved_decl)) {
             report_range_err(&expr->right->loc,
                              "nothing named '%s' in module '%s'",
                              get_string(right_ident->str_rep),
@@ -1132,8 +1134,41 @@ static void check_unary_expr(ast_unary_expr_t *expr, scope_t *scope) {
     }
 }
 
-static void check_struct(ast_struct_t *st, scope_t *scope, ast_assign_t *parent_assign) {
-    ASTP(st)->type = get_struct_type(st, parent_assign->name, scope);
+static void check_struct(ast_struct_t *st, scope_t *scope, ast_decl_t *parent_decl) {
+    scope_t  *new_scope;
+    u32       n_params;
+    u32      *param_types;
+    int       i;
+    ast_t   **it;
+
+    ASTP(st)->value.a = ASTP(st);
+
+    ASSERT(!(ASTP(st)->flags & AST_FLAG_POLYMORPH), "TODO");
+
+    new_scope = get_subscope_from_node(scope, ASTP(st));
+    ASSERT(new_scope != NULL, "didn't get scope");
+
+    n_params    = array_len(st->params);
+    param_types = alloca(sizeof(u32) * n_params);
+    i           = 0;
+    array_traverse(st->params, it) {
+        check_node(*it, new_scope, NULL);
+        param_types[i] = (*it)->type;
+        i += 1;
+    }
+
+    ASTP(st)->type = get_struct_type(st, parent_decl->name, scope);
+
+    /* @bad?, @refactor
+    ** We have to bubble this type up to the declaration so that identifier lookups
+    ** that occur before we return from this routine can get the right type.
+    ** I'm not sure if this should just be done everywhere like this (shouldn't
+    ** be _that_ many spots), or if something a little smarter should be done.
+    */
+    ASTP(parent_decl)->type  = ASTP(st)->type;
+    ASTP(parent_decl)->value = ASTP(st)->value;
+
+    /* @todo -- check fields. */
 }
 
 static void check_arg_list(ast_arg_list_t *arg_list, scope_t *scope) {
@@ -1193,34 +1228,34 @@ static void check_loop(ast_loop_t *loop, scope_t *scope) {
     check_node(loop->block, new_scope, NULL);
 }
 
-void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign) {
+void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl) {
     ast_t **it;
 
     if (node->flags & AST_FLAG_CHECKED) { return; }
     node->flags |= AST_FLAG_CHECKED;
 
     switch (node->kind) {
-#define X(_kind) case _kind:
-        X_AST_ASSIGNS
-#undef X
-            check_assign((ast_assign_t*)node, scope);
-            break;
-
+/* #define X(_kind) case _kind: */
+/*         X_AST_ASSIGNS */
+/* #undef X */
+/*             check_assign((ast_assign_t*)node, scope); */
+/*             break; */
+/*  */
         case AST_MODULE:
             array_traverse(((ast_module_t*)node)->children, it) {
                 check_node(*it, get_subscope_from_node(scope, node), NULL);
             }
             break;
         case AST_PROC:
-            check_proc((ast_proc_t*)node, scope, parent_assign);
+            check_proc((ast_proc_t*)node, scope, parent_decl);
             break;
 
-        case AST_PROC_PARAM:
-            check_proc_param((ast_proc_param_t*)node, scope);
+        case AST_PARAM:
+            check_param((ast_param_t*)node, scope);
             break;
 
         case AST_STRUCT:
-            check_struct((ast_struct_t*)node, scope, parent_assign);
+            check_struct((ast_struct_t*)node, scope, parent_decl);
             break;
 
         case AST_BLOCK:

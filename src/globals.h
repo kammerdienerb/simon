@@ -62,7 +62,7 @@ do {                                             \
 } while (0)
 
 extern pthread_mutex_t  program_entry_mtx;
-extern ast_assign_t    *program_entry;
+extern ast_decl_t      *program_entry;
 
 #define PROGRAM_ENTRY_LOCK()                     \
 do {                                             \
@@ -78,5 +78,7 @@ do {                                             \
     }                                            \
 } while (0)
 
+
+extern FILE *output_file;
 
 #endif

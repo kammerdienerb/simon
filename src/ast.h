@@ -27,13 +27,13 @@
     X(AST_PROC)                \
     X(AST_STRUCT)              \
     X(AST_MACRO)               \
-    X(AST_ASSIGN_EXPR)         \
-    X(AST_ASSIGN_PROC)         \
-    X(AST_ASSIGN_STRUCT)       \
-    X(AST_ASSIGN_MACRO)        \
-    X(AST_ASSIGN_MODULE)       \
+    X(AST_DECL_VAR)            \
+    X(AST_DECL_PROC)           \
+    X(AST_DECL_STRUCT)         \
+    X(AST_DECL_MACRO)          \
+    X(AST_DECL_MODULE)         \
     X(AST_POLYMORPH_TYPE_NAME) \
-    X(AST_PROC_PARAM)          \
+    X(AST_PARAM)               \
     X(AST_STRUCT_FIELD)        \
     X(AST_INT)                 \
     X(AST_STRING)              \
@@ -50,12 +50,12 @@
     X(AST_BREAK)               \
     X(AST_CONTINUE)
 
-#define X_AST_ASSIGNS          \
-    X(AST_ASSIGN_EXPR)         \
-    X(AST_ASSIGN_PROC)         \
-    X(AST_ASSIGN_STRUCT)       \
-    X(AST_ASSIGN_MACRO)        \
-    X(AST_ASSIGN_MODULE)
+#define X_AST_DECLARATIONS   \
+    X(AST_DECL_VAR)          \
+    X(AST_DECL_PROC)         \
+    X(AST_DECL_STRUCT)       \
+    X(AST_DECL_MACRO)        \
+    X(AST_DECL_MODULE)
 
 
 enum {
@@ -68,6 +68,7 @@ X_AST
 #define AST_FLAG_POLYMORPH            (1 << 1)
 #define AST_FLAG_VARARGS              (1 << 2)
 #define AST_FLAG_ORIGIN               (1 << 3)
+#define AST_FLAG_CALL_IS_CAST         (1 << 4)
 
 struct ast;
 
@@ -93,7 +94,7 @@ typedef struct ast {
 } ast_t;
 
 
-int ast_kind_is_assign(int kind);
+int ast_kind_is_decl(int kind);
 int ast_kind_can_be_symbol_origin(int kind);
 const char *ast_get_kind_str(int kind);
 #define AST_STR(kind) (ast_get_kind_str((kind)))
@@ -149,7 +150,7 @@ AST_DEFINE(polymorph_type_name,
     string_id name;
 );
 
-AST_DEFINE(proc_param,
+AST_DEFINE(param,
     string_id  name;
     ast_t     *type_expr_or_polymorph_type_name;
     ast_t     *val;
@@ -166,20 +167,23 @@ AST_DEFINE(proc,
 );
 
 AST_DEFINE(struct_field,
-    string_id name;
+    string_id  name;
+    ast_t     *type_expr;
 );
 
 AST_DEFINE(struct,
+    array_t params;
     array_t fields;
 );
 
 AST_DEFINE(macro,
 );
 
-AST_DEFINE(assign,
+AST_DEFINE(decl,
     scope_t   *scope;
     string_id  name;
-    ast_t     *val;
+    ast_t     *type_expr;
+    ast_t     *val_expr;
     array_t    tags;
 );
 
@@ -244,6 +248,6 @@ AST_DEFINE(return,
 AST_DEFINE(break);
 AST_DEFINE(continue);
 
-void check_node(ast_t *node, scope_t *scope, ast_assign_t *parent_assign);
+void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl);
 
 #endif

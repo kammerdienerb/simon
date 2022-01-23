@@ -6,7 +6,7 @@ pi = __builtin_printi;
 sa = __builtin_stack_alloc;
 
 [[ program_entry ]]
-main = proc(argc: s64, argv: **char) {
+main = proc(argc: s32, argv: **char) {
     @argv = "my new argv[0]";
 
     ps(argv[0]); ps("\n");

@@ -53,6 +53,7 @@ void init_scopes(void) {
 
     global_scope = create_named_scope(NULL, AST_INVALID, NULL, get_string_id("<global scope>"));
 
+    insert_builtin_type("type", TY_TYPE);
     insert_builtin_type("bool", TY_BOOL);
     insert_builtin_type("char", TY_CHAR);
     insert_builtin_type("u8",   TY_U8);
@@ -217,98 +218,6 @@ void free_scope_no_recurse(scope_t *scope) {
     mem_free(scope);
 }
 
-static void scope_find_origins(scope_t *scope) {
-    int         i;
-    ast_t     **node_p;
-    ast_t      *node;
-    string_id  *name_p;
-    ast_t      *existing_node;
-    scope_t   **subscope;
-    int         j;
-
-    ASSERT(scope->parent != NULL, "scope_find_origins() may not be called on the global scope");
-
-again:;
-    i = 0;
-    array_traverse(scope->nodes, node_p) {
-        node = *node_p;
-
-        /* Proc parameters _must_ be origins. */
-        if (node->kind == AST_PROC_PARAM)          { goto next; }
-        /* So must polymorphic type names. */
-        if (node->kind == AST_POLYMORPH_TYPE_NAME) { goto next; }
-
-#ifdef SIMON_DO_ASSERTIONS
-        if (!ast_kind_can_be_symbol_origin(node->kind)) {
-            report_range_err_no_exit(&node->loc, "INTERNAL ERROR: node can't be the origin of a symbol");
-            ASSERT(0, "node can't be the origin of a symbol");
-        }
-#endif
-
-        ASSERT(ast_kind_is_assign(node->kind), "non-assign node being deleted in scope_find_origins()");
-
-        name_p = array_item(scope->symbols, i);
-        ASSERT(name_p != NULL, "node/symbol mismatch");
-        existing_node = search_up_scopes_stop_at_module(scope->parent, *name_p);
-        if (existing_node != NULL) {
-
-            if (scope->in_proc) {
-                j = 0;
-                array_traverse(scope->subscopes, subscope) {
-                    if ((*subscope)->node == existing_node) {
-                        array_delete(scope->subscopes, j);
-                        break;
-                    }
-                    j += 1;
-                }
-
-                array_delete(scope->symbols, i);
-                array_delete(scope->nodes,   i);
-                goto again;
-            }
-        }
-
-        node->flags |= AST_FLAG_ORIGIN;
-
-next:;
-        i += 1;
-    }
-
-    array_traverse(scope->subscopes, subscope) {
-        scope_find_origins(*subscope);
-    }
-}
-
-static void scope_find_origins_thread(void *arg) { scope_find_origins((scope_t*)arg); }
-
-void scopes_find_origins(scope_t *scope) {
-    ast_t   **node_p;
-    scope_t **subscope;
-
-    ASSERT(scope->parent == NULL, "scopes_find_origins() must be called with the global scope");
-
-    array_traverse(scope->nodes, node_p) {
-#ifdef SIMON_DO_ASSERTIONS
-        if (!ast_kind_can_be_symbol_origin((*node_p)->kind)) {
-            report_range_err_no_exit(&(*node_p)->loc, "INTERNAL ERROR: node can't be the origin of a symbol");
-            ASSERT(0, "node can't be the origin of a symbol");
-        }
-#endif
-        (*node_p)->flags |= AST_FLAG_ORIGIN;
-    }
-
-    if (tp == NULL) {
-        array_traverse(scope->subscopes, subscope) {
-            scope_find_origins(*subscope);
-        }
-    } else {
-        array_traverse(scope->subscopes, subscope) {
-            tp_add_task(tp, scope_find_origins_thread, (void*)*subscope);
-        }
-        tp_wait(tp);
-    }
-}
-
 scope_t *get_subscope_from_node(scope_t *scope, ast_t *node) {
     scope_t **it;
 
@@ -339,10 +248,11 @@ void _show_scope(scope_t *scope, int level) {
 
         opening_node = *node_it;
         switch (opening_node->kind) {
-            case AST_ASSIGN_PROC:
-            case AST_ASSIGN_MACRO:
-            case AST_ASSIGN_MODULE:
-                opening_node = ((ast_assign_t*)opening_node)->val;
+            case AST_DECL_PROC:
+            case AST_DECL_STRUCT:
+            case AST_DECL_MACRO:
+            case AST_DECL_MODULE:
+                opening_node = ((ast_decl_t*)opening_node)->val_expr;
                 break;
             default:;
         }

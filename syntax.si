@@ -1,0 +1,41 @@
+# syntax.si
+#   The example/test of Simon's syntax design.
+#   Every element of the language's syntax should be shown in this file.
+
+### Comments:
+#   Comments start with the '#' character and continue until the end of the line.
+#   There are no block/multi-line comments.
+
+### Declarations:
+#   Declarations take one the following three forms:
+#     1. identifier : type_expression;
+#     2. identifier : type_expression = value_expression;
+#     3. identifier := value_expression;
+#
+#   *Note that statements are required to be terminated with semicolons.
+
+decl1 : u32;      # default-initialized, signed, 32-bit integer variable
+decl2 : s64 = -1; # initialized, unsigned, 64-bit integer variable
+decl3 := *decl2;  # type inferred, initialized, s64 pointer variable (the address of decl2)
+
+#   Kinds of declarations:
+#     1. Variables (see above).
+#     2. Modules
+#     3. Structs
+#     4. Procedures
+#     5. Macros (@todo)
+
+Decl_Module := module  { }
+Decl_Struct := struct  { }
+Decl_Proc   := proc()  { }
+# Decl_Macro  := macro() { }
+
+#   Declaration tags:
+#     Declarations may be "tagged" with specific instructions or hints
+#     for the compiler:
+
+[[ program_entry ]]
+Entry := proc() { }
+
+[[ struct_union ]]
+Union := struct { a: u32, b: u64 }

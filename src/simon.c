@@ -11,6 +11,7 @@
 #include "memory.h"
 #include "scope.h"
 #include "type.h"
+#include "c_backend.h"
 
 void do_sanity_checks(void);
 int  do_options(int argc, char **argv);
@@ -27,6 +28,8 @@ int main(int argc, char **argv) {
 
     do_sanity_checks();
 
+    set_output_is_tty();
+
     if (do_options(argc, argv)) { return 1; }
     if (options.help)           { return 0; }
 
@@ -38,14 +41,14 @@ int main(int argc, char **argv) {
     }
 
     do_parse();
-    do_resolve_symbols();
-    do_check();
+/*     do_resolve_symbols(); */
+/*     do_check(); */
 
     if (options.dump_symbols) {
         show_scope(global_scope);
     }
 
-    do_backend();
+/*     do_backend(); */
 
     verb_message("total time: %lu us\n", measure_time_now_us() - start_us);
 
@@ -89,7 +92,7 @@ void do_init(void) {
 
     init_strings();
     init_ui();
-    init_file_table();
+    init_ifile_table();
     init_types();
     init_scopes();
 
@@ -126,8 +129,6 @@ void do_resolve_symbols(void) {
 
     start_us = measure_time_now_us();
 
-    scopes_find_origins(global_scope);
-
     verb_message("symbol origin resolution took %lu us\n", measure_time_now_us() - start_us);
 }
 
@@ -138,12 +139,17 @@ void do_check(void) {
 
     start_us = measure_time_now_us();
 
+    if (array_len(roots) == 0) {
+        report_simple_err("no meaningful input provided");
+        return;
+    }
+
     if (program_entry == NULL) {
         report_simple_err("at least one procedure must be tagged as 'program_entry'");
         return;
     }
 
-    entry_scope = get_subscope_from_node(global_scope, program_entry->val);
+    entry_scope = get_subscope_from_node(global_scope, program_entry->val_expr);
     if (entry_scope         == NULL
     ||  entry_scope->parent == NULL
     ||  entry_scope->parent != global_scope) {
@@ -161,5 +167,30 @@ void do_check(void) {
 }
 
 void do_backend(void) {
-    ASSERT(0, "unimplemented");
+    u64 start_us;
+    int err;
+
+    start_us = measure_time_now_us();
+
+    if (get_ifile(get_string_id(options.output_name)) != NULL) {
+        report_simple_err("can't use '%s' as an output file because it is also being used as input",
+                          options.output_name);
+        return;
+    }
+
+    err = checked_open_FILE(options.output_name, "w", &output_file, NULL);
+
+    if (err != FILE_NO_ERR) {
+        report_file_err(options.output_name, err);
+    }
+
+    if (strcmp(options.backend, "c") == 0) {
+        do_c_backend();
+    } else {
+        ASSERT(0, "invalid backend");
+    }
+
+    fclose(output_file);
+
+    verb_message("backend took %lu us\n", measure_time_now_us() - start_us);
 }

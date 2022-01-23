@@ -35,6 +35,13 @@ C_FLAGS="${SHOULD_DO_ASSERTIONS} ${SHOULD_USE_LIBC_MALLOC}    \
          -Wall -Werror"
 LD_FLAGS="${MARCH} ${TLS_MODEL} ${OPT} ${LTO} ${DEBUG_SYMBOLS} -lpthread -lm"
 
+# if [ "$(uname)" = "Darwin" ]; then
+#     if uname -a 2>&1 | grep "ARM" >/dev/null; then
+#         C_FLAGS="-arch arm64 ${C_FLAGS}"
+#         LD_FLAGS="-arch arm64 ${LD_FLAGS}"
+#     fi
+# fi
+
 echo "Building Simon compiler.."
 rm -rf build
 mkdir -p build
