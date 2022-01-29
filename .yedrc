@@ -1,2 +1,0 @@
-vimish-bind  normal  "ctrl-y" multi "set builder-build-command ./build.sh" "builder-view-output" "builder-start" "special-buffer-prepare-unfocus *builder-output"
-vimish-bind  normal  "ctrl-t" multi "set builder-build-command ./test.sh" "builder-view-output"  "builder-start" "special-buffer-prepare-unfocus *builder-output"
