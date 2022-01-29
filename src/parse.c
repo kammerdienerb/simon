@@ -1124,7 +1124,8 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
 }
 
 static ast_t * parse_module_body(parse_context_t *cxt, string_id name) {
-    ast_module_t *result;
+    ast_module_t
+    *result;
     ast_t        *child;
 
     result                = AST_ALLOC(cxt, ast_module_t);
@@ -1157,6 +1158,36 @@ static ast_t * parse_module_body(parse_context_t *cxt, string_id name) {
 }
 
 static ast_t * parse_stmt(parse_context_t *cxt);
+
+static ast_t * parse_block_with_scope(parse_context_t *cxt) {
+    ast_block_t *result;
+    ast_t       *stmt;
+
+    if (!OPTIONAL_NO_EAT_CHAR(cxt, '{')) { return NULL; }
+
+    result                = AST_ALLOC(cxt, ast_block_t);
+    ASTP(result)->kind    = AST_BLOCK;
+    ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
+    result->stmts         = array_make(ast_t*);
+
+    ASSERT(OPTIONAL_CHAR(cxt, '{'), "eat");
+    SCOPE_PUSH(cxt, AST_BLOCK, ASTP(result));
+
+    while (!OPTIONAL_CHAR(cxt, '}')) {
+        stmt = parse_stmt(cxt);
+        if (stmt == NULL) {
+            report_loc_err(GET_BEG_POINT(cxt), "expected valid statement");
+            return NULL;
+        }
+        array_push(result->stmts, stmt);
+    }
+
+    SCOPE_POP(cxt);
+
+    ASTP(result)->loc.end = GET_END_POINT(cxt);
+
+    return ASTP(result);
+}
 
 static ast_t * parse_block(parse_context_t *cxt) {
     ast_block_t *result;
@@ -1256,7 +1287,9 @@ static ast_t * parse_loop(parse_context_t *cxt) {
         report_loc_err(GET_BEG_POINT(cxt), "expected valid assignment expression for 'loop'");
         return NULL;
     }
-    EXPECT_CHAR(cxt, ';', "expected ';'");
+    if (result->init->kind != AST_DECL_VAR) {
+        EXPECT_CHAR(cxt, ';', "expected ';'");
+    }
 
 cond:;
     result->cond = parse_expr(cxt);
@@ -1377,6 +1410,7 @@ static ast_t *parse_stmt(parse_context_t *cxt) {
     if ((result = parse_break(cxt)))            { EXPECT_CHAR(cxt, ';', "expected ';'"); goto out; }
     if ((result = parse_continue(cxt)))         { EXPECT_CHAR(cxt, ';', "expected ';'"); goto out; }
     if ((result = parse_expr(cxt)))             { EXPECT_CHAR(cxt, ';', "expected ';'"); goto out; }
+    if ((result = parse_block_with_scope(cxt))) {                                        goto out; }
     if ((result = parse_static_directive(cxt))) {                                        goto out; }
 
 out:;

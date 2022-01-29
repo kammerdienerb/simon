@@ -17,6 +17,7 @@
 decl1 : u32;      # default-initialized, unsigned, 32-bit integer variable
 decl2 : s64 = -1; # initialized, signed, 64-bit integer variable
 decl3 := *decl2;  # type inferred, initialized, s64 pointer variable (the address of decl2)
+print := __builtin_prints;
 
 #   Kinds of declarations:
 #     1. Variables (see above).
@@ -111,8 +112,98 @@ Structs := module {
     }
 }
 
+### Control flow:
+##  Loops:
+loop_example := proc() {
+    n := 0;
+    loop i := 0; i < 10; i += 1 {
+        n += i;
+    }
 
+    loop ; n > 0; n -= 1 { continue; }
 
+    # These are equivalent.
+    loop ; 1 ; { break; }
+    loop ;;    { break; }
+}
 
+##  If statements:
+if_example := proc() {
+    x := 1;
 
+    if x {
+        # do something
+    }
 
+    if not x {
+        # x is 0
+    } else if x + 1 > 0 {
+        # true
+    } else {
+        # unreached
+    }
+}
+
+##  Defer:
+#   Executes the statements at the end of the enclosing scope.
+defer_example := proc() {
+    defer { print("leaving defer_example(): 1\n"); }
+    defer { print("leaving defer_example(): 2\n"); }
+
+    print("A\n");
+    loop i := 0; i < 3; i += 1 {
+        defer { print("loop iteration\n"); }
+        print(i);
+    }
+    print("B\n");
+}
+# Output of defer_example():
+#   A
+#   0
+#   loop iteration
+#   1
+#   loop iteration
+#   2
+#   loop iteration
+#   B
+#   leaving defer_example(): 2
+#   leaving defer_example(): 1
+
+### Polymorphism
+#   Parametric polymorphism is done through the use of values known
+#   at compile time, which includes type values.
+#   Parameters that are used to polymorph a procedure or struct are declared
+#   with a preceeding `%` character:
+
+allocate := proc(%T: type, n: u32): *T {
+    return cast(*T, mem_alloc(sizeof(T) * n));
+}
+call_allocate := proc() {
+    ints   := allocate(s32, 10);
+    floats := allocate(f32, 30);
+}
+#   a new version of `allocate()` is compiled for every value of `T` that gets passed to it.
+#   The `allocate()` example is polymorphed on the _value_ of its first argument, which has type `type`.
+#   However, polymorphism can also use the _type_ of the argument instead:
+
+sum := proc(a: %T, b: T): T {
+    return a + b;
+}
+call_sum := proc() {
+    x := sum(1, 2);
+    y := sum(4.56, 7.89);
+}
+#   Here, like `allocate`, one version of sum is compiled for integers,
+#   and one for floats.
+#   However in this case, `T` is derived from the _type_ of the first argument.
+
+#   Structs can also be polymorphed:
+Pair := struct(%T: type) {
+    first:  T,
+    second: T
+}
+
+uses_pair := proc() {
+    int_pair:   Pair(s32);
+    float_pair: Pair(f32);
+}
