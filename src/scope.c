@@ -53,17 +53,18 @@ void init_scopes(void) {
 
     global_scope = create_named_scope(NULL, AST_INVALID, NULL, get_string_id("<global scope>"));
 
-    insert_builtin_type("type", TY_TYPE);
-    insert_builtin_type("bool", TY_BOOL);
-    insert_builtin_type("char", TY_CHAR);
-    insert_builtin_type("u8",   TY_U8);
-    insert_builtin_type("u16",  TY_U16);
-    insert_builtin_type("u32",  TY_U32);
-    insert_builtin_type("u64",  TY_U64);
-    insert_builtin_type("s8",   TY_S8);
-    insert_builtin_type("s16",  TY_S16);
-    insert_builtin_type("s32",  TY_S32);
-    insert_builtin_type("s64",  TY_S64);
+    insert_builtin_type("type",   TY_TYPE);
+    insert_builtin_type("module", TY_MODULE);
+    insert_builtin_type("bool",   TY_BOOL);
+    insert_builtin_type("char",   TY_CHAR);
+    insert_builtin_type("u8",     TY_U8);
+    insert_builtin_type("u16",    TY_U16);
+    insert_builtin_type("u32",    TY_U32);
+    insert_builtin_type("u64",    TY_U64);
+    insert_builtin_type("s8",     TY_S8);
+    insert_builtin_type("s16",    TY_S16);
+    insert_builtin_type("s32",    TY_S32);
+    insert_builtin_type("s64",    TY_S64);
 
 
     INSERT_BUILTIN_PROC_LIKE("cast", TY_BUILTIN_SPECIAL); /* This gets custom typechecking in ast.c */

@@ -102,10 +102,12 @@ void do_init(void) {
 }
 
 void do_parse(void) {
+    int    n_files;
     u64    start_us;
     char **it;
 
-    verb_message("parsing %d files...\n", array_len(options.input_files));
+    n_files = array_len(options.input_files);
+    verb_message("parsing %d file%s...\n", n_files, n_files > 1 ? "s" : "");
 
     start_us = measure_time_now_us();
 

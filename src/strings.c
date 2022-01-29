@@ -74,7 +74,7 @@ void init_strings(void) {
         "or",
         "and",   "not",
         "proc",
-        "macro", "module", "struct",
+        "struct",
         "do",    "if",     "else",   "loop", "break", "defer", "return", "continue",
     };
     string_id   kwd_id;

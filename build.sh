@@ -18,29 +18,30 @@ WHICH_TLS_METHOD="-DTLS_METHOD=TLS_PER_OS_THREAD"
 
 TLS_MODEL="-ftls-model=local-exec"
 
-if [ ${DEBUG} = "yes" ]; then
+if [ $(uname) = "Darwin" ]; then
+    if uname -a | grep "arm64" >/dev/null 2>&1; then
+        APPLE_ARM="yes"
+    fi
+fi
+
+if [[ ${DEBUG} == "yes" ]]; then
     SHOULD_DO_ASSERTIONS="-DSIMON_DO_ASSERTIONS"
     OPT="-O0"
     DEBUG_SYMBOLS="-g"
 else
     OPT="-O3"
     LTO="-flto"
-    MARCH="-march=native -mtune=native"
+    if [[ "${APPLE_ARM}" != "yes" ]]; then
+        MARCH="-march=native -mtune=native"
+    fi
 fi
 
-
-C_FLAGS="${SHOULD_DO_ASSERTIONS} ${SHOULD_USE_LIBC_MALLOC}    \
+C_FLAGS+="${SHOULD_DO_ASSERTIONS} ${SHOULD_USE_LIBC_MALLOC}   \
          ${WHICH_STRING_INTERN_STRUCTURE} ${WHICH_TLS_METHOD} \
          ${MARCH} ${TLS_MODEL} ${OPT} ${LTO} ${DEBUG_SYMBOLS} \
          -Wall -Werror"
-LD_FLAGS="${MARCH} ${TLS_MODEL} ${OPT} ${LTO} ${DEBUG_SYMBOLS} -lpthread -lm"
 
-# if [ "$(uname)" = "Darwin" ]; then
-#     if uname -a 2>&1 | grep "ARM" >/dev/null; then
-#         C_FLAGS="-arch arm64 ${C_FLAGS}"
-#         LD_FLAGS="-arch arm64 ${LD_FLAGS}"
-#     fi
-# fi
+LD_FLAGS="${MARCH} ${TLS_MODEL} ${OPT} ${LTO} ${DEBUG_SYMBOLS} -lpthread -lm"
 
 echo "Building Simon compiler.."
 rm -rf build

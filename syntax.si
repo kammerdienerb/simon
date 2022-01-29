@@ -14,8 +14,8 @@
 #
 #   *Note that statements are required to be terminated with semicolons.
 
-decl1 : u32;      # default-initialized, signed, 32-bit integer variable
-decl2 : s64 = -1; # initialized, unsigned, 64-bit integer variable
+decl1 : u32;      # default-initialized, unsigned, 32-bit integer variable
+decl2 : s64 = -1; # initialized, signed, 64-bit integer variable
 decl3 := *decl2;  # type inferred, initialized, s64 pointer variable (the address of decl2)
 
 #   Kinds of declarations:
@@ -26,12 +26,16 @@ decl3 := *decl2;  # type inferred, initialized, s64 pointer variable (the addres
 #     5. Macros (@todo)
 
 Decl_Module := module  { }
-Decl_Struct := struct  { }
 Decl_Proc   := proc()  { }
+Decl_Struct := struct  { }
 # Decl_Macro  := macro() { }
 
+#   *Note: Declarations of modules, procedures, structs, and macros are
+#   not required to end with a semicolon since they have containing curly braces.
+#   Though, they are allowed.
+
 #   Declaration tags:
-#     Declarations may be "tagged" with specific instructions or hints
+#     Declarations may be "tagged" with any number of specific instructions or hints
 #     for the compiler:
 
 [[ program_entry ]]
@@ -39,3 +43,76 @@ Entry := proc() { }
 
 [[ struct_union ]]
 Union := struct { a: u32, b: u64 }
+
+### Expressions:
+expr1 : [2]u32; # The type expression for expr1 uses the prefix `[]` operator and produces an array type.
+expr2 := 1 + 2; # `1 + 2` is a binary expression with the `+` operator.
+
+#   There are many more operators, but they are mostly self-explanatory.
+
+### Modules:
+#   Modules are namespaced containers for declarations.
+_M : module = module { } # Can be declared with explicit type of `module`, but that's redundant.
+
+Example_Module := module {
+    _M := 6; # Can declare `_M` here since it is in a module.
+
+    P := proc() { }
+    S : type = struct { }
+}
+
+#   Access declarations in a module via the `.` operator:
+P_from_Example_Module := Example_Module.P;
+
+### Procedures
+Procs := module {
+    # Procedures may have arguments, which look like variable declarations.
+    # If the procedure returns a value, the return type will be specified
+    # after a `:` following the argument list.
+    square := proc(x: f32): f32 {
+        return x * x;
+    }
+
+    #   Procedures are called with the standard `()` operator:
+    four := Procs.square(2.0);
+
+    #   (Typed) variadic arguments may be used in procedures, but must
+    #   be the last argument in the list.
+
+    takes_u32s := proc(args: ...u32) { } # Takes any number of u32 args.
+    # takes_u32s := proc(args: ...u32, another: u32) { } # Not allowed.
+
+    #   Procedure arguments may be assigned default values:
+    increment := proc(foo: *u32, inc_by: u32 = 1) {
+        @foo += inc_by; # `@` is the dereference operator.
+    }
+    #   increment(*my_val); # Can leave out `inc_by`. (`*` is the "address of" operator.)
+}
+
+### Structs
+Structs := module {
+    # Structs define an aggregate type with fields.
+    # Within a struct definition, fields are declared with a name,
+    # and a type following a `:`.
+    # Fields are separated by commas.
+    Point := struct {
+        x: f32,
+        y: f32, # A trailing comma is allowed, but not required.
+    }
+
+    Node := struct {
+        data: *u8,
+        next: *Node
+    }
+
+    List := struct {
+        head: *Node,
+        len:   u32
+    }
+}
+
+
+
+
+
+

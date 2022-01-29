@@ -206,6 +206,7 @@ AST_DEFINE(ident,
 
 AST_DEFINE(unary_expr,
     ast_t *child;
+    ast_t *array_size_expr;
     int    op;
 );
 

@@ -762,6 +762,7 @@ static int lookahead_unary_prefix_op(parse_context_t *cxt) {
     op = OP_INVALID;
 
          if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_NOT)))    { op = OP_NOT;    }
+    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_ARRAY)))  { op = OP_ARRAY;  }
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_ADDR)))   { op = OP_ADDR;   }
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_DEREF)))  { op = OP_DEREF;  }
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_NEG)))    { op = OP_NEG;    }
@@ -840,6 +841,17 @@ static ast_t * parse_operand(parse_context_t *cxt) {
     ASTP(unary)->loc.beg = GET_BEG_POINT(cxt);
 
     ASSERT(OPTIONAL_LIT(cxt, OP_STR(op)), "eat");
+
+    if (op == OP_ARRAY) {
+        if (!OPTIONAL_CHAR(cxt, ']')) {
+            unary->array_size_expr = parse_expr(cxt);
+            if (unary->array_size_expr == NULL) {
+                report_loc_err(GET_BEG_POINT(cxt), "expected valid size expression or closing ']' for array operator");
+                return NULL;
+            }
+            EXPECT_CHAR(cxt, ']', "expected ']'");
+        }
+    }
 
     unary->child = parse_operand(cxt);
 
