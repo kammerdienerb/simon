@@ -41,14 +41,14 @@ int main(int argc, char **argv) {
     }
 
     do_parse();
-/*     do_resolve_symbols(); */
-/*     do_check(); */
+    do_resolve_symbols();
+    do_check();
 
     if (options.dump_symbols) {
         show_scope(global_scope);
     }
 
-/*     do_backend(); */
+    do_backend();
 
     verb_message("total time: %lu us\n", measure_time_now_us() - start_us);
 
@@ -160,6 +160,8 @@ void do_check(void) {
                          "'program_entry' procedure must be in global scope");
         return;
     }
+
+    init_checking();
 
     array_traverse(roots, rootp) {
         check_node(*rootp, global_scope, NULL);

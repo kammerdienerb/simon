@@ -55,7 +55,6 @@ void init_scopes(void) {
 
     insert_builtin_type("type",   TY_TYPE);
     insert_builtin_type("module", TY_MODULE);
-    insert_builtin_type("bool",   TY_BOOL);
     insert_builtin_type("char",   TY_CHAR);
     insert_builtin_type("u8",     TY_U8);
     insert_builtin_type("u16",    TY_U16);

@@ -283,7 +283,6 @@ static void build_type_string(u32 ty, char *buff) {
         case TY_PROC:      strncat(buff, "procedure",           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_PTR:       strncat(buff, "*",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_VARGS:     strncat(buff, "...",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_BOOL:      strncat(buff, "bool",                TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_CHAR:      strncat(buff, "char",                TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_U8:        strncat(buff, "u8",                  TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_U16:       strncat(buff, "u16",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;

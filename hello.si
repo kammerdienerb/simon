@@ -1,0 +1,24 @@
+sys := module {
+    [[ extern ]] open  := proc(path: *char, oflag: s32): s32;
+    [[ extern ]] read  := proc(fd: s32, bytes: *char, len: u64): s32;
+    [[ extern ]] write := proc(fd: s32, bytes: *char, len: u64): s32;
+}
+
+util := module {
+    slen := proc(s: *char) : u64 {
+        len := cast(u64, 0);
+
+        loop ; @s != cast(char, 0) ; s += 1 { len += 1; }
+
+        return len;
+    }
+
+    puts := proc(s: *char) {
+        sys.write(cast(s32, 1), s, slen(s));
+    }
+}
+
+[[ program_entry ]]
+hello := proc() {
+    util.puts("this is a config file parser\n");
+}

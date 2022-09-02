@@ -7,6 +7,9 @@
 #include "globals.h"
 #include "type.h"
 #include "parse.h"
+#include "array.h"
+
+static array_t mod_stack;
 
 #define EMIT_STRING_F(_fmt, ...)                 \
 do {                                             \
@@ -36,8 +39,6 @@ static void emit_prelude(void) {
     EMIT_STRING(prelude);
 }
 
-#if 0
-
 static void emit_type_declarator(u32 t) {
     switch (type_kind(t)) {
         case TY_NOT_TYPED:
@@ -58,12 +59,13 @@ static void emit_type_declarator(u32 t) {
 }
 
 static void emit_proc_pre_decl(ast_decl_t *parent_decl) {
-    ast_proc_t *proc;
-    u32         proc_type;
-    u32         ret_type;
-    u32         num_param_types;
-    u32         i;
-    u32         param_type;
+    ast_proc_t  *proc;
+    u32          proc_type;
+    u32          ret_type;
+    ast_decl_t **mod_it;
+    u32          num_param_types;
+    u32          i;
+    u32          param_type;
 
     proc      = (ast_proc_t*)parent_decl->val_expr;
     proc_type = ASTP(proc)->type;
@@ -71,6 +73,13 @@ static void emit_proc_pre_decl(ast_decl_t *parent_decl) {
 
     emit_type_declarator(ret_type); EMIT_STRING(" ");
 
+    if (!(ASTP(proc)->flags & AST_FLAG_IS_EXTERN)) {
+        array_traverse(mod_stack, mod_it) {
+            EMIT_STRING("__");
+            EMIT_STRING_ID((*mod_it)->name);
+        }
+        if (array_len(mod_stack) > 0) { EMIT_STRING("_"); }
+    }
     EMIT_STRING_ID(parent_decl->name);
 
     num_param_types = get_num_param_types(proc_type);
@@ -98,10 +107,10 @@ static void emit_proc_pre_decls_module(ast_decl_t *parent_decl) {
 
     module = (ast_module_t*)((ast_decl_t*)parent_decl)->val_expr;
 
+    array_push(mod_stack, parent_decl);
+
     array_traverse(module->children, nodep) {
         node = *nodep;
-
-        if (!(node->flags & AST_FLAG_ORIGIN)) { continue; }
 
         if (node->kind == AST_DECL_MODULE) {
             emit_proc_pre_decls_module((ast_decl_t*)node);
@@ -109,6 +118,8 @@ static void emit_proc_pre_decls_module(ast_decl_t *parent_decl) {
             emit_proc_pre_decl((ast_decl_t*)node);
         }
     }
+
+    array_pop(mod_stack);
 }
 
 static void emit_proc_pre_decls_global(void) {
@@ -117,8 +128,6 @@ static void emit_proc_pre_decls_global(void) {
 
     array_traverse(roots, rootp) {
         root = *rootp;
-
-        if (!(root->flags & AST_FLAG_ORIGIN)) { continue; }
 
         if (root->kind == AST_DECL_MODULE) {
             emit_proc_pre_decls_module((ast_decl_t*)root);
@@ -150,16 +159,19 @@ static void emit_expr(ast_t *expr) {
         case AST_STRING:
             EMIT_STRING_ID(((ast_string_t*)expr)->str_rep);
             break;
-        case AST_BOOL:
-            EMIT_STRING_F("%d", expr->value.b);
-            break;
         case AST_IDENT:
             EMIT_STRING_ID(((ast_ident_t*)expr)->str_rep);
             break;
         case AST_UNARY_EXPR:
             un_expr = (ast_unary_expr_t*)expr;
             op      = un_expr->op;
-            EMIT_STRING(OP_STR(op));
+            switch (op) {
+                case OP_DEREF:
+                    EMIT_STRING("*");
+                    break;
+                default:
+                    EMIT_STRING(OP_STR(op));
+            }
             emit_expr(un_expr->child);
             break;
         case AST_BIN_EXPR:
@@ -208,85 +220,17 @@ static void emit_expr(ast_t *expr) {
     }
 }
 
-static void emit_assign(ast_assign_t *assign) {
-    if (ASTP(assign)->kind != AST_ASSIGN_EXPR) {
-        report_simple_err("not sure how to emit %s here",
-                          ast_get_kind_str(ASTP(assign)->kind));
-    }
-
-    EMIT_STRING("// ");
-
-    if (ASTP(assign)->flags & AST_FLAG_ORIGIN) {
-        emit_type_declarator(ASTP(assign)->type);
-        EMIT_STRING(" ");
-    }
-
-    EMIT_STRING_ID(assign->name);
-    EMIT_STRING(" = ");
-    emit_expr(assign->val);
-}
-
-static void emit_expr_assigns_module(ast_assign_t *parent_decl) {
-    ast_module_t  *module;
-    ast_t        **nodep;
-    ast_t         *node;
-
-    module = (ast_module_t*)((ast_assign_t*)parent_decl)->val;
-
-    array_traverse(module->children, nodep) {
-        node = *nodep;
-
-        if (!(node->flags & AST_FLAG_ORIGIN)) { continue; }
-
-        if (node->kind == AST_ASSIGN_MODULE) {
-            emit_expr_assigns_module((ast_assign_t*)node);
-        } else if (node->kind == AST_ASSIGN_EXPR) {
-            emit_assign((ast_assign_t*)node);
-        }
+static void emit_var_decl(ast_decl_t *decl) {
+    emit_type_declarator(ASTP(decl)->type);
+    EMIT_STRING(" ");
+    EMIT_STRING_ID(decl->name);
+    if (decl->val_expr != NULL) {
+        EMIT_STRING(" = ");
+        emit_expr(decl->val_expr);
     }
 }
 
-static void emit_expr_assigns_global(void) {
-    ast_t **rootp;
-    ast_t  *root;
-
-    array_traverse(roots, rootp) {
-        root = *rootp;
-
-        if (!(root->flags & AST_FLAG_ORIGIN)) { continue; }
-
-        if (root->kind == AST_ASSIGN_MODULE) {
-            emit_expr_assigns_module((ast_assign_t*)root);
-        } else if (root->kind == AST_ASSIGN_EXPR) {
-            emit_assign((ast_assign_t*)root);
-        }
-    }
-}
-
-static void emit_stmt(ast_t *stmt, int indent_level) {
-    INDENT(indent_level);
-
-    if (ast_kind_is_assign(stmt->kind)) {
-        emit_assign((ast_assign_t*)stmt);
-    } else {
-        switch (stmt->kind) {
-            case AST_BIN_EXPR:   break;
-            case AST_UNARY_EXPR: break;
-            case AST_IF:         break;
-            case AST_LOOP:       break;
-            case AST_RETURN:     break;
-            case AST_DEFER:      break;
-            case AST_BREAK:      break;
-            case AST_CONTINUE:   break;
-            default:
-                report_simple_err("encountered AST kind %s in emit_stmt()",
-                                  ast_get_kind_str(stmt->kind));
-
-        }
-        EMIT_STRING("// stmt");
-    }
-    EMIT_STRING(";\n");
-}
+static void emit_stmt(ast_t *stmt, int indent_level);
 
 static void emit_block(ast_block_t *block, int indent_level) {
     ast_t **stmt;
@@ -298,22 +242,99 @@ static void emit_block(ast_block_t *block, int indent_level) {
     INDENT(indent_level); EMIT_STRING("}\n");
 }
 
-static void emit_proc(ast_assign_t *parent_decl) {
+static void emit_stmt(ast_t *stmt, int indent_level) {
+    INDENT(indent_level);
+
+    switch (stmt->kind) {
+        case AST_DECL_VAR:
+            emit_var_decl((ast_decl_t*)stmt);
+            EMIT_STRING(";\n");
+            break;
+        case AST_BIN_EXPR:
+        case AST_UNARY_EXPR:
+            emit_expr(stmt);
+            EMIT_STRING(";\n");
+            break;
+        case AST_IF:
+            EMIT_STRING("if (");
+            emit_expr(((ast_if_t*)stmt)->expr);
+            EMIT_STRING(")\n");
+            emit_block((ast_block_t*)((ast_if_t*)stmt)->then_block, indent_level);
+            if (((ast_if_t*)stmt)->els != NULL) {
+                INDENT(indent_level);
+                EMIT_STRING("else\n");
+                if (((ast_if_t*)stmt)->els->kind == AST_IF) {
+                    emit_stmt(((ast_if_t*)stmt)->els, indent_level);
+                } else {
+                    ASSERT(((ast_if_t*)stmt)->els->kind == AST_BLOCK, "els is not an if, but is also not a block");
+                    emit_block((ast_block_t*)((ast_if_t*)stmt)->els, indent_level);
+                }
+            }
+            break;
+        case AST_LOOP:
+            EMIT_STRING("for (");
+            if (((ast_loop_t*)stmt)->init != NULL){
+                emit_var_decl((ast_decl_t*)((ast_loop_t*)stmt)->init);
+            }
+            EMIT_STRING("; ");
+            if (((ast_loop_t*)stmt)->cond != NULL){
+                emit_expr(((ast_loop_t*)stmt)->cond);
+            }
+            EMIT_STRING("; ");
+            if (((ast_loop_t*)stmt)->post != NULL){
+                emit_expr(((ast_loop_t*)stmt)->post);
+            }
+            EMIT_STRING(")\n");
+            emit_block((ast_block_t*)((ast_loop_t*)stmt)->block, indent_level);
+            break;
+        case AST_RETURN:
+            EMIT_STRING("return ");
+            if (((ast_return_t*)stmt)->expr != NULL) {
+                emit_expr(((ast_return_t*)stmt)->expr);
+            }
+            EMIT_STRING(";\n");
+            break;
+        case AST_DEFER:      break;
+        case AST_BREAK:
+            EMIT_STRING("break\n");
+            EMIT_STRING(";\n");
+            break;
+        case AST_CONTINUE:
+            EMIT_STRING("continue\n");
+            EMIT_STRING(";\n");
+            break;
+        default:
+            report_simple_err("encountered AST kind %s in emit_stmt()",
+                                ast_get_kind_str(stmt->kind));
+    }
+}
+
+static void emit_proc(ast_decl_t *parent_decl) {
     ast_proc_t   *proc;
     u32           proc_type;
     u32           ret_type;
+    ast_decl_t  **mod_it;
     u32           num_param_types;
     u32           i;
     u32           param_type;
     ast_t       **param_p_it;
     ast_param_t  *param;
 
-    proc      = (ast_proc_t*)parent_decl->val;
+    proc      = (ast_proc_t*)parent_decl->val_expr;
     proc_type = ASTP(proc)->type;
     ret_type  = get_ret_type(proc_type);
 
+    if (ASTP(proc)->flags & AST_FLAG_IS_EXTERN) {
+        return;
+    }
+
     emit_type_declarator(ret_type); EMIT_STRING(" ");
 
+    array_traverse(mod_stack, mod_it) {
+        EMIT_STRING("__");
+        EMIT_STRING_ID((*mod_it)->name);
+    }
+    if (array_len(mod_stack) > 0) { EMIT_STRING("_"); }
     EMIT_STRING_ID(parent_decl->name);
 
     num_param_types = get_num_param_types(proc_type);
@@ -338,26 +359,29 @@ static void emit_proc(ast_assign_t *parent_decl) {
 
     EMIT_STRING("\n");
     emit_block((ast_block_t*)proc->block, 0);
+    EMIT_STRING("\n");
 }
 
-static void emit_procs_module(ast_assign_t *parent_decl) {
+static void emit_procs_module(ast_decl_t *parent_decl) {
     ast_module_t  *module;
     ast_t        **nodep;
     ast_t         *node;
 
-    module = (ast_module_t*)((ast_assign_t*)parent_decl)->val;
+    module = (ast_module_t*)parent_decl->val_expr;
+
+    array_push(mod_stack, parent_decl);
 
     array_traverse(module->children, nodep) {
         node = *nodep;
 
-        if (!(node->flags & AST_FLAG_ORIGIN)) { continue; }
-
-        if (node->kind == AST_ASSIGN_MODULE) {
-            emit_procs_module((ast_assign_t*)node);
-        } else if (node->kind == AST_ASSIGN_PROC) {
-            emit_proc((ast_assign_t*)node);
+        if (node->kind == AST_DECL_MODULE) {
+            emit_procs_module((ast_decl_t*)node);
+        } else if (node->kind == AST_DECL_PROC) {
+            emit_proc((ast_decl_t*)node);
         }
     }
+
+    array_pop(mod_stack);
 }
 
 static void emit_procs_global(void) {
@@ -367,26 +391,26 @@ static void emit_procs_global(void) {
     array_traverse(roots, rootp) {
         root = *rootp;
 
-        if (!(root->flags & AST_FLAG_ORIGIN)) { continue; }
-
-        if (root->kind == AST_ASSIGN_MODULE) {
-            emit_procs_module((ast_assign_t*)root);
-        } else if (root->kind == AST_ASSIGN_PROC) {
-            emit_proc((ast_assign_t*)root);
+        if (root->kind == AST_DECL_MODULE) {
+            emit_procs_module((ast_decl_t*)root);
+        } else if (root->kind == AST_DECL_PROC) {
+            emit_proc((ast_decl_t*)root);
         }
     }
 }
-#endif
 
 void do_c_backend(void) {
     int  err;
     char exe_name[4096];
     char cmd_buff[4096];
 
+    mod_stack = array_make(ast_decl_t*);
+
     emit_prelude();
-/*     emit_proc_pre_decls_global(); */
-/*     emit_expr_assigns_global(); */
-/*     emit_procs_global(); */
+    EMIT_STRING("\n");
+    emit_proc_pre_decls_global();
+    EMIT_STRING("\n");
+    emit_procs_global();
 
     fflush(output_file);
 

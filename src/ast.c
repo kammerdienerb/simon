@@ -5,6 +5,13 @@
 #include "parse.h"
 #include "array.h"
 
+
+static array_t proc_stack;
+
+void init_checking(void) {
+    proc_stack = array_make(ast_proc_t*);
+}
+
 int ast_kind_is_decl(int kind) {
     return
 #define X(k) kind == (k) ||
@@ -225,6 +232,8 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_decl_t *parent_decl
 
     ASSERT(!(ASTP(proc)->flags & AST_FLAG_POLYMORPH), "TODO");
 
+    array_push(proc_stack, proc);
+
     new_scope = get_subscope_from_node(scope, ASTP(proc));
     ASSERT(new_scope != NULL, "didn't get scope");
 
@@ -264,7 +273,14 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_decl_t *parent_decl
     ASTP(parent_decl)->type  = ASTP(proc)->type;
     ASTP(parent_decl)->value = ASTP(proc)->value;
 
-    check_node(proc->block, new_scope, NULL);
+    if (proc->block != NULL) {
+        check_node(proc->block, new_scope, NULL);
+    } else {
+        ASSERT(ASTP(proc)->flags & AST_FLAG_IS_EXTERN,
+               "proc is not extern, but has no body");
+    }
+
+    array_pop(proc_stack);
 }
 
 static void check_param(ast_param_t *param, scope_t *scope) {
@@ -309,8 +325,44 @@ static void check_param(ast_param_t *param, scope_t *scope) {
     }
 }
 
+static void check_var(ast_decl_t *decl, scope_t *scope) {
+    u32 val_t;
+    u32 decl_t;
+
+    ASSERT(decl->type_expr || decl->val_expr,
+           "decl misssing both type and val");
+
+    if (decl->val_expr != NULL) {
+        check_node(decl->val_expr, scope, decl);
+        val_t = decl->val_expr->type;
+    }
+
+    if (decl->type_expr != NULL) {
+        check_node(decl->type_expr, scope, decl);
+        decl_t = decl->type_expr->value.t;
+    } else {
+        decl_t = val_t;
+    }
+
+    if (decl->type_expr != NULL
+    &&  decl->val_expr  != NULL
+    &&  decl_t          != val_t) {
+
+        report_range_err_no_exit(&decl->val_expr->loc,
+                                 "initialization of '%s' does not match declared type of %s",
+                                 get_string(decl->name),
+                                 get_string(get_type_string_id(decl_t)));
+        report_range_info(&decl->type_expr->loc,
+                          "expected %s, but got %s",
+                          get_string(get_type_string_id(decl_t)),
+                          get_string(get_type_string_id(val_t)));
+    }
+
+    ASTP(decl)->type = decl_t;
+}
+
 static void check_int(ast_int_t *integer, scope_t *scope) {
-    ASTP(integer)->type = TY_S64;
+    ASTP(integer)->type    = TY_S64;
     ASTP(integer)->value.i = strtoll(get_string(integer->str_rep), NULL, 10);
 }
 
@@ -366,10 +418,6 @@ add_char:;
 
     ASTP(string)->value.s = get_string_id_n(buff, new_len);
     ASTP(string)->type    = get_ptr_type(TY_CHAR);
-}
-
-static void check_bool(ast_bool_t *b, scope_t *scope) {
-    ASTP(b)->type = TY_BOOL;
 }
 
 static ast_t * try_get_decl_and_path(ast_ident_t *ident, array_t *path) {
@@ -1060,7 +1108,7 @@ static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
         case OP_LEQ:
         case OP_GTR:
         case OP_GEQ:
-            ASTP(expr)->type = TY_BOOL;
+            ASTP(expr)->type = TY_S64;
             break;
 
         case OP_PLUS_ASSIGN:
@@ -1191,15 +1239,16 @@ static void check_if(ast_if_t *_if, scope_t *scope) {
 
     check_node(_if->expr, new_scope, NULL);
 
-    if (_if->expr->type != TY_BOOL) {
-        report_range_err(&_if->expr->loc, "'if' condition must have type bool");
+    if (!type_kind_is_int(type_kind(_if->expr->type))) {
+        report_range_err_no_exit(&_if->expr->loc, "'if' condition must have an integer type");
+        report_simple_info("got %s", get_string(get_type_string_id(_if->expr->type)));
         return;
     }
 
     check_node(_if->then_block, new_scope, NULL);
 
     if (_if->els != NULL) {
-        check_node(_if->els, new_scope, NULL);
+        check_node(_if->els, scope, NULL);
     }
 }
 
@@ -1216,8 +1265,9 @@ static void check_loop(ast_loop_t *loop, scope_t *scope) {
     }
     if (loop->cond != NULL) {
         check_node(loop->cond, new_scope, NULL);
-        if (loop->cond->type != TY_BOOL) {
-            report_range_err(&loop->cond->loc, "loop condition must have type bool");
+        if (!type_kind_is_int(type_kind(loop->cond->type))) {
+            report_range_err_no_exit(&loop->cond->loc, "loop condition must have an integer type");
+            report_simple_info("got %s", get_string(get_type_string_id(loop->cond->type)));
             return;
         }
     }
@@ -1228,6 +1278,44 @@ static void check_loop(ast_loop_t *loop, scope_t *scope) {
     check_node(loop->block, new_scope, NULL);
 }
 
+static void check_return(ast_return_t *ret, scope_t *scope) {
+    ast_proc_t **proc_it;
+    ast_proc_t  *proc;
+
+    proc_it = array_last(proc_stack);
+
+    if (proc_it == NULL) {
+        report_range_err(&ASTP(ret)->loc, "return statement only valid in a procedure body");
+        return;
+    }
+
+    proc = *proc_it;
+
+    if (ret->expr != NULL) {
+        check_node(ret->expr, scope, NULL);
+
+        if (proc->ret_type_expr == NULL) {
+            report_range_err(&ret->expr->loc,
+                             "attempting to return %s in a procedure that does not return a value",
+                             get_string(get_type_string_id(ret->expr->value.t)));
+            return;
+        }
+        if (ret->expr->type != proc->ret_type_expr->value.t) {
+            report_range_err(&ret->expr->loc,
+                             "incorrect type of returned expression: expected %s, but got %s",
+                             get_string(get_type_string_id(proc->ret_type_expr->value.t)),
+                             get_string(get_type_string_id(ret->expr->type)));
+            return;
+        }
+    } else if (proc->ret_type_expr != NULL) {
+        report_range_err(&ASTP(ret)->loc,
+                         "return statement missing expression in a procedure that returns %s", get_string(get_type_string_id(proc->ret_type_expr->value.t)));
+        return;
+    }
+
+    ASTP(ret)->type = TY_NOT_TYPED;
+}
+
 void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl) {
     ast_t **it;
 
@@ -1235,12 +1323,19 @@ void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl) {
     node->flags |= AST_FLAG_CHECKED;
 
     switch (node->kind) {
-/* #define X(_kind) case _kind: */
-/*         X_AST_ASSIGNS */
-/* #undef X */
-/*             check_assign((ast_assign_t*)node, scope); */
-/*             break; */
-/*  */
+
+#define X(_kind) case _kind:
+        X_AST_DECLARATIONS
+#undef X
+
+            if (node->kind == AST_DECL_VAR) {
+                check_var((ast_decl_t*)node, scope);
+            } else {
+                check_node(((ast_decl_t*)node)->val_expr, scope, (ast_decl_t*)node);
+            }
+
+            break;
+
         case AST_MODULE:
             array_traverse(((ast_module_t*)node)->children, it) {
                 check_node(*it, get_subscope_from_node(scope, node), NULL);
@@ -1273,9 +1368,6 @@ void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl) {
             check_unary_expr((ast_unary_expr_t*)node, scope);
             break;
 
-        case AST_BOOL:
-            check_bool((ast_bool_t*)node, scope);
-            break;
         case AST_INT:
             check_int((ast_int_t*)node, scope);
             break;
@@ -1299,6 +1391,10 @@ void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl) {
             check_loop((ast_loop_t*)node, scope);
             break;
 
+        case AST_RETURN:
+            check_return((ast_return_t*)node, scope);
+            break;
+
         case AST_BUILTIN:
             break;
 
@@ -1309,5 +1405,10 @@ void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl) {
 #endif
     }
 
+#ifdef SIMON_DO_ASSERTIONS
+    if (node->type == TY_UNKNOWN) {
+        report_range_err_no_exit(&node->loc, "INTERNAL ERROR: type not resolved in check_node()");
+    }
     ASSERT(node->type != TY_UNKNOWN, "did not resolve type");
+#endif
 }
