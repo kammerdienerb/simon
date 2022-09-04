@@ -45,7 +45,6 @@ static void emit_type_declarator(u32 t) {
             EMIT_STRING("void");
             break;
         case TY_GENERIC_INT:
-        case TY_CHAR:
             EMIT_STRING_ID(get_type_string_id(t));
             break;
         case TY_PTR:

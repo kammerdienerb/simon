@@ -15,10 +15,11 @@ static pthread_mutex_t output_mtx = PTHREAD_MUTEX_INITIALIZER;
 #define TERM_BLUE    "\e[34m"
 #define TERM_MAGENTA "\e[35m"
 #define TERM_CYAN    "\e[36m"
+#define TERM_BOLD    "\e[1m"
 
 
-#define ERR_COLOR   TERM_RED
-#define INFO_COLOR  TERM_YELLOW
+#define ERR_COLOR   TERM_BOLD TERM_RED
+#define INFO_COLOR  TERM_BOLD TERM_YELLOW
 #define LOC_COLOR   TERM_BLUE
 #define RANGE_COLOR TERM_RESET
 

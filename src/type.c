@@ -16,19 +16,15 @@ int type_kind_has_under(u32 kind) {
 }
 
 int type_kind_is_int(u32 kind) {
-    return
-#define X(k) kind == (k) ||
-    X_INT_TYPES
-#undef X
-    0;
+    return kind == TY_GENERIC_INT;
+}
+
+int type_kind_is_float(u32 kind) {
+    return kind == TY_GENERIC_FLOAT;
 }
 
 int type_kind_is_numeric(u32 kind) {
-    return
-#define X(k) kind == (k) ||
-    X_NUM_TYPES
-#undef X
-    0;
+    return kind == TY_GENERIC_INT || kind == TY_GENERIC_FLOAT;
 }
 
 static u32 insert_new_type(type_t t) {
@@ -147,8 +143,18 @@ int type_kind(u32 ty) {
 
     kind = get_type_structure(ty)->kind;
 
-    if (type_kind_is_int(kind)) {
-        kind = TY_GENERIC_INT;
+    switch (kind) {
+#define X(t) case t:
+        X_INT_TYPES
+#undef X
+            kind = TY_GENERIC_INT;
+            break;
+
+#define X(t) case t:
+        X_FLOAT_TYPES
+#undef X
+            kind = TY_GENERIC_FLOAT;
+            break;
     }
 
     return kind;
@@ -291,7 +297,6 @@ static void build_type_string(u32 ty, char *buff) {
         case TY_PROC:      strncat(buff, "procedure",           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_PTR:       strncat(buff, "*",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_VARGS:     strncat(buff, "...",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_CHAR:      strncat(buff, "char",                TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_U8:        strncat(buff, "u8",                  TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_U16:       strncat(buff, "u16",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_U32:       strncat(buff, "u32",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
@@ -300,6 +305,8 @@ static void build_type_string(u32 ty, char *buff) {
         case TY_S16:       strncat(buff, "s16",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_S32:       strncat(buff, "s32",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_S64:       strncat(buff, "s64",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_F32:       strncat(buff, "f32",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_F64:       strncat(buff, "f64",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_STRUCT:    strncat(buff, get_string(t.name_id), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case _TY_TYPE_LIST: break; /* Handled below. */
         default:

@@ -14,10 +14,11 @@
 #
 #   *Note that statements are required to be terminated with semicolons.
 
-decl1 : u32;      # default-initialized, unsigned, 32-bit integer variable
-decl2 : s64 = -1; # initialized, signed, 64-bit integer variable
-decl3 := *decl2;  # type inferred, initialized, s64 pointer variable (the address of decl2)
-print := __builtin_prints;
+decl1  : u32;      # default-initialized, unsigned, 32-bit integer variable
+decl2  : s64 = -1; # initialized, signed, 64-bit integer variable
+decl3  := *decl2;  # type inferred, initialized, s64 pointer variable (the address of decl2)
+print  := __builtin_prints;
+printi := __builtin_printi;
 
 #   Kinds of declarations:
 #     1. Variables (see above).
@@ -70,7 +71,7 @@ Procs := module {
     # Procedures may have arguments, which look like variable declarations.
     # If the procedure returns a value, the return type will be specified
     # after a `:` following the argument list.
-    square := proc(x: f32): f32 {
+    square := proc(x: f64): f64 {
         return x * x;
     }
 
@@ -153,7 +154,7 @@ defer_example := proc() {
     print("A\n");
     loop i := 0; i < 3; i += 1 {
         defer { print("loop iteration\n"); }
-        print(i);
+        printi(i);
     }
     print("B\n");
 }
@@ -168,6 +169,10 @@ defer_example := proc() {
 #   B
 #   leaving defer_example(): 2
 #   leaving defer_example(): 1
+
+
+[[ extern ]]
+mem_alloc := proc (n: u64) : *u8;
 
 ### Polymorphism
 #   Parametric polymorphism is done through the use of values known

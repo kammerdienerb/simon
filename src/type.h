@@ -12,7 +12,6 @@
     X(TY_MODULE)          \
     X(TY_MACRO)           \
     X(TY_TYPE)            \
-    X(TY_CHAR)            \
     X(TY_U8)              \
     X(TY_U16)             \
     X(TY_U32)             \
@@ -21,8 +20,11 @@
     X(TY_S16)             \
     X(TY_S32)             \
     X(TY_S64)             \
+    X(TY_F32)             \
+    X(TY_F64)             \
     X(TY_PTR)             \
     X(TY_GENERIC_INT)     \
+    X(TY_GENERIC_FLOAT)   \
     X(TY_VARGS)           \
     X(_TY_TYPE_LIST)      \
     X(TY_STRUCT)          \
@@ -52,7 +54,6 @@ enum {
     X(TY_MODULE)             \
     X(TY_MACRO)              \
     X(TY_TYPE)               \
-    X(TY_CHAR)               \
     X(TY_U8)                 \
     X(TY_U16)                \
     X(TY_U32)                \
@@ -60,22 +61,27 @@ enum {
     X(TY_S8)                 \
     X(TY_S16)                \
     X(TY_S32)                \
-    X(TY_S64)
+    X(TY_S64)                \
+    X(TY_F32)                \
+    X(TY_F64)
 
 #define X_HAVE_UNDER_TYPES \
     X(TY_PTR)              \
     X(TY_VARGS)
 
-#define X_INT_TYPES   \
-    X(TY_GENERIC_INT) \
-    X(TY_U8)          \
-    X(TY_U16)         \
-    X(TY_U32)         \
-    X(TY_U64)         \
-    X(TY_S8)          \
-    X(TY_S16)         \
-    X(TY_S32)         \
+#define X_INT_TYPES \
+    X(TY_U8)        \
+    X(TY_U16)       \
+    X(TY_U32)       \
+    X(TY_U64)       \
+    X(TY_S8)        \
+    X(TY_S16)       \
+    X(TY_S32)       \
     X(TY_S64)
+
+#define X_FLOAT_TYPES \
+    X(TY_F32)          \
+    X(TY_F64)
 
 #define X_NUM_TYPES \
     X(TY_U8)        \
@@ -85,7 +91,9 @@ enum {
     X(TY_S8)        \
     X(TY_S16)       \
     X(TY_S32)       \
-    X(TY_S64)
+    X(TY_S64)       \
+    X(TY_F32)       \
+    X(TY_F64)
 
 typedef struct type {
     u32 kind;
@@ -119,6 +127,7 @@ int init_types(void);
 int type_has_compile_time_only_values(u32 ty);
 int type_kind_has_under(u32 kind);
 int type_kind_is_int(u32 kind);
+int type_kind_is_float(u32 kind);
 int type_kind_is_numeric(u32 kind);
 int type_kind(u32 ty);
 u32 get_ptr_type(u32 ty);

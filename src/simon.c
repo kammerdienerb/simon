@@ -40,11 +40,12 @@ int main(int argc, char **argv) {
     }
 
     do_parse();
-    do_check();
 
     if (options.dump_symbols) {
         show_scope(global_scope);
     }
+
+    do_check();
 
     do_backend();
 

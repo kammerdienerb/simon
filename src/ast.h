@@ -36,7 +36,9 @@
     X(AST_PARAM)               \
     X(AST_STRUCT_FIELD)        \
     X(AST_INT)                 \
+    X(AST_FLOAT)               \
     X(AST_STRING)              \
+    X(AST_BOOL)                \
     X(AST_IDENT)               \
     X(AST_UNARY_EXPR)          \
     X(AST_BIN_EXPR)            \
@@ -190,8 +192,16 @@ AST_DEFINE(int,
     string_id str_rep;
 );
 
+AST_DEFINE(float,
+    string_id str_rep;
+);
+
 AST_DEFINE(string,
     string_id str_rep;
+);
+
+AST_DEFINE(bool,
+    int is_true;
 );
 
 AST_DEFINE(ident,

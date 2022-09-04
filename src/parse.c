@@ -386,6 +386,68 @@ get_digits:;
     return len;
 }
 
+static int parse_float(parse_context_t *cxt, string_id *string_out) {
+    char *curs;
+    int   len;
+    int   non_underscore;
+
+    curs           = cxt->cursor;
+    len            = 0;
+    non_underscore = 0;
+
+    if (*curs == '-') {
+        curs += 1;
+
+        if (curs < cxt->end && IS_NUM(*curs)) {
+            non_underscore = 1;
+            curs += 1;
+        } else {
+            return 0;
+        }
+
+        goto get_digits;
+    } else {
+get_digits:;
+        while (curs < cxt->end) {
+            if (!IS_NUM(*curs) && *curs != '_') {
+                if (*curs != '.' || !non_underscore) {
+                    return 0;
+                }
+                break;
+            }
+
+            non_underscore |= (*curs != '_');
+            curs += 1;
+        }
+
+        curs += 1;
+
+        non_underscore = 0;
+
+        while (curs < cxt->end) {
+            if (!IS_NUM(*curs) && *curs != '_') {
+                if (IS_ALPHA(*curs)) {
+                    return 0;
+                }
+                break;
+            }
+
+            non_underscore |= (*curs != '_');
+            curs += 1;
+        }
+    }
+
+    if (non_underscore == 0) { return 0; }
+
+    len = curs - cxt->cursor;
+
+    if (len > 0 && string_out) {
+        *string_out = get_string_id_n(cxt->cursor, len);
+    }
+
+    return len;
+}
+
 static int parse_string_literal(parse_context_t *cxt, string_id *string_out) {
     char *curs;
     char  last;
@@ -455,6 +517,11 @@ static int parse_string_literal(parse_context_t *cxt, string_id *string_out) {
     EXPECT((cxt), parse_int((cxt), (id_ptr)), (fmt), ##__VA_ARGS__)
 #define OPTIONAL_INT(cxt, id_ptr) \
     OPTIONAL((cxt), parse_int((cxt), (id_ptr)))
+
+#define EXPECT_FLOAT(cxt, id_ptr, fmt, ...) \
+    EXPECT((cxt), parse_float((cxt), (id_ptr)), (fmt), ##__VA_ARGS__)
+#define OPTIONAL_FLOAT(cxt, id_ptr) \
+    OPTIONAL((cxt), parse_float((cxt), (id_ptr)))
 
 #define EXPECT_STR_LIT(cxt, id_ptr, fmt, ...) \
     EXPECT((cxt), parse_string_literal((cxt), (id_ptr)), (fmt), ##__VA_ARGS__)
@@ -778,15 +845,19 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
 
     result = NULL;
 
-    if (OPTIONAL_INT(cxt, &str_rep)) {
-        result                        = AST_ALLOC(cxt, ast_int_t);
-        result->kind                  = AST_INT;
-        ((ast_int_t*)result)->str_rep = str_rep;
-    } else if (OPTIONAL_IDENT(cxt, &str_rep)) {
+    if (OPTIONAL_IDENT(cxt, &str_rep)) {
         result                                = AST_ALLOC(cxt, ast_ident_t);
         result->kind                          = AST_IDENT;
         ((ast_ident_t*)result)->str_rep       = str_rep;
         ((ast_ident_t*)result)->resolved_node = NULL;
+    } else if (OPTIONAL_FLOAT(cxt, &str_rep)) {
+        result                        = AST_ALLOC(cxt, ast_float_t);
+        result->kind                  = AST_FLOAT;
+        ((ast_float_t*)result)->str_rep = str_rep;
+    } else if (OPTIONAL_INT(cxt, &str_rep)) {
+        result                        = AST_ALLOC(cxt, ast_int_t);
+        result->kind                  = AST_INT;
+        ((ast_int_t*)result)->str_rep = str_rep;
     } else if (OPTIONAL_STR_LIT(cxt, &str_rep)) {
         result                           = AST_ALLOC(cxt, ast_string_t);
         result->kind                     = AST_STRING;
@@ -1237,15 +1308,13 @@ static ast_t * parse_if(parse_context_t *cxt) {
         result->els = parse_if(cxt);
 
         if (result->els == NULL) {
-            SCOPE_PUSH(cxt, AST_BLOCK, NULL);
+            SCOPE_PUSH(cxt, AST_IF, ASTP(result));
 
             result->els = parse_block(cxt);
             if (result->els == NULL) {
                 report_loc_err(GET_BEG_POINT(cxt), "expected '{' to open 'else' block");
                 return NULL;
             }
-
-            SCOPE(cxt)->node = result->els;
 
             SCOPE_POP(cxt);
         }
@@ -1436,7 +1505,10 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
         ASTP(param)->loc.beg = GET_BEG_POINT(cxt);
         param->name          = STRING_ID_NULL;
 
-        if (OPTIONAL_CHAR(cxt, '%')) { ASTP(param)->flags |= AST_FLAG_POLYMORPH; }
+        if (OPTIONAL_CHAR(cxt, '%')) {
+            ASTP(param)->flags  |= AST_FLAG_POLYMORPH;
+            ASTP(result)->flags |= AST_FLAG_POLYMORPH;
+        }
 
         EXPECT_IDENT(cxt, &param->name, "expected parameter name");
 
@@ -1536,9 +1608,6 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
     } else {
         result->block = NULL;
         ASTP(result)->loc.end = GET_END_POINT(cxt);
-        if (!OPTIONAL_NO_EAT_CHAR(cxt, ';')) {
-            EXPECT_CHAR(cxt, ';', "expected ';'");
-        }
     }
 
     SCOPE_POP(cxt);
@@ -1648,10 +1717,6 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
         cxt->program_entry = result;
     }
 
-    if (is_extern) {
-        result->val_expr->flags |= AST_FLAG_IS_EXTERN;
-    }
-
     INSTALL_IF_NEW(cxt, name, ASTP(result));
 
     if (assigned) {
@@ -1659,6 +1724,7 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
             case AST_DECL_PROC:
                 result->val_expr   = parse_proc_body(cxt, name, !is_extern);
                 ASTP(result)->type = TY_PROC;
+                if (is_extern) { result->val_expr->flags |= AST_FLAG_IS_EXTERN; }
                 OPTIONAL_CHAR(cxt, ';');
                 break;
             case AST_DECL_STRUCT:

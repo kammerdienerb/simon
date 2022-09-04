@@ -7,6 +7,7 @@
 
 
 static array_t proc_stack;
+static int     in_loop;
 
 void init_checking(void) {
     proc_stack = array_make(ast_proc_t*);
@@ -147,44 +148,44 @@ static void _report_declaration_path(int should_exit, array_t path) {
 /* } */
 
 static void check_decl(ast_decl_t *decl, scope_t *scope) {
-    u32 type;
+    u32 val_t;
+    u32 decl_t;
 
-    if (decl->type_expr != NULL) {
-        check_node(decl->type_expr, scope, NULL);
-        type = decl->type_expr->value.t;
-    }
+    ASSERT(decl->type_expr || decl->val_expr,
+           "decl misssing both type and val");
+
     if (decl->val_expr != NULL) {
         check_node(decl->val_expr, scope, decl);
-
-        if (decl->val_expr->type == TY_NOT_TYPED) {
-            report_range_err_no_exit(&decl->val_expr->loc,
-                                    "invalid expression in assignment of '%s'",
-                                    get_string(decl->name));
-            report_simple_info("the expression does not have a type or value");
-            return;
-        }
-
-        if (decl->type_expr == NULL) {
-            type = decl->val_expr->type;
-        }
+        val_t = decl->val_expr->type;
     }
 
-    if (scope->in_proc && type == TY_PROC) {
+    if (decl->type_expr != NULL) {
+        check_node(decl->type_expr, scope, decl);
+        decl_t = decl->type_expr->value.t;
+    } else {
+        decl_t = val_t;
+    }
+
+    if (scope->in_proc && decl_t == TY_PROC) {
         report_range_err(&ASTP(decl)->loc, "procedures may not be defined within another procedure");
         return;
     }
 
-    if (decl->type_expr != NULL && decl->val_expr != NULL) {
-        if (decl->type_expr->value.t != decl->val_expr->type) {
-            report_range_err(&decl->val_expr->loc,
-                             "'%s' is declared with type %s, but you're trying to initialize it with a value of type %s",
-                             get_string(decl->name),
-                             get_string(get_type_string_id(decl->type_expr->value.t)),
-                             get_string(get_type_string_id(decl->val_expr->type)));
-        }
+    if (decl->type_expr != NULL
+    &&  decl->val_expr  != NULL
+    &&  decl_t          != val_t) {
+
+        report_range_err_no_exit(&decl->val_expr->loc,
+                                 "initialization of '%s' does not match declared type of %s",
+                                 get_string(decl->name),
+                                 get_string(get_type_string_id(decl_t)));
+        report_range_info(&decl->type_expr->loc,
+                          "expected %s, but got %s",
+                          get_string(get_type_string_id(decl_t)),
+                          get_string(get_type_string_id(val_t)));
     }
 
-    ASTP(decl)->type = type;
+    ASTP(decl)->type = decl_t;
 }
 
 static void check_proc(ast_proc_t *proc, scope_t *scope, ast_decl_t *parent_decl) {
@@ -335,6 +336,11 @@ static void check_int(ast_int_t *integer, scope_t *scope) {
     ASTP(integer)->value.i = strtoll(get_string(integer->str_rep), NULL, 10);
 }
 
+static void check_float(ast_int_t *integer, scope_t *scope) {
+    ASTP(integer)->type    = TY_F64;
+    ASTP(integer)->value.f = strtod(get_string(integer->str_rep), NULL);
+}
+
 static void check_string(ast_string_t *string, scope_t *scope) {
     const char *contents;
     u32         len;
@@ -386,7 +392,7 @@ add_char:;
     }
 
     ASTP(string)->value.s = get_string_id_n(buff, new_len);
-    ASTP(string)->type    = get_ptr_type(TY_CHAR);
+    ASTP(string)->type    = get_ptr_type(TY_U8);
 }
 
 static ast_t * try_get_decl_and_path(ast_ident_t *ident, array_t *path) {
@@ -986,7 +992,10 @@ static void check_mul(ast_bin_expr_t *expr) {
     tk1 = type_kind(t1);
     tk2 = type_kind(t2);
 
-    if (tk1 != TY_GENERIC_INT || tk2 != TY_GENERIC_INT) {
+    if (!(
+           (tk1 == TY_GENERIC_INT   && tk2 == TY_GENERIC_INT)
+        || (tk1 == TY_GENERIC_FLOAT && tk2 == TY_GENERIC_FLOAT))) {
+
         binop_bad_type_error(expr);
         return;
     }
@@ -1146,8 +1155,18 @@ static void check_unary_expr(ast_unary_expr_t *expr, scope_t *scope) {
                 ASTP(expr)->type = get_under_type(expr->child->type);
             }
             break;
+        case OP_NOT:
+            if (!type_kind_is_int(type_kind(expr->child->type))) {
+                report_range_err_no_exit(&ASTP(expr)->loc,
+                                         "right-hand-side operand of 'not' operator must be an integer");
+                report_range_info_no_context(&expr->child->loc,
+                                             "operand has type %s",
+                                             get_string(get_type_string_id(expr->child->type)));
+            }
+            ASTP(expr)->type = expr->child->type;
+            break;
         case OP_NEG:
-            if (!type_kind_is_numeric(expr->child->type)) {
+            if (!type_kind_is_numeric(type_kind(expr->child->type))) {
                 report_range_err_no_exit(&ASTP(expr)->loc,
                                          "right-hand-side operand of '-' operator must be numeric");
                 report_range_info_no_context(&expr->child->loc,
@@ -1186,14 +1205,9 @@ static void check_struct(ast_struct_t *st, scope_t *scope, ast_decl_t *parent_de
         i += 1;
     }
 
-    ASTP(st)->type = get_struct_type(st, parent_decl->name, scope);
+    ASTP(st)->type    = TY_TYPE;
+    ASTP(st)->value.t = get_struct_type(st, parent_decl->name, scope);
 
-    /* @bad?, @refactor
-    ** We have to bubble this type up to the declaration so that identifier lookups
-    ** that occur before we return from this routine can get the right type.
-    ** I'm not sure if this should just be done everywhere like this (shouldn't
-    ** be _that_ many spots), or if something a little smarter should be done.
-    */
     ASTP(parent_decl)->type  = ASTP(st)->type;
     ASTP(parent_decl)->value = ASTP(st)->value;
 
@@ -1236,6 +1250,8 @@ static void check_if(ast_if_t *_if, scope_t *scope) {
 static void check_loop(ast_loop_t *loop, scope_t *scope) {
     scope_t *new_scope;
 
+    in_loop = 1;
+
     ASTP(loop)->type = TY_NOT_TYPED;
 
     new_scope = get_subscope_from_node(scope, ASTP(loop));
@@ -1249,7 +1265,7 @@ static void check_loop(ast_loop_t *loop, scope_t *scope) {
         if (!type_kind_is_int(type_kind(loop->cond->type))) {
             report_range_err_no_exit(&loop->cond->loc, "loop condition must have an integer type");
             report_simple_info("got %s", get_string(get_type_string_id(loop->cond->type)));
-            return;
+            goto out;
         }
     }
     if (loop->post != NULL) {
@@ -1257,6 +1273,27 @@ static void check_loop(ast_loop_t *loop, scope_t *scope) {
     }
 
     check_node(loop->block, new_scope, NULL);
+
+out:;
+    in_loop = 0;
+}
+
+static void check_break(ast_continue_t *brk, scope_t *scope) {
+    ASTP(brk)->type = TY_NOT_TYPED;
+
+    if (!in_loop) {
+        report_range_err(&ASTP(brk)->loc, "break statement only valid within a loop");
+        return;
+    }
+}
+
+static void check_continue(ast_continue_t *cont, scope_t *scope) {
+    ASTP(cont)->type = TY_NOT_TYPED;
+
+    if (!in_loop) {
+        report_range_err(&ASTP(cont)->loc, "continue statement only valid within a loop");
+        return;
+    }
 }
 
 static void check_return(ast_return_t *ret, scope_t *scope) {
@@ -1295,6 +1332,12 @@ static void check_return(ast_return_t *ret, scope_t *scope) {
     }
 
     ASTP(ret)->type = TY_NOT_TYPED;
+}
+
+static void check_defer(ast_defer_t *defer, scope_t *scope) {
+    ASTP(defer)->type = TY_NOT_TYPED;
+
+    check_node(defer->block, scope, NULL);
 }
 
 void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl) {
@@ -1358,6 +1401,9 @@ void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl) {
         case AST_INT:
             check_int((ast_int_t*)node, scope);
             break;
+        case AST_FLOAT:
+            check_float((ast_int_t*)node, scope);
+            break;
         case AST_STRING:
             check_string((ast_string_t*)node, scope);
             break;
@@ -1378,8 +1424,20 @@ void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl) {
             check_loop((ast_loop_t*)node, scope);
             break;
 
+        case AST_CONTINUE:
+            check_continue((ast_continue_t*)node, scope);
+            break;
+
+        case AST_BREAK:
+            check_break((ast_continue_t*)node, scope);
+            break;
+
         case AST_RETURN:
             check_return((ast_return_t*)node, scope);
+            break;
+
+        case AST_DEFER:
+            check_defer((ast_defer_t*)node, scope);
             break;
 
         case AST_BUILTIN:
