@@ -23,6 +23,14 @@ int type_kind_is_int(u32 kind) {
     0;
 }
 
+int type_kind_is_numeric(u32 kind) {
+    return
+#define X(k) kind == (k) ||
+    X_NUM_TYPES
+#undef X
+    0;
+}
+
 static u32 insert_new_type(type_t t) {
     u32  id;
     u32 *id_list;

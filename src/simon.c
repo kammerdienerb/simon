@@ -17,7 +17,6 @@ void do_sanity_checks(void);
 int  do_options(int argc, char **argv);
 void do_init(void);
 void do_parse(void);
-void do_resolve_symbols(void);
 void do_check(void);
 void do_backend(void);
 
@@ -41,8 +40,7 @@ int main(int argc, char **argv) {
     }
 
     do_parse();
-/*     do_resolve_symbols(); */
-/*     do_check(); */
+    do_check();
 
     if (options.dump_symbols) {
         show_scope(global_scope);
@@ -124,14 +122,6 @@ void do_parse(void) {
 
     verb_message("total lines: %lu\n", n_lines);
     verb_message("parsing took %lu us\n", measure_time_now_us() - start_us);
-}
-
-void do_resolve_symbols(void) {
-    u64 start_us;
-
-    start_us = measure_time_now_us();
-
-    verb_message("symbol origin resolution took %lu us\n", measure_time_now_us() - start_us);
 }
 
 void do_check(void) {

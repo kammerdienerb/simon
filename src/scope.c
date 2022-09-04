@@ -15,7 +15,7 @@ static void insert_builtin_type(const char *name, u32 type_value) {
     ASTP(b)->value.t = type_value;
     b->name          = name_id;
 
-    add_symbol_if_new(global_scope, name_id, ASTP(b));
+    add_symbol(global_scope, name_id, ASTP(b));
 }
 
 static void _insert_builtin_proc_like(const char *name, u32 ret_type_or_special, u32 n_params, u32 *param_types) {
@@ -37,7 +37,7 @@ static void _insert_builtin_proc_like(const char *name, u32 ret_type_or_special,
     ASTP(b)->type    = proc_type;
     ASTP(b)->value.a = ASTP(b);
 
-    add_symbol_if_new(global_scope, name_id, ASTP(b));
+    add_symbol(global_scope, name_id, ASTP(b));
 }
 
 #define INSERT_BUILTIN_PROC_LIKE(_name, _ret_type, ...)          \
@@ -183,6 +183,30 @@ void add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node) {
 
     existing_node = search_up_scopes_stop_at_module(scope, name_id);
     if (existing_node != NULL) { return; }
+
+    array_push(scope->symbols, name_id);
+    array_push(scope->nodes,   node);
+}
+
+static void redecl_error(string_id name, ast_t *bad, ast_t *existing) {
+    report_range_err_no_exit(&bad->loc, "redeclaration of '%s'", get_string(name));
+    if (existing->kind == AST_BUILTIN) {
+        report_simple_info("'%s' is a compiler builtin", get_string(name));
+    } else {
+        report_range_info(&existing->loc, "competing declaration here:");
+    }
+}
+
+void add_symbol(scope_t *scope, string_id name_id, ast_t *node) {
+    ast_t *existing_node;
+
+    if (name_id == UNDERSCORE_ID) { return; }
+
+    existing_node = search_up_scopes_stop_at_module(scope, name_id);
+    if (existing_node != NULL) {
+        redecl_error(name_id, node, existing_node);
+        return;
+    }
 
     array_push(scope->symbols, name_id);
     array_push(scope->nodes,   node);

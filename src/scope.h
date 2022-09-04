@@ -23,6 +23,7 @@ void     init_scopes(void);
 scope_t *create_scope(scope_t *parent, int kind, ast_t *node);
 scope_t *create_named_scope(scope_t *parent, int kind, ast_t *node, string_id name_id);
 void     add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node);
+void     add_symbol(scope_t *scope, string_id name_id, ast_t *node);
 scope_t *add_subscope(scope_t *scope, int kind, ast_t *node);
 scope_t *add_named_subscope(scope_t *scope, int kind, ast_t *node, string_id name_id);
 void     move_subscope(scope_t *dst, scope_t *subscope);

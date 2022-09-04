@@ -126,12 +126,10 @@ static void _report_declaration_path(int should_exit, array_t path) {
 #define report_declaration_path_no_exit(_path) (_report_declaration_path(0, (_path)))
 
 
-/* static void typecheck_assign(ast_assign_t *assign, ast_t *origin, scope_t *scope) { */
-/*     ASSERT(ASTP(assign)->type != TY_UNKNOWN, "right hand side of assignment doesn't have a type"); */
+/* static void typecheck_assign(ast_t *lval, ast_t *rval, scope_t *scope) { */
+/*     ASSERT(rval->type != TY_UNKNOWN, "right hand side of assignment doesn't have a type"); */
 /*  */
-/*     if (origin->type == TY_UNKNOWN) { */
-/*         origin->type = ASTP(assign)->type; */
-/*     } else if (assign->val->type != origin->type) { */
+/*     if (rval->type != lval->type) { */
 /*         report_range_err(&ASTP(assign)->loc, */
 /*                          "'%s' has type %s, but you're trying to assign it a value of type %s", */
 /*                          get_string(assign->name), */
@@ -140,78 +138,47 @@ static void _report_declaration_path(int should_exit, array_t path) {
 /*         return; */
 /*     } */
 /* } */
-/*  */
-/* static void check_assign(ast_assign_t *assign, scope_t *scope) { */
-/*     ast_t      *existing_node; */
-/*     const char *which; */
-/*  */
-/*     ASSERT(assign->val != NULL, "assignment has no value"); */
-/*  */
-/*     if (assign->name == UNDERSCORE_ID) { */
-/*         check_node(assign->val, scope, assign); */
-/*         ASTP(assign)->type = assign->val->type; */
-/*         return; */
-/*     } */
-/*  */
-/*     if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) { */
-/*         existing_node = search_up_scopes_stop_at_module(scope, assign->name); */
-/*         if (existing_node == NULL) { */
-/*             undeclared_error(assign->name, ASTP(assign)); */
-/*             return; */
-/*         } */
-/*         ASSERT(ast_kind_can_be_symbol_origin(existing_node->kind), "kind isn't allowed to be an origin"); */
-/*         ASSERT(ASTP(assign) != existing_node, "assign search found itself"); */
-/* #ifdef SIMON_DO_ASSERTIONS */
-/*         if (ast_kind_is_assign(existing_node->kind)) { */
-/*             ASSERT(existing_node->flags & AST_FLAG_ORIGIN, "existing node isn't an origin"); */
-/*         } */
-/* #endif */
-/*     } */
-/*  */
-/*     check_node(assign->val, scope, assign); */
-/*  */
-/*     if (assign->val->type == TY_NOT_TYPED) { */
-/*         report_range_err_no_exit(&assign->val->loc, */
-/*                                  "invalid expression in assignment of '%s'", */
-/*                                  get_string(assign->name)); */
-/*         report_simple_info("the expression does not have a type or value"); */
-/*         return; */
-/*     } */
-/*  */
-/*     ASTP(assign)->type  = assign->val->type; */
-/*     ASTP(assign)->value = assign->val->value; */
-/*  */
-/*     if (scope->in_proc) { */
-/*         if (assign->val->type == TY_PROC) { */
-/*             report_range_err(&ASTP(assign)->loc, "procedures may not be defined within another procedure"); */
-/*             return; */
-/*         } */
-/*  */
-/*         if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) { */
-/*             if (type_has_compile_time_only_values(existing_node->type)) { */
-/*                 switch (existing_node->type) { */
-/*                     case TY_MODULE: which = "module";    break; */
-/*                     case TY_MACRO:  which = "macro";     break; */
-/*                     case TY_TYPE:   which = "type";      break; */
-/*                     case TY_PROC:   which = "procedure"; break; */
-/*                     default: */
-/*                         which = "???"; */
-/*                         ASSERT(0, "unhandled type"); */
-/*                 } */
-/*                 report_range_err_no_exit(&ASTP(assign)->loc, */
-/*                                          "can't reassign to compile-time values ('%s' is a %s)", */
-/*                                          get_string(assign->name), which); */
-/*                 report_range_info(&existing_node->loc, "original definition is here:"); */
-/*                 return; */
-/*             } */
-/*  */
-/*             typecheck_assign(assign, existing_node, scope); */
-/*         } */
-/*     } else if (!(ASTP(assign)->flags & AST_FLAG_ORIGIN)) { */
-/*         redecl_error(assign->name, ASTP(assign), existing_node); */
-/*         return; */
-/*     } */
-/* } */
+
+static void check_decl(ast_decl_t *decl, scope_t *scope) {
+    u32 type;
+
+    if (decl->type_expr != NULL) {
+        check_node(decl->type_expr, scope, NULL);
+        type = decl->type_expr->value.t;
+    }
+    if (decl->val_expr != NULL) {
+        check_node(decl->val_expr, scope, decl);
+
+        if (decl->val_expr->type == TY_NOT_TYPED) {
+            report_range_err_no_exit(&decl->val_expr->loc,
+                                    "invalid expression in assignment of '%s'",
+                                    get_string(decl->name));
+            report_simple_info("the expression does not have a type or value");
+            return;
+        }
+
+        if (decl->type_expr == NULL) {
+            type = decl->val_expr->type;
+        }
+    }
+
+    if (scope->in_proc && type == TY_PROC) {
+        report_range_err(&ASTP(decl)->loc, "procedures may not be defined within another procedure");
+        return;
+    }
+
+    if (decl->type_expr != NULL && decl->val_expr != NULL) {
+        if (decl->type_expr->value.t != decl->val_expr->type) {
+            report_range_err(&decl->val_expr->loc,
+                             "'%s' is declared with type %s, but you're trying to initialize it with a value of type %s",
+                             get_string(decl->name),
+                             get_string(get_type_string_id(decl->type_expr->value.t)),
+                             get_string(get_type_string_id(decl->val_expr->type)));
+        }
+    }
+
+    ASTP(decl)->type = type;
+}
 
 static void check_proc(ast_proc_t *proc, scope_t *scope, ast_decl_t *parent_decl) {
     scope_t  *new_scope;
@@ -1099,6 +1066,7 @@ static void check_unary_expr(ast_unary_expr_t *expr, scope_t *scope) {
 
     switch (expr->op) {
         case OP_ADDR:
+        case OP_ARRAY:
             if (expr->child->type == TY_TYPE) {
                 ASTP(expr)->type    = TY_TYPE;
                 ASTP(expr)->value.t = get_ptr_type(expr->child->value.t);
@@ -1128,8 +1096,19 @@ static void check_unary_expr(ast_unary_expr_t *expr, scope_t *scope) {
                 ASTP(expr)->type = get_under_type(expr->child->type);
             }
             break;
+        case OP_NEG:
+            if (!type_kind_is_numeric(expr->child->type)) {
+                report_range_err_no_exit(&ASTP(expr)->loc,
+                                         "right-hand-side operand of '-' operator must be numeric");
+                report_range_info_no_context(&expr->child->loc,
+                                             "operand has type %s",
+                                             get_string(get_type_string_id(expr->child->type)));
+            }
+            ASTP(expr)->type = expr->child->type;
+            break;
         default:
-            ASSERT(0, "unandled unary operator");
+            report_loc_err_no_exit(ASTP(expr)->loc.beg, "UNHANDLED OPERATOR: %s", OP_STR(expr->op));
+            ASSERT(0, "unhandled unary operator");
             return;
     }
 }
@@ -1235,12 +1214,12 @@ void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl) {
     node->flags |= AST_FLAG_CHECKED;
 
     switch (node->kind) {
-/* #define X(_kind) case _kind: */
-/*         X_AST_ASSIGNS */
-/* #undef X */
-/*             check_assign((ast_assign_t*)node, scope); */
-/*             break; */
-/*  */
+#define X(_kind) case _kind:
+        X_AST_DECLARATIONS
+#undef X
+            check_decl((ast_decl_t*)node, scope);
+            break;
+
         case AST_MODULE:
             array_traverse(((ast_module_t*)node)->children, it) {
                 check_node(*it, get_subscope_from_node(scope, node), NULL);

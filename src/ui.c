@@ -227,14 +227,10 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
             }
             C(all_color);
             putchar('\n');
-        } else if (line_nr == range->beg.line
-               &&  line_nr == range->end.line
-               &&  range->beg.col == 1
-               &&  range->end.col == 2) {
-
+        } else if (line_nr == range->end.line) {
             for (i = 0; i < line_nr_digits + 3; i += 1) { putchar(' '); }
             C(range_color);
-            putchar('^');
+            for (i = 1; i < range->end.col; i += 1) { putchar('^'); }
             C(all_color);
             putchar('\n');
         }

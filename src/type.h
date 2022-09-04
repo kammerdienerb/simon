@@ -78,6 +78,16 @@ enum {
     X(TY_S32)       \
     X(TY_S64)
 
+#define X_NUM_TYPES \
+    X(TY_U8)        \
+    X(TY_U16)       \
+    X(TY_U32)       \
+    X(TY_U64)       \
+    X(TY_S8)        \
+    X(TY_S16)       \
+    X(TY_S32)       \
+    X(TY_S64)
+
 typedef struct type {
     u32 kind;
     union {
@@ -110,6 +120,7 @@ int init_types(void);
 int type_has_compile_time_only_values(u32 ty);
 int type_kind_has_under(u32 kind);
 int type_kind_is_int(u32 kind);
+int type_kind_is_numeric(u32 kind);
 int type_kind(u32 ty);
 u32 get_ptr_type(u32 ty);
 u32 get_vargs_type(u32 ty);

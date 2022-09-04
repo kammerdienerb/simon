@@ -380,7 +380,7 @@ static void emit_procs_global(void) {
 
 void do_c_backend(void) {
     int  err;
-    char exe_name[4096];
+    char exe_name[128];
     char cmd_buff[4096];
 
     emit_prelude();

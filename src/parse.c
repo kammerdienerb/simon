@@ -491,7 +491,7 @@ do {                                                                            
 
 #define INSTALL_IF_NEW(_cxt, _name_id, _node)                                     \
 do {                                                                              \
-    add_symbol_if_new(SCOPE((_cxt)), (_name_id), (_node));                        \
+    add_symbol(SCOPE((_cxt)), (_name_id), (_node));                               \
 } while (0)
 
 
@@ -705,7 +705,6 @@ static ast_t * parse_arg_list(parse_context_t *cxt) {
 
 static int lookahead_binary_op(parse_context_t *cxt) {
     int op;
-    u64 line;
 
     /*
     ** Simple check so that the beginning of a assignment tag doesn't
@@ -714,8 +713,7 @@ static int lookahead_binary_op(parse_context_t *cxt) {
     if (OPTIONAL_NO_EAT_LIT(cxt, "[[")) { return OP_INVALID; }
 
 
-    op   = OP_INVALID;
-    line = cxt->cur_point.line;
+    op = OP_INVALID;
 
     /*
     ** The order of these is sensative to parsing.
@@ -1563,6 +1561,7 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
     string_id    name;
     int          kind;
     ast_decl_t  *result;
+    int          assigned;
 
     tags             = array_make(string_id);
     has_tags         = 0;
@@ -1615,29 +1614,15 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
         }
     }
 
+    assigned = 0;
     if (OPTIONAL_CHAR(cxt, '=')) {
-        if        (OPTIONAL_LIT(cxt, "proc"))       { kind = AST_DECL_PROC;
-            loc.end            = GET_END_POINT(cxt);
-            result->val_expr   = parse_proc_body(cxt, name, !is_extern);
-            ASTP(result)->type = TY_PROC;
-            OPTIONAL_CHAR(cxt, ';');
-        } else if (OPTIONAL_LIT(cxt, "struct"))     { kind = AST_DECL_STRUCT;
-            loc.end            = GET_END_POINT(cxt);
-            result->val_expr   = parse_struct_body(cxt, name);
-            ASTP(result)->type = TY_TYPE;
-            OPTIONAL_CHAR(cxt, ';');
-        } else if (OPTIONAL_LIT(cxt, "macro"))      { kind = AST_DECL_MACRO;
-            loc.end            = GET_END_POINT(cxt);
-            ASTP(result)->type = TY_MACRO;
-            OPTIONAL_CHAR(cxt, ';');
-        } else if (OPTIONAL_LIT(cxt, "module"))     { kind = AST_DECL_MODULE;
-            loc.end            = GET_END_POINT(cxt);
-            result->val_expr   = parse_module_body(cxt, name);
-            ASTP(result)->type = TY_MODULE;
-            OPTIONAL_CHAR(cxt, ';');
-        } else if ((result->val_expr = parse_expr(cxt))) { kind = AST_DECL_VAR;
-            loc.end = result->val_expr->loc.end;
-            EXPECT_CHAR(cxt, ';', "expected ';'");
+        assigned = 1;
+
+               if (OPTIONAL_LIT(cxt, "proc"))            { kind = AST_DECL_PROC;   loc.end = GET_END_POINT(cxt);
+        } else if (OPTIONAL_LIT(cxt, "struct"))          { kind = AST_DECL_STRUCT; loc.end = GET_END_POINT(cxt);
+        } else if (OPTIONAL_LIT(cxt, "macro"))           { kind = AST_DECL_MACRO;  loc.end = GET_END_POINT(cxt);
+        } else if (OPTIONAL_LIT(cxt, "module"))          { kind = AST_DECL_MODULE; loc.end = GET_END_POINT(cxt);
+        } else if ((result->val_expr = parse_expr(cxt))) { kind = AST_DECL_VAR;    loc.end = result->val_expr->loc.end;
         } else {
             report_loc_err(GET_BEG_POINT(cxt),
                         "expected 'module', 'proc', 'type', 'macro', or a valid expression in initialization of '%s'",
@@ -1669,6 +1654,36 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
     }
 
     INSTALL_IF_NEW(cxt, name, ASTP(result));
+
+    if (assigned) {
+        switch (kind) {
+            case AST_DECL_PROC:
+                result->val_expr   = parse_proc_body(cxt, name, !is_extern);
+                ASTP(result)->type = TY_PROC;
+                OPTIONAL_CHAR(cxt, ';');
+                break;
+            case AST_DECL_STRUCT:
+                result->val_expr   = parse_struct_body(cxt, name);
+                ASTP(result)->type = TY_TYPE;
+                OPTIONAL_CHAR(cxt, ';');
+                break;
+            case AST_DECL_MACRO:
+                ASTP(result)->type = TY_MACRO;
+                OPTIONAL_CHAR(cxt, ';');
+                break;
+            case AST_DECL_MODULE:
+                result->val_expr   = parse_module_body(cxt, name);
+                ASTP(result)->type = TY_MODULE;
+                OPTIONAL_CHAR(cxt, ';');
+                break;
+            case AST_DECL_VAR:
+                EXPECT_CHAR(cxt, ';', "expected ';'");
+                break;
+            default:
+                ASSERT(0, "bad kind");
+                break;
+        }
+    }
 
     return ASTP(result);
 }
