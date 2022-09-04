@@ -12,7 +12,6 @@
     X(TY_MODULE)          \
     X(TY_MACRO)           \
     X(TY_TYPE)            \
-    X(TY_BOOL)            \
     X(TY_CHAR)            \
     X(TY_U8)              \
     X(TY_U16)             \
@@ -53,7 +52,6 @@ enum {
     X(TY_MODULE)             \
     X(TY_MACRO)              \
     X(TY_TYPE)               \
-    X(TY_BOOL)               \
     X(TY_CHAR)               \
     X(TY_U8)                 \
     X(TY_U16)                \
@@ -68,14 +66,15 @@ enum {
     X(TY_PTR)              \
     X(TY_VARGS)
 
-#define X_INT_TYPES \
-    X(TY_U8)        \
-    X(TY_U16)       \
-    X(TY_U32)       \
-    X(TY_U64)       \
-    X(TY_S8)        \
-    X(TY_S16)       \
-    X(TY_S32)       \
+#define X_INT_TYPES   \
+    X(TY_GENERIC_INT) \
+    X(TY_U8)          \
+    X(TY_U16)         \
+    X(TY_U32)         \
+    X(TY_U64)         \
+    X(TY_S8)          \
+    X(TY_S16)         \
+    X(TY_S32)         \
     X(TY_S64)
 
 #define X_NUM_TYPES \

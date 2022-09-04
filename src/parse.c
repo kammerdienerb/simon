@@ -782,16 +782,6 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
         result                        = AST_ALLOC(cxt, ast_int_t);
         result->kind                  = AST_INT;
         ((ast_int_t*)result)->str_rep = str_rep;
-    } else if (OPTIONAL_WORD(cxt, "true")) {
-        result                         = AST_ALLOC(cxt, ast_bool_t);
-        result->type                   = TY_BOOL;
-        result->kind                   = AST_BOOL;
-        ((ast_bool_t*)result)->is_true = 1;
-    } else if (OPTIONAL_WORD(cxt, "false")) {
-        result                         = AST_ALLOC(cxt, ast_bool_t);
-        result->type                   = TY_BOOL;
-        result->kind                   = AST_BOOL;
-        ((ast_bool_t*)result)->is_true = 0;
     } else if (OPTIONAL_IDENT(cxt, &str_rep)) {
         result                                = AST_ALLOC(cxt, ast_ident_t);
         result->kind                          = AST_IDENT;
@@ -1247,13 +1237,15 @@ static ast_t * parse_if(parse_context_t *cxt) {
         result->els = parse_if(cxt);
 
         if (result->els == NULL) {
-            SCOPE_PUSH(cxt, AST_IF, ASTP(result));
+            SCOPE_PUSH(cxt, AST_BLOCK, NULL);
 
             result->els = parse_block(cxt);
             if (result->els == NULL) {
                 report_loc_err(GET_BEG_POINT(cxt), "expected '{' to open 'else' block");
                 return NULL;
             }
+
+            SCOPE(cxt)->node = result->els;
 
             SCOPE_POP(cxt);
         }
@@ -1544,6 +1536,9 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
     } else {
         result->block = NULL;
         ASTP(result)->loc.end = GET_END_POINT(cxt);
+        if (!OPTIONAL_NO_EAT_CHAR(cxt, ';')) {
+            EXPECT_CHAR(cxt, ';', "expected ';'");
+        }
     }
 
     SCOPE_POP(cxt);
@@ -1651,6 +1646,10 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
         }
 
         cxt->program_entry = result;
+    }
+
+    if (is_extern) {
+        result->val_expr->flags |= AST_FLAG_IS_EXTERN;
     }
 
     INSTALL_IF_NEW(cxt, name, ASTP(result));

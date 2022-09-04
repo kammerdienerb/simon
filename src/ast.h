@@ -37,7 +37,6 @@
     X(AST_STRUCT_FIELD)        \
     X(AST_INT)                 \
     X(AST_STRING)              \
-    X(AST_BOOL)                \
     X(AST_IDENT)               \
     X(AST_UNARY_EXPR)          \
     X(AST_BIN_EXPR)            \
@@ -67,8 +66,8 @@ X_AST
 #define AST_FLAG_CHECKED              (1 << 0)
 #define AST_FLAG_POLYMORPH            (1 << 1)
 #define AST_FLAG_VARARGS              (1 << 2)
-#define AST_FLAG_ORIGIN               (1 << 3)
-#define AST_FLAG_CALL_IS_CAST         (1 << 4)
+#define AST_FLAG_CALL_IS_CAST         (1 << 3)
+#define AST_FLAG_IS_EXTERN            (1 << 4)
 
 struct ast;
 
@@ -195,10 +194,6 @@ AST_DEFINE(string,
     string_id str_rep;
 );
 
-AST_DEFINE(bool,
-    int is_true;
-);
-
 AST_DEFINE(ident,
     string_id  str_rep;
     ast_t     *resolved_node;
@@ -249,6 +244,7 @@ AST_DEFINE(return,
 AST_DEFINE(break);
 AST_DEFINE(continue);
 
+void init_checking(void);
 void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl);
 
 #endif
