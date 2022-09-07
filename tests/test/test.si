@@ -1,11 +1,11 @@
 # test.si
 
-test = module {
-    square = proc (x: %T): T {
+test := module {
+    square := proc (x: %T): T {
         return x * x;
     }
 
-    test_square = proc () {
+    test_square := proc () {
         square(8, string); # Hmmm... would probably make a new polymorph, but wouldn't be an error.
 
         square(8, f32);    # This would be an error because square modded on f32 was already used
@@ -13,63 +13,63 @@ test = module {
                            # so you have conflicting uses.
     }
 
-    make_new = proc (%t: type) {
-        ptr = mem_alloc(sizeof(t));
+    make_new := proc (%t: type) {
+        ptr := mem_alloc(sizeof(t));
         return ptr;
     }
 
-    test_make_new = proc () {
-        my_int_ptr    = make_new(s32);
-        my_string_ptr = make_new(*char);
+    test_make_new := proc () {
+        my_int_ptr    := make_new(s32);
+        my_string_ptr := make_new(*char);
     }
 
 
-    little = module { foo = proc () {} }
-    call_foo_in_module = proc (%m: module) { m.foo() }
-    test_call_foo_in_module = proc () {
+    little := module { foo := proc () {} }
+    call_foo_in_module := proc (%m: module) { m.foo() }
+    test_call_foo_in_module := proc () {
         call_foo_in_module(little);
     }
 
 
-    vec3 = struct {
-        x: %T,
-        y: T,
-        z: T
+    vec3 := struct {
+        x: %T;
+        y: T;
+        z: T;
     }
 
-    proc make_vec3(%T: type) {
-        zero = __zero(T);
+    make_vec3 := proc (%T: type) {
+        zero := __zero(T);
         return vec3(zero, zero, zero);
     }
 
-    p = proc (x, y) {
-        foozle = 0xDEADBEEF;
-        foo    = 123_000_000 + (0x4 + -42) * 3 / (foozle.field);
-        zag    = foozle and *&foozle;
+    p := proc (x, y) {
+        foozle := 0xDEADBEEF;
+        foo    := 123_000_000 + (0x4 + -42) * 3 / (foozle.field);
+        zag    := foozle and *&foozle;
 
         return;
     }
 
     [[ barzle ]]
     [[ thinger ]]
-    bar = 42;
+    bar := 42;
 
-    baz = module {
-        thinger = proc (a, b, ...) {
+    baz := module {
+        thinger := proc (a, b, ...) {
             thinger(abc = 123);
         }
     }
 }
 
-array = module {
-    Array = struct {
-        %data_type,
-        data_ptr,
-        used,
-        capacity
+array := module {
+    Array := struct {
+        %data_type;
+        data_ptr;
+        used;
+        capacity;
     }
 
-    make = proc (%T) {
+    make := proc (%T) {
         return Array(
             data_type = T,
             data_ptr  = mem_alloc(8 * sizeof(T)),
@@ -78,12 +78,12 @@ array = module {
         );
     }
 
-    _grow = proc (a, %_ = a.data_type) {
+    _grow := proc (a, %_ := a.data_type) {
         a.capacity *= 2;
         a.data_ptr  = mem_realloc(a.data_ptr, a.capacity);
     }
 
-    push = proc (a, item, %_ = a.data_type) {
+    push := proc (a, item, %_ := a.data_type) {
         if a.used == a.capacity { _grow(a); }
         a.data_ptr[a.used] = item;
         a.used += 1;

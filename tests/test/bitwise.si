@@ -1,9 +1,9 @@
 # bitwise.bjou
 
 [[ program_entry ]]
-main = proc () {
-    a = 1431655765;
-    b = ~a;
+main := proc () {
+    a := 1431655765;
+    b := ~a;
 
     print(b);
     print(a & b);

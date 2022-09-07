@@ -1,17 +1,17 @@
 # hex.si
 
-HEX = 0x1234;
+HEX := 0x1234;
 
 [[ program_entry ]]
-main = proc () {
+main := proc () {
     print(HEX);
 
-    b1 = 0x00_00_00_FF;
-    b2 = 0x00_00_FF_00;
-    b3 = 0x00_FF_00_00;
-    b4 = 0xFF_00_00_00;
+    b1 := 0x00_00_00_FF;
+    b2 := 0x00_00_FF_00;
+    b3 := 0x00_FF_00_00;
+    b4 := 0xFF_00_00_00;
 
-    one = 0x3FF0000000000000;
+    one := 0x3FF0000000000000;
 
     # f = @((&one) as f64*)
     print(f);

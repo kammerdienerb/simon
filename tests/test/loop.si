@@ -1,14 +1,14 @@
 # loop.si
 
 [[ program_entry ]]
-main = proc () {
-    s = "simon";
+main := proc () {
+    s := "simon";
 
-    loop i = 1 ; i < 10 ; i += 1 {
+    loop i := 1 ; i < 10 ; i += 1 {
         print(i);
     }
 
-    i = 0;
+    i := 0;
     loop ; i < 10 ; i += 1 {
         print(i);
     }

@@ -34,6 +34,8 @@ static void emit_prelude(void) {
 "typedef short              s16;\n"
 "typedef int                s32;\n"
 "typedef long long          s64;\n"
+"typedef float              f32;\n"
+"typedef double             f64;\n"
 "\n";
 
     EMIT_STRING(prelude);
@@ -66,7 +68,9 @@ static void emit_proc_pre_decl(ast_decl_t *parent_decl) {
     u32          i;
     u32          param_type;
 
-    proc      = (ast_proc_t*)parent_decl->val_expr;
+    proc = (ast_proc_t*)parent_decl->val_expr;
+    if (ASTP(proc)->flags & AST_FLAG_POLYMORPH) { return; }
+
     proc_type = ASTP(proc)->type;
     ret_type  = get_ret_type(proc_type);
 
@@ -141,7 +145,6 @@ do {                                                            \
     int _i;                                                     \
     for (_i = 0; _i < (_lvl); _i += 1) { EMIT_STRING("    "); } \
 } while (0)
-
 
 static void emit_expr(ast_t *expr) {
     ast_unary_expr_t *un_expr;
@@ -319,7 +322,9 @@ static void emit_proc(ast_decl_t *parent_decl) {
     ast_t       **param_p_it;
     ast_param_t  *param;
 
-    proc      = (ast_proc_t*)parent_decl->val_expr;
+    proc = (ast_proc_t*)parent_decl->val_expr;
+    if (ASTP(proc)->flags & AST_FLAG_POLYMORPH) { return; }
+
     proc_type = ASTP(proc)->type;
     ret_type  = get_ret_type(proc_type);
 
@@ -419,7 +424,7 @@ void do_c_backend(void) {
         exe_name[strlen(exe_name) - 2] = 0;
     }
 
-    sprintf(cmd_buff, "cc -o %s %s -O3 -nostdlib -ffreestanding -Wl,-e,_%s",
+    sprintf(cmd_buff, "cc -o %s %s -O3 -nostdlib -ffreestanding -Wl,-e,%s",
             exe_name, options.output_name, get_string(program_entry->name));
 
 #ifdef __APPLE__

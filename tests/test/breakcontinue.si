@@ -1,8 +1,8 @@
 # breakcontinue.si
 
 [[ program_entry ]]
-main = proc () {
-    i = 0;
+main := proc () {
+    i := 0;
 
     print("break 1");
 

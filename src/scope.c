@@ -190,10 +190,20 @@ void add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node) {
 
 static void redecl_error(string_id name, ast_t *bad, ast_t *existing) {
     report_range_err_no_exit(&bad->loc, "redeclaration of '%s'", get_string(name));
+
+    if (bad->kind == AST_IDENT && bad->flags & AST_FLAG_POLYMORPH) {
+        report_simple_info_no_exit("'%%%s' declares a polymorphic parameter in a type pattern", get_string(name));
+    }
+
     if (existing->kind == AST_BUILTIN) {
         report_simple_info("'%s' is a compiler builtin", get_string(name));
     } else {
-        report_range_info(&existing->loc, "competing declaration here:");
+        if (existing->kind == AST_IDENT && existing->flags & AST_FLAG_POLYMORPH) {
+            report_range_info_no_exit(&existing->loc, "competing declaration here:");
+            report_simple_info("'%%%s' declares a polymorphic parameter in a type pattern", get_string(name));
+        } else {
+            report_range_info(&existing->loc, "competing declaration here:");
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 # oldterminatorbug.si
 
-p = proc () {
+p := proc () {
     if 1 == not false {
         if 0 == not not true {
             return 1;
@@ -12,6 +12,6 @@ p = proc () {
 }
 
 [[ program_entry ]]
-main = proc () {
+main := proc () {
     print("%", p());
 }

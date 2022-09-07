@@ -1,11 +1,11 @@
 # conditionals.si
 
-a = proc (arg: bool): bool { print("a()"); return arg; }
-b = proc (arg: bool): bool { print("b()"); return arg; }
-c = proc (arg: bool): bool { print("c()"); return arg; }
+a := proc (arg: bool): bool { print("a()"); return arg; }
+b := proc (arg: bool): bool { print("b()"); return arg; }
+c := proc (arg: bool): bool { print("c()"); return arg; }
 
 [[ program_entry ]]
-main = proc () {
+main := proc () {
     print("condition 0: %", a(false) or b(true) or c(false));
     print("condition 1: %", (a(true) and b(true) and c(true)) and ((a(true) and b(false)) or c(true)));
     print("condition 2: %", a(true) or (b(false) and c(true)));

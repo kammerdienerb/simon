@@ -1,8 +1,8 @@
 # oldbranchbug.si
 
 [[ program_entry ]]
-main = proc () {
-    i = 0;
+main := proc () {
+    i := 0;
 
     loop ; i < 10 and i % 2 == 0 ; {
         print("%", i);

@@ -1,19 +1,19 @@
 # namedargs.si
 
-a = proc () {
+a := proc () {
     print("a()");
 }
 
-b = proc (arg: s64) {
+b := proc (arg: s64) {
     print("b(arg: %)", arg);
 }
 
-c = proc (arg1: s64, arg2: bool) {
+c := proc (arg1: s64, arg2: bool) {
     print("c(arg1: %, arg2: %)", arg1, arg2);
 }
 
 [[ program_entry ]]
-main = proc () {
+main := proc () {
     a();
     b(arg = 123);
     c(arg1 = 432, arg2 = false);

@@ -74,8 +74,6 @@ X_AST
 struct ast;
 
 typedef union {
-    i32         b;
-    char        c;
     u64         u;
     i64         i;
     double      f;
@@ -84,6 +82,8 @@ typedef union {
     u32         t;
     struct ast *a;
 } value_t;
+
+string_id value_to_string_id(value_t val, u32 type);
 
 typedef struct ast {
     src_range_t loc;   /*        48 bytes                  */
@@ -147,13 +147,9 @@ AST_DEFINE(module,
     array_t children;
 );
 
-AST_DEFINE(polymorph_type_name,
-    string_id name;
-);
-
 AST_DEFINE(param,
     string_id  name;
-    ast_t     *type_expr_or_polymorph_type_name;
+    ast_t     *type_expr;
     ast_t     *val;
 );
 
@@ -165,6 +161,7 @@ AST_DEFINE(proc,
     array_t  params;
     ast_t   *ret_type_expr;
     ast_t   *block;
+    array_t  polymorphs;
 );
 
 AST_DEFINE(struct_field,
@@ -175,6 +172,7 @@ AST_DEFINE(struct_field,
 AST_DEFINE(struct,
     array_t params;
     array_t fields;
+    array_t polymorphs;
 );
 
 AST_DEFINE(macro,

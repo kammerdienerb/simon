@@ -28,10 +28,13 @@
     X(TY_VARGS)           \
     X(_TY_TYPE_LIST)      \
     X(TY_STRUCT)          \
-    X(TY_PROC)
+    X(TY_PROC)            \
+    X(TY_POLY)
 
-#define TKINDPAIR_INT_INT ((((u64)TY_GENERIC_INT) << 32ULL) + TY_GENERIC_INT)
-#define TKINDPAIR_PTR_INT ((((u64)TY_PTR)         << 32ULL) + TY_GENERIC_INT)
+#define TKINDPAIR_INT_INT ((((u64)TY_GENERIC_INT)   << 32ULL) + TY_GENERIC_INT)
+#define TKINDPAIR_PTR_INT ((((u64)TY_PTR)           << 32ULL) + TY_GENERIC_INT)
+#define TKINDPAIR_FLT_FLT ((((u64)TY_GENERIC_FLOAT) << 32ULL) + TY_GENERIC_FLOAT)
+#define TKINDPAIR_FLT_INT ((((u64)TY_GENERIC_FLOAT) << 32ULL) + TY_GENERIC_INT)
 
 enum {
 #define X(ty) ty,
@@ -46,24 +49,6 @@ enum {
     X(TY_MACRO)    \
     X(TY_TYPE)     \
     X(TY_PROC)
-
-#define X_REAL_BUILTIN_TYPES \
-    X(TY_UNKNOWN)            \
-    X(TY_NOT_TYPED)          \
-    X(TY_BUILTIN_SPECIAL)    \
-    X(TY_MODULE)             \
-    X(TY_MACRO)              \
-    X(TY_TYPE)               \
-    X(TY_U8)                 \
-    X(TY_U16)                \
-    X(TY_U32)                \
-    X(TY_U64)                \
-    X(TY_S8)                 \
-    X(TY_S16)                \
-    X(TY_S32)                \
-    X(TY_S64)                \
-    X(TY_F32)                \
-    X(TY_F64)
 
 #define X_HAVE_UNDER_TYPES \
     X(TY_PTR)              \

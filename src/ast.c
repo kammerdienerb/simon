@@ -5,12 +5,76 @@
 #include "parse.h"
 #include "array.h"
 
+typedef struct {
+    string_id name;
+    value_t   value;
+    u32       type;
+} polymorph_constant_t;
 
 static array_t proc_stack;
 static int     in_loop;
+static array_t working_poly_constants;
 
 void init_checking(void) {
-    proc_stack = array_make(ast_proc_t*);
+    proc_stack             = array_make(ast_proc_t*);
+    working_poly_constants = array_make(polymorph_constant_t);
+}
+
+string_id value_to_string_id(value_t val, u32 type) {
+    string_id ret;
+    char      buff[128];
+    int       ast_kind;
+
+    ret = 0;
+
+    switch (type_kind(type)) {
+        case TY_GENERIC_INT:
+            switch (type) {
+                case TY_U8:
+                case TY_U16:
+                case TY_U32:
+                case TY_U64:
+                    snprintf(buff, sizeof(buff), "%"PRIu64, val.u);
+                    ret = get_string_id(buff);
+                    break;
+                case TY_S8:
+                case TY_S16:
+                case TY_S32:
+                case TY_S64:
+                    snprintf(buff, sizeof(buff), "%"PRIi64, val.i);
+                    ret = get_string_id(buff);
+                    break;
+            }
+            break;
+        case TY_GENERIC_FLOAT:
+            switch (type) {
+                case TY_F32:
+                case TY_F64:
+                    snprintf(buff, sizeof(buff), "%f", val.f);
+                    ret = get_string_id(buff);
+                    break;
+            }
+            break;
+        case TY_PTR:
+            snprintf(buff, sizeof(buff), "%p", val.v);
+            ret = get_string_id(buff);
+            break;
+        case TY_TYPE:
+            ret = get_type_string_id(val.t);
+            break;
+        case TY_MODULE: ast_kind = AST_MODULE; goto ast;
+        case TY_PROC:   ast_kind = AST_PROC;   goto ast;
+        case TY_STRUCT: ast_kind = AST_STRUCT; goto ast;
+ast:;
+            snprintf(buff, sizeof(buff), "%s at %p", ast_get_kind_str(ast_kind), val.a);
+            ret = get_string_id(buff);
+            break;
+        default:
+            ret = get_string_id("???");
+            break;
+    }
+
+    return ret;
 }
 
 int ast_kind_is_decl(int kind) {
@@ -36,15 +100,6 @@ X_AST
 
 const char *ast_get_kind_str(int kind) {
     return ast_kind_to_name[kind] + 4;
-}
-
-static void redecl_error(string_id name, ast_t *bad, ast_t *existing) {
-    report_range_err_no_exit(&bad->loc, "redeclaration of '%s'", get_string(name));
-    if (existing->kind == AST_BUILTIN) {
-        report_simple_info("'%s' is a compiler builtin", get_string(name));
-    } else {
-        report_range_info(&existing->loc, "competing declaration here:");
-    }
 }
 
 /* @tmp */
@@ -198,9 +253,11 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_decl_t *parent_decl
 
     ASTP(proc)->value.a = ASTP(proc);
 
-    ASSERT(!(ASTP(proc)->flags & AST_FLAG_POLYMORPH), "TODO");
-
     array_push(proc_stack, proc);
+
+    if (ASTP(proc)->flags & AST_FLAG_POLYMORPH) {
+        proc->polymorphs = array_make(ast_proc_t*);
+    }
 
     new_scope = get_subscope_from_node(scope, ASTP(proc));
     ASSERT(new_scope != NULL, "didn't get scope");
@@ -252,6 +309,19 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_decl_t *parent_decl
 }
 
 static void check_param(ast_param_t *param, scope_t *scope) {
+    check_node(param->type_expr, scope, NULL);
+
+    if (param->val != NULL) {
+        check_node(param->val, scope, NULL);
+    }
+
+    ASTP(param)->type = param->type_expr->value.t;
+
+    if (ASTP(param)->flags & AST_FLAG_VARARGS) {
+        ASTP(param)->type = get_vargs_type(ASTP(param)->type);
+    }
+
+#if 0
     ast_t                     *existing_node;
     ast_polymorph_type_name_t *poly;
 
@@ -291,6 +361,7 @@ static void check_param(ast_param_t *param, scope_t *scope) {
     if (ASTP(param)->flags & AST_FLAG_VARARGS) {
         ASTP(param)->type = get_vargs_type(ASTP(param)->type);
     }
+#endif
 }
 
 #if 0
@@ -457,12 +528,49 @@ static void check_builtin_special_call(ast_bin_expr_t *expr, scope_t *scope) {
         ASTP(expr)->flags |= AST_FLAG_CALL_IS_CAST;
         ASTP(expr)->type   = arg_p->expr->value.t;
 
-        /* @todo -- check that they types can actually cast */
+        /* @todo -- do real value casting in expr->value */
+        arg_p = array_item(arg_list->args, 1);
+        ASTP(expr)->value = arg_p->expr->value;
+
+        /* @todo -- check that the types can actually cast */
     } else {
         ASSERT(0, "unahandled builtin special");
     }
 
     array_free(path);
+}
+
+static ast_proc_t *get_proc_polymorph(ast_proc_t *proc, ast_arg_list_t *arg_list) {
+    int                    i;
+    ast_t                **it;
+    ast_param_t           *param;
+    arg_t                 *arg;
+    polymorph_constant_t   constant;
+
+    report_loc_info_no_exit(ASTP(proc)->loc.beg, "polymorph:");
+
+    array_clear(working_poly_constants);
+
+    i = 0;
+    array_traverse(proc->params, it) {
+        param = (ast_param_t*)*it;
+
+        if (ASTP(param)->flags & AST_FLAG_POLYMORPH) {
+            arg            = array_item(arg_list->args, i);
+            constant.name  = param->name;
+            constant.value = arg->expr->value;
+            constant.type  = arg->expr->type;
+
+            array_push(working_poly_constants, constant);
+            printf("    %s: %s\n",
+                    get_string(constant.name),
+                    get_string(value_to_string_id(constant.value, constant.type)));
+        }
+
+        i += 1;
+    }
+
+    return NULL;
 }
 
 static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
@@ -502,7 +610,11 @@ static void check_call(ast_bin_expr_t *expr, scope_t *scope) {
     proc_origin = NULL;
     proc        = NULL;
     if (expr->left->kind == AST_IDENT) {
-        left_ident = (ast_ident_t*)expr->left;
+        left_ident  = (ast_ident_t*)expr->left;
+        proc_origin = try_get_decl_and_path(left_ident, &path);
+        if (proc_origin != NULL) {
+            proc = (ast_proc_t*)((ast_decl_t*)proc_origin)->val_expr;
+        }
     }
 
     n_params = get_num_param_types(proc_ty);
@@ -527,16 +639,14 @@ too_few:
                                    "too few arguments in procedure call");
 
             if (left_ident == NULL) {
-                report_simple_info_no_exit("expected %s %d, but got %d",
-                                           varg_ty != TY_NONE ? "at least" : "", n_params, n_args);
+                report_simple_info_no_exit("expected %s%d, but got %d",
+                                           varg_ty != TY_NONE ? "at least " : "", n_params, n_args);
                 report_simple_info("indirect call with procedure type %s",
                                    get_string(get_type_string_id(proc_ty)));
             } else {
-                proc_origin = try_get_decl_and_path(left_ident, &path);
-
                 if (left_ident->resolved_node == proc_origin) {
-                    report_simple_info_no_exit("expected %s %d, but got %d",
-                                               varg_ty != TY_NONE ? "at least" : "", n_params, n_args);
+                    report_simple_info_no_exit("expected %s%d, but got %d",
+                                               varg_ty != TY_NONE ? "at least " : "", n_params, n_args);
                     if (proc_origin->kind == AST_BUILTIN) {
                         report_simple_info("'%s' is a compiler builtin",
                                            get_string(((ast_builtin_t*)proc_origin)->name));
@@ -546,8 +656,8 @@ too_few:
                                                      get_string(((ast_decl_t*)proc_origin)->name));
                     }
                 } else {
-                    report_simple_info_no_exit("expected %s %d, but got %d",
-                                               varg_ty != TY_NONE ? "at least" : "", n_params, n_args);
+                    report_simple_info_no_exit("expected %s%d, but got %d",
+                                               varg_ty != TY_NONE ? "at least " : "", n_params, n_args);
                     report_declaration_path(path);
                 }
             }
@@ -562,8 +672,6 @@ too_few:
                 report_simple_info("indirect call with procedure type %s",
                                    get_string(get_type_string_id(proc_ty)));
             } else {
-                proc_origin = try_get_decl_and_path(left_ident, &path);
-
                 if (left_ident->resolved_node == proc_origin) {
                     report_simple_info_no_exit("expected %d, but got %d", n_params, n_args);
 
@@ -589,7 +697,7 @@ too_few:
         arg_p      = array_item(arg_list->args, i);
         arg_type   = arg_p->expr->type;
 
-        if (arg_type != param_type) {
+        if (arg_type != param_type && param_type != TY_POLY) {
             if (left_ident == NULL) {
                 report_range_err_no_exit(&arg_p->expr->loc,
                                          "incorrect argument type: expected %s, but got %s",
@@ -603,7 +711,6 @@ too_few:
                                          get_string(get_type_string_id(param_type)),
                                          get_string(get_type_string_id(arg_type)));
 
-                proc_origin = try_get_decl_and_path(left_ident, &path);
                 if (proc_origin->kind == AST_BUILTIN) {
                     if (left_ident->resolved_node == proc_origin) {
                         report_simple_info("'%s' is a compiler builtin",
@@ -612,8 +719,8 @@ too_few:
                         report_declaration_path(path);
                     }
                 } else {
-                    proc        = (ast_proc_t*)((ast_decl_t*)proc_origin)->val_expr;
-                    parm_decl   = *(ast_t**)array_item(proc->params, i);
+                    parm_decl = *(ast_t**)array_item(proc->params, i);
+
                     if (left_ident->resolved_node == proc_origin) {
                         report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
                     } else {
@@ -632,8 +739,6 @@ too_few:
                 return;
             } else {
                 if (proc_origin == NULL) {
-                    proc_origin = try_get_decl_and_path(left_ident, &path);
-
                     if (proc_origin->kind == AST_BUILTIN) {
                         report_range_err_no_exit(&arg_p->expr->loc,
                                                  "using argument name '%s' for a call to a compiler builtin, which does not have named parameters",
@@ -646,11 +751,10 @@ too_few:
                         }
                         return;
                     }
-
-                    proc = (ast_proc_t*)((ast_decl_t*)proc_origin)->val_expr;
                 }
 
                 parm_decl = *(ast_t**)array_item(proc->params, i);
+
                 if (arg_p->name != ((ast_param_t*)parm_decl)->name) {
                     report_range_err_no_exit(&arg_p->expr->loc,
                                                 "argument name '%s' does not match parameter name '%s'",
@@ -683,8 +787,6 @@ too_few:
                     report_simple_info("indirect call with procedure type %s",
                                        get_string(get_type_string_id(proc_ty)));
                 } else {
-                    proc_origin = try_get_decl_and_path(left_ident, &path);
-
                     if (proc_origin->kind == AST_BUILTIN) {
                         if (left_ident->resolved_node == proc_origin) {
                             report_simple_info("'%s' is a compiler builtin",
@@ -695,8 +797,8 @@ too_few:
                         return;
                     }
 
-                    proc        = (ast_proc_t*)((ast_decl_t*)proc_origin)->val_expr;
-                    parm_decl   = *(ast_t**)array_last(proc->params);
+                    parm_decl = *(ast_t**)array_last(proc->params);
+
                     if (left_ident->resolved_node == proc_origin) {
                         report_range_info_no_context(&parm_decl->loc, "variadic parameter list declared here:");
                     } else if (left_ident->resolved_node != proc_origin) {
@@ -707,23 +809,17 @@ too_few:
             }
 
             if (arg_p->name != STRING_ID_NULL) {
-                if (proc == NULL) {
-                    proc_origin = try_get_decl_and_path(left_ident, &path);
-
-                    if (proc_origin->kind == AST_BUILTIN) {
-                        report_range_err_no_exit(&arg_p->expr->loc,
-                                                    "using argument name '%s' for a call to a compiler builtin, which does not have named parameters",
-                                                    get_string(arg_p->name));
-                        if (left_ident->resolved_node == proc_origin) {
-                            report_simple_info("'%s' is a compiler builtin",
-                                            get_string(((ast_builtin_t*)proc_origin)->name));
-                        } else {
-                            report_declaration_path(path);
-                        }
-                        return;
+                if (proc_origin->kind == AST_BUILTIN) {
+                    report_range_err_no_exit(&arg_p->expr->loc,
+                                                "using argument name '%s' for a call to a compiler builtin, which does not have named parameters",
+                                                get_string(arg_p->name));
+                    if (left_ident->resolved_node == proc_origin) {
+                        report_simple_info("'%s' is a compiler builtin",
+                                        get_string(((ast_builtin_t*)proc_origin)->name));
+                    } else {
+                        report_declaration_path(path);
                     }
-
-                    proc = (ast_proc_t*)((ast_decl_t*)proc_origin)->val_expr;
+                    return;
                 }
 
                 if (i == n_params) {
@@ -759,9 +855,16 @@ too_few:
         }
     }
 
-    if (proc != NULL) { array_free(path); }
-
     ASTP(expr)->type = get_ret_type(expr->left->type);
+
+    if (proc != NULL) {
+        array_free(path);
+
+        if (ASTP(proc)->flags & AST_FLAG_POLYMORPH) {
+            proc = get_proc_polymorph(proc, arg_list);
+            ASTP(expr)->type = get_ret_type(ASTP(proc)->type);
+        }
+    }
 }
 
 static void check_ident(ast_ident_t *ident, scope_t *scope) {
@@ -783,10 +886,15 @@ static void check_ident(ast_ident_t *ident, scope_t *scope) {
         return;
     }
 
-    check_node(ident->resolved_node, resolved_node_scope, NULL);
+    if (ASTP(ident)->flags & AST_FLAG_POLYMORPH) {
+        ASTP(ident)->type    = TY_POLY;
+        ASTP(ident)->value.t = TY_POLY;
+    } else {
+        check_node(ident->resolved_node, resolved_node_scope, NULL);
 
-    ASTP(ident)->type  = ident->resolved_node->type;
-    ASTP(ident)->value = ident->resolved_node->value;
+        ASTP(ident)->type  = ident->resolved_node->type;
+        ASTP(ident)->value = ident->resolved_node->value;
+    }
 }
 
 static void check_module_dot(ast_bin_expr_t *expr, scope_t *scope) {
@@ -948,6 +1056,16 @@ static void check_add(ast_bin_expr_t *expr) {
             /* @todo check for width incompat */
             /* @todo How to handle this case? Do we promote the type? */
             ASTP(expr)->type = t1;
+            break;
+        case TKINDPAIR_FLT_FLT:
+            /* @todo check for width incompat */
+            /* @todo How to handle this case? Do we promote the type? */
+            ASTP(expr)->type = t1;
+            break;
+        case TKINDPAIR_FLT_INT:
+            ASTP(expr)->type = tk1 == TY_GENERIC_FLOAT
+                                ? t1
+                                : t2;
             break;
         case TKINDPAIR_PTR_INT:
             ASTP(expr)->type = (tk1 == TY_PTR ? t1 : t2);
@@ -1190,6 +1308,10 @@ static void check_struct(ast_struct_t *st, scope_t *scope, ast_decl_t *parent_de
     ast_t   **it;
 
     ASTP(st)->value.a = ASTP(st);
+
+    if (ASTP(st)->flags & AST_FLAG_POLYMORPH) {
+        st->polymorphs = array_make(ast_struct_t*);
+    }
 
     ASSERT(!(ASTP(st)->flags & AST_FLAG_POLYMORPH), "TODO");
 
