@@ -1533,7 +1533,7 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
 
         EXPECT_CHAR(cxt, ':', "expected ':'");
 
-        if (unlikely(OPTIONAL_LIT(cxt, "%..."))) {
+        if (OPTIONAL_LIT(cxt, "%...")) {
             seen_vargs            = 1;
             ASTP(param)->flags   |= AST_FLAG_VARARGS | AST_FLAG_POLY_VARARGS;
             ASTP(result)->flags  |= AST_FLAG_VARARGS | AST_FLAG_POLYMORPH;
