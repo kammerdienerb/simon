@@ -100,6 +100,10 @@ static void emit_proc_pre_decl(ast_decl_t *parent_decl) {
         EMIT_STRING(")");
     }
 
+    EMIT_STRING(" asm (\"");
+    EMIT_STRING_ID(parent_decl->name);
+    EMIT_STRING("\")");
+
     EMIT_STRING(";\n");
 }
 
@@ -361,6 +365,7 @@ static void emit_proc(ast_decl_t *parent_decl) {
         EMIT_STRING(")");
     }
 
+
     EMIT_STRING("\n");
     emit_block((ast_block_t*)proc->block, 0);
     EMIT_STRING("\n");
@@ -404,9 +409,12 @@ static void emit_procs_global(void) {
 }
 
 void do_c_backend(void) {
+    u64  start_us;
     int  err;
     char exe_name[128];
     char cmd_buff[4096];
+
+    start_us = measure_time_now_us();
 
     mod_stack = array_make(ast_decl_t*);
 
@@ -417,6 +425,8 @@ void do_c_backend(void) {
     emit_procs_global();
 
     fflush(output_file);
+
+    verb_message("C generation took %lu us\n", measure_time_now_us() - start_us);
 
     strcpy(exe_name, options.output_name);
     if (exe_name[strlen(exe_name) - 1] == 'c'

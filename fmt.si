@@ -1,0 +1,7 @@
+fmt := module {
+    _fmt := proc(fmt: *u8, args: %...) {
+    }
+}
+
+[[ program_entry ]]
+main := proc() {}

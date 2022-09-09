@@ -1,4 +1,4 @@
-foo := proc(%T: type, %U: type, %N: u32, %P: module) {
+foo := proc(x: *%U) {
 }
 
 M := module {
@@ -9,5 +9,6 @@ M := module {
 
 [[ program_entry ]]
 main := proc() {
-    foo(*M.Vec3, f32, cast(u32, 64), M);
+    x: *M.Vec3;
+    foo(x);
 }

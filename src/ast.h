@@ -68,8 +68,9 @@ X_AST
 #define AST_FLAG_CHECKED              (1 << 0)
 #define AST_FLAG_POLYMORPH            (1 << 1)
 #define AST_FLAG_VARARGS              (1 << 2)
-#define AST_FLAG_CALL_IS_CAST         (1 << 3)
-#define AST_FLAG_IS_EXTERN            (1 << 4)
+#define AST_FLAG_POLY_VARARGS         (1 << 3)
+#define AST_FLAG_CALL_IS_CAST         (1 << 4)
+#define AST_FLAG_IS_EXTERN            (1 << 5)
 
 struct ast;
 

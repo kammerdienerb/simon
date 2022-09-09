@@ -80,6 +80,8 @@ enum {
     X(TY_F32)       \
     X(TY_F64)
 
+#define TY_FLAG_IS_POLY (1)
+
 typedef struct type {
     u32 kind;
     union {
@@ -109,6 +111,7 @@ typedef struct type {
 
 
 int init_types(void);
+int type_is_poly(u32 ty);
 int type_has_compile_time_only_values(u32 ty);
 int type_kind_has_under(u32 kind);
 int type_kind_is_int(u32 kind);

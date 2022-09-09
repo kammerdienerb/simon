@@ -309,6 +309,11 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_decl_t *parent_decl
 }
 
 static void check_param(ast_param_t *param, scope_t *scope) {
+    if (ASTP(param)->flags & AST_FLAG_POLY_VARARGS) {
+        ASTP(param)->type = TY_POLY;
+        return;
+    }
+
     check_node(param->type_expr, scope, NULL);
 
     if (param->val != NULL) {
@@ -540,6 +545,39 @@ static void check_builtin_special_call(ast_bin_expr_t *expr, scope_t *scope) {
     array_free(path);
 }
 
+static void solve_poly_type_expr(ast_t *type_expr, ast_t *arg_expr) {
+    u32 pt;
+    u32 at;
+
+    pt = type_expr->value.t;
+    at = arg_expr->type;
+
+    for (;;) {
+        report_simple_info_no_exit("%s vs %s", get_string(get_type_string_id(pt)), get_string(get_type_string_id(at)));
+        if (type_kind(at) != type_kind(at)) { goto err; }
+
+        switch (type_kind(pt)) {
+            default:
+                if (at != pt) {
+err:;
+                    report_simple_err("asdfasdf");
+                }
+        }
+    }
+
+
+
+/*     polymorph_constant_t constant; */
+/*     constant.name  = param->name; */
+/*     constant.value = arg->expr->value; */
+/*     constant.type  = arg->expr->type; */
+
+/*     report_loc_info_no_context_no_exit( */
+/*         ASTP(param)->loc.beg, "CASE 1: %s resolved to %s", */
+/*         get_string(constant.name), */
+/*         get_string(value_to_string_id(constant.value, constant.type))); */
+}
+
 static ast_proc_t *get_proc_polymorph(ast_proc_t *proc, ast_arg_list_t *arg_list) {
     int                    i;
     ast_t                **it;
@@ -547,7 +585,7 @@ static ast_proc_t *get_proc_polymorph(ast_proc_t *proc, ast_arg_list_t *arg_list
     arg_t                 *arg;
     polymorph_constant_t   constant;
 
-    report_loc_info_no_exit(ASTP(proc)->loc.beg, "polymorph:");
+    report_simple_info_no_exit("====================== POLYMORPH ======================");
 
     array_clear(working_poly_constants);
 
@@ -562,9 +600,16 @@ static ast_proc_t *get_proc_polymorph(ast_proc_t *proc, ast_arg_list_t *arg_list
             constant.type  = arg->expr->type;
 
             array_push(working_poly_constants, constant);
-            printf("    %s: %s\n",
-                    get_string(constant.name),
-                    get_string(value_to_string_id(constant.value, constant.type)));
+            report_loc_info_no_context_no_exit(
+                ASTP(param)->loc.beg, "CASE 1: %s resolved to %s",
+                get_string(constant.name),
+                get_string(value_to_string_id(constant.value, constant.type)));
+        }
+
+        if (param->type_expr->flags & AST_FLAG_POLYMORPH) {
+            report_loc_info_no_context_no_exit(param->type_expr->loc.beg, "poly param case 2");
+            arg = array_item(arg_list->args, i);
+            solve_poly_type_expr(param->type_expr, arg->expr);
         }
 
         i += 1;
@@ -697,7 +742,7 @@ too_few:
         arg_p      = array_item(arg_list->args, i);
         arg_type   = arg_p->expr->type;
 
-        if (arg_type != param_type && param_type != TY_POLY) {
+        if (arg_type != param_type && !type_is_poly(param_type)) {
             if (left_ident == NULL) {
                 report_range_err_no_exit(&arg_p->expr->loc,
                                          "incorrect argument type: expected %s, but got %s",
@@ -776,7 +821,7 @@ too_few:
             arg_p    = array_item(arg_list->args, i);
             arg_type = arg_p->expr->type;
 
-            if (arg_type != varg_ty) {
+            if (arg_type != varg_ty && !type_is_poly(varg_ty)) {
                 report_range_err_no_exit(&arg_p->expr->loc,
                                          "incorrect argument type: expected %s, but got %s",
                                          get_string(get_type_string_id(varg_ty)),
@@ -1244,7 +1289,7 @@ static void check_unary_expr(ast_unary_expr_t *expr, scope_t *scope) {
     switch (expr->op) {
         case OP_ADDR:
         case OP_ARRAY:
-            if (expr->child->type == TY_TYPE) {
+            if (expr->child->type == TY_TYPE || expr->child->type == TY_POLY) {
                 ASTP(expr)->type    = TY_TYPE;
                 ASTP(expr)->value.t = get_ptr_type(expr->child->value.t);
             } else {

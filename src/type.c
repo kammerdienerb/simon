@@ -7,6 +7,33 @@
 static array_t type_table;
 static u32     empty_type_list;
 
+static type_t * get_type_structure(u32 ty) {
+    ASSERT(ty < array_len(type_table), "invalid type id");
+
+    return array_item(type_table, ty);
+}
+
+int type_is_poly(u32 ty) {
+    type_t *t;
+    int     i;
+
+    if (ty == TY_POLY) { return 1; }
+
+    t = get_type_structure(ty);
+
+    if (t->kind == _TY_TYPE_LIST) {
+        for (i = 0; i < t->list_len; i += 1) {
+            if (type_is_poly(t->id_list[i])) {
+                return 1;
+            }
+        }
+    } else if (t->flags & TY_FLAG_IS_POLY) {
+        return 1;
+    }
+
+    return 0;
+}
+
 int type_kind_has_under(u32 kind) {
     return
 #define X(k) kind == (k) ||
@@ -121,6 +148,8 @@ ASSERT(id == (ty), "id != " #ty);
     t.id_list       = NULL;
     empty_type_list = insert_new_type(t);
 
+    get_type_structure(TY_POLY)->flags |= TY_FLAG_IS_POLY;
+
     return 0;
 }
 
@@ -130,12 +159,6 @@ int type_has_compile_time_only_values(u32 ty) {
     X_CT_TYPES
 #undef X
     0;
-}
-
-static type_t * get_type_structure(u32 ty) {
-    ASSERT(ty < array_len(type_table), "invalid type id");
-
-    return array_item(type_table, ty);
 }
 
 int type_kind(u32 ty) {
@@ -164,7 +187,7 @@ u32 get_ptr_type(u32 ty) {
     type_t new_t;
 
     new_t.kind     = TY_PTR;
-    new_t.flags    = 0;
+    new_t.flags    = type_is_poly(ty) ? TY_FLAG_IS_POLY : 0;
     new_t.under_id = ty;
     new_t._pad     = 0;
 
@@ -175,7 +198,7 @@ u32 get_vargs_type(u32 ty) {
     type_t new_t;
 
     new_t.kind     = TY_VARGS;
-    new_t.flags    = 0;
+    new_t.flags    = type_is_poly(ty) ? TY_FLAG_IS_POLY : 0;
     new_t.under_id = ty;
     new_t._pad     = 0;
 
@@ -230,7 +253,7 @@ u32 get_proc_type(u32 n_param_types, u32 *param_types, u32 ret_type) {
     params_type = get_or_insert_type(params_t);
 
     t.kind          = TY_PROC;
-    t.flags         = 0;
+    t.flags         = type_is_poly(params_type) || type_is_poly(ret_type) ? TY_FLAG_IS_POLY : 0;
     t.param_list_id = params_type;
     t.ret_id        = ret_type;
 
@@ -289,26 +312,26 @@ static void build_type_string(u32 ty, char *buff) {
     t = *tp;
 
     switch (t.kind) {
-        case TY_UNKNOWN:   strncat(buff, "<unknown type>",         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_NOT_TYPED: strncat(buff, "<not typed>",            TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_MODULE:    strncat(buff, "module",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_MACRO:     strncat(buff, "macro",                  TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_TYPE:      strncat(buff, "type",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_PROC:      strncat(buff, "procedure",              TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_PTR:       strncat(buff, "*",                      TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_VARGS:     strncat(buff, "...",                    TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U8:        strncat(buff, "u8",                     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U16:       strncat(buff, "u16",                    TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U32:       strncat(buff, "u32",                    TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U64:       strncat(buff, "u64",                    TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S8:        strncat(buff, "s8",                     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S16:       strncat(buff, "s16",                    TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S32:       strncat(buff, "s32",                    TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S64:       strncat(buff, "s64",                    TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_F32:       strncat(buff, "f32",                    TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_F64:       strncat(buff, "f64",                    TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_STRUCT:    strncat(buff, get_string(t.name_id),    TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_POLY:      strncat(buff, "<polymorphic paramter>", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_UNKNOWN:   strncat(buff, "<unknown type>",          TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_NOT_TYPED: strncat(buff, "<not typed>",             TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_MODULE:    strncat(buff, "module",                  TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_MACRO:     strncat(buff, "macro",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_TYPE:      strncat(buff, "type",                    TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_PROC:      strncat(buff, "procedure",               TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_PTR:       strncat(buff, "*",                       TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_VARGS:     strncat(buff, "...",                     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U8:        strncat(buff, "u8",                      TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U16:       strncat(buff, "u16",                     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U32:       strncat(buff, "u32",                     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U64:       strncat(buff, "u64",                     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S8:        strncat(buff, "s8",                      TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S16:       strncat(buff, "s16",                     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S32:       strncat(buff, "s32",                     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S64:       strncat(buff, "s64",                     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_F32:       strncat(buff, "f32",                     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_F64:       strncat(buff, "f64",                     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_STRUCT:    strncat(buff, get_string(t.name_id),     TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_POLY:      strncat(buff, "<polymorphic parameter>", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case _TY_TYPE_LIST: break; /* Handled below. */
         default:
             ASSERT(0, "unhandled type kind in build_type_string()");

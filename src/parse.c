@@ -25,6 +25,7 @@ typedef struct {
     array_t       scope_stack;
     ast_decl_t   *program_entry;
     int           allow_poly_idents;
+    int           poly_expr_pattern;
 } parse_context_t;
 
 
@@ -872,7 +873,7 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
         }
         EXPECT_CHAR(cxt, ')', "expected closing ')'");
     } else if (OPTIONAL_CHAR(cxt, '%')) {
-        EXPECT_IDENT(cxt, &str_rep, "expected valid identifier after '%', which indicates the declaration of a polymorphic parameter");
+        EXPECT_IDENT(cxt, &str_rep, "expected valid identifier after '%%', which indicates the declaration of a polymorphic parameter");
         if (!cxt->allow_poly_idents) {
             loc.end = GET_END_POINT(cxt);
             report_range_err(&loc, "polymorphic parameter declaration is not allowed outside of a struct or procedure parameter list");
@@ -886,6 +887,7 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
 
         result->flags           |= AST_FLAG_POLYMORPH;
         SCOPE(cxt)->node->flags |= AST_FLAG_POLYMORPH;
+        cxt->poly_expr_pattern   = 1;
 
         loc.end     = GET_END_POINT(cxt);
         result->loc = loc;
@@ -1099,6 +1101,8 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
 
     if (OPTIONAL_CHAR(cxt, '(')) {
         while (!OPTIONAL_CHAR(cxt, ')')) {
+            cxt->poly_expr_pattern = 0;
+
             param                = AST_ALLOC(cxt, ast_param_t);
             ASTP(param)->kind    = AST_PARAM;
             ASTP(param)->loc.beg = GET_BEG_POINT(cxt);
@@ -1120,6 +1124,10 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
             EXPECT_CHAR(cxt, ':', "expected ':'");
 
             param->type_expr = parse_expr_prec(cxt, ASSIGNMENT_PREC + 1);
+
+            if (cxt->poly_expr_pattern) {
+                param->type_expr->flags |= AST_FLAG_POLYMORPH;
+            }
 
             if (param->type_expr == NULL) {
                 report_loc_err(GET_BEG_POINT(cxt),
@@ -1500,6 +1508,8 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
 
     seen_vargs = 0;
     while (!OPTIONAL_CHAR(cxt, ')')) {
+        cxt->poly_expr_pattern = 0;
+
         if (seen_vargs) {
             report_loc_err(GET_BEG_POINT(cxt),
                            "parameters following a variadic argument list are not allowed");
@@ -1523,28 +1533,38 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
 
         EXPECT_CHAR(cxt, ':', "expected ':'");
 
-        if (OPTIONAL_LIT(cxt, "...")) {
+        if (unlikely(OPTIONAL_LIT(cxt, "%..."))) {
             seen_vargs            = 1;
-            ASTP(param)->flags   |= AST_FLAG_VARARGS;
-            ASTP(result)->flags  |= AST_FLAG_VARARGS;
-        }
+            ASTP(param)->flags   |= AST_FLAG_VARARGS | AST_FLAG_POLY_VARARGS;
+            ASTP(result)->flags  |= AST_FLAG_VARARGS | AST_FLAG_POLYMORPH;
+        } else {
+            if (OPTIONAL_LIT(cxt, "...")) {
+                seen_vargs            = 1;
+                ASTP(param)->flags   |= AST_FLAG_VARARGS;
+                ASTP(result)->flags  |= AST_FLAG_VARARGS;
+            }
 
-        param->type_expr = parse_expr_prec(cxt, ASSIGNMENT_PREC + 1);
+            param->type_expr = parse_expr_prec(cxt, ASSIGNMENT_PREC + 1);
 
-        if (param->type_expr == NULL) {
-            report_loc_err(GET_BEG_POINT(cxt),
-                           "expected valid type expression for parameter '%s'",
-                           get_string(param->name));
-            return NULL;
-        }
+            if (cxt->poly_expr_pattern) {
+                param->type_expr->flags |= AST_FLAG_POLYMORPH;
+            }
 
-        if (OPTIONAL_CHAR(cxt, '=')) {
-            param->val = parse_expr(cxt);
-            if (param->val == NULL) {
+            if (param->type_expr == NULL) {
                 report_loc_err(GET_BEG_POINT(cxt),
-                            "expected valid expression as default value for parameter '%s'",
+                            "expected valid type expression for parameter '%s'",
                             get_string(param->name));
                 return NULL;
+            }
+
+            if (OPTIONAL_CHAR(cxt, '=')) {
+                param->val = parse_expr(cxt);
+                if (param->val == NULL) {
+                    report_loc_err(GET_BEG_POINT(cxt),
+                                "expected valid expression as default value for parameter '%s'",
+                                get_string(param->name));
+                    return NULL;
+                }
             }
         }
 
