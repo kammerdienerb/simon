@@ -23,6 +23,7 @@
     X(TY_F32)             \
     X(TY_F64)             \
     X(TY_PTR)             \
+    X(TY_STR)             \
     X(TY_GENERIC_INT)     \
     X(TY_GENERIC_FLOAT)   \
     X(TY_VARGS)           \
@@ -122,6 +123,7 @@ u32 get_ptr_type(u32 ty);
 u32 get_vargs_type(u32 ty);
 u32 get_under_type(u32 ty);
 u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope);
+u32 get_type_list_type(u32 n_types, u32 *types);
 u32 get_proc_type(u32 n_param_types, u32 *param_types, u32 ret_type);
 u32 get_num_param_types(u32 proc_ty);
 u32 get_param_type(u32 proc_ty, u32 idx);

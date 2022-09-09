@@ -85,11 +85,12 @@ int ast_kind_is_decl(int kind) {
     0;
 }
 
-int ast_kind_can_be_symbol_origin(int kind) {
-    return    kind == AST_PARAM
-           || kind == AST_POLYMORPH_TYPE_NAME
-           || kind == AST_BUILTIN
-           || ast_kind_is_decl(kind);
+int ast_kind_is_leaf_expr(int kind) {
+    return
+#define X(k) kind == (k) ||
+    X_AST_LEAF_EXPRS
+#undef X
+    0;
 }
 
 static const char *ast_kind_to_name[] = {
@@ -310,7 +311,7 @@ static void check_proc(ast_proc_t *proc, scope_t *scope, ast_decl_t *parent_decl
 
 static void check_param(ast_param_t *param, scope_t *scope) {
     if (ASTP(param)->flags & AST_FLAG_POLY_VARARGS) {
-        ASTP(param)->type = TY_POLY;
+        ASTP(param)->type = get_vargs_type(TY_POLY);
         return;
     }
 
@@ -468,7 +469,7 @@ add_char:;
     }
 
     ASTP(string)->value.s = get_string_id_n(buff, new_len);
-    ASTP(string)->type    = get_ptr_type(TY_U8);
+    ASTP(string)->type    = TY_STR;
 }
 
 static ast_t * try_get_decl_and_path(ast_ident_t *ident, array_t *path) {
@@ -546,42 +547,66 @@ static void check_builtin_special_call(ast_bin_expr_t *expr, scope_t *scope) {
 }
 
 static void solve_poly_type_expr(ast_t *type_expr, ast_t *arg_expr) {
-    u32 pt;
-    u32 at;
+    ast_t                *texpr;
+    u32                   at;
+    u32                   pt;
+    polymorph_constant_t  constant;
 
-    pt = type_expr->value.t;
-    at = arg_expr->type;
+    texpr = type_expr;
+    at    = arg_expr->type;
 
     for (;;) {
-        report_simple_info_no_exit("%s vs %s", get_string(get_type_string_id(pt)), get_string(get_type_string_id(at)));
-        if (type_kind(at) != type_kind(at)) { goto err; }
+        pt = texpr->value.t;
+
+/*         report_simple_info_no_exit("%s vs %s", get_string(get_type_string_id(pt)), get_string(get_type_string_id(at))); */
+
+        if (ast_kind_is_leaf_expr(texpr->kind)) {
+            ASSERT(pt == TY_POLY, "type expression in polymorphic type pattern does not terminate in a polymorphic parameter");
+            ASSERT(texpr->kind == AST_IDENT, "not an ident");
+
+            constant.name    = ((ast_ident_t*)texpr)->str_rep;
+            constant.value.t = at;
+            constant.type    = TY_TYPE;
+
+            array_push(working_poly_constants, constant);
+            report_range_info_no_context_no_exit(
+                &texpr->loc, "CASE 3: %s resolved to %s",
+                get_string(constant.name),
+                get_string(value_to_string_id(constant.value, constant.type)));
+
+            break;
+        }
+
+        if (type_kind(at) != type_kind(pt)) { goto err; }
 
         switch (type_kind(pt)) {
+            case TY_PTR:
+                texpr = ((ast_unary_expr_t*)texpr)->child;
+                at    = get_under_type(at);
+                break;
             default:
                 if (at != pt) {
 err:;
-                    report_simple_err("asdfasdf");
+                    report_range_err_no_exit(&arg_expr->loc,
+                                             "incorrect argument type: expected %s, but got %s",
+                                             get_string(get_type_string_id(type_expr->value.t)),
+                                             get_string(get_type_string_id(arg_expr->type)));
+                    report_range_info_no_context_no_exit(&type_expr->loc, "when solving for polymorphic parameters in a type pattern");
+                    report_simple_err("asdf");
+                    return;
                 }
         }
     }
-
-
-
-/*     polymorph_constant_t constant; */
-/*     constant.name  = param->name; */
-/*     constant.value = arg->expr->value; */
-/*     constant.type  = arg->expr->type; */
-
-/*     report_loc_info_no_context_no_exit( */
-/*         ASTP(param)->loc.beg, "CASE 1: %s resolved to %s", */
-/*         get_string(constant.name), */
-/*         get_string(value_to_string_id(constant.value, constant.type))); */
 }
 
 static ast_proc_t *get_proc_polymorph(ast_proc_t *proc, ast_arg_list_t *arg_list) {
     int                    i;
     ast_t                **it;
     ast_param_t           *param;
+    int                    j;
+    u32                    n_vargs;
+    u32                   *varg_types;
+    u32                    varg_list_ty;
     arg_t                 *arg;
     polymorph_constant_t   constant;
 
@@ -593,21 +618,43 @@ static ast_proc_t *get_proc_polymorph(ast_proc_t *proc, ast_arg_list_t *arg_list
     array_traverse(proc->params, it) {
         param = (ast_param_t*)*it;
 
-        if (ASTP(param)->flags & AST_FLAG_POLYMORPH) {
+        if (ASTP(param)->flags & AST_FLAG_POLY_VARARGS) {
+            n_vargs    = array_len(arg_list->args) - i;
+            varg_types = alloca(sizeof(u32) * n_vargs);
+
+            for (j = 0; j < n_vargs; j += 1) {
+                arg           = array_item(arg_list->args, i + j);
+                varg_types[j] = arg->expr->type;
+            }
+
+            varg_list_ty = get_type_list_type(n_vargs, varg_types);
+
+            constant.name    = ELLIPSIS_ID;
+            constant.value.t = varg_list_ty;
+            constant.type    = TY_TYPE;
+
+            array_push(working_poly_constants, constant);
+            report_range_info_no_context_no_exit(
+                &ASTP(param)->loc, "CASE 3: %s resolved to %s",
+                get_string(constant.name),
+                get_string(value_to_string_id(constant.value, constant.type)));
+        } else if (ASTP(param)->flags & AST_FLAG_POLYMORPH) {
+
             arg            = array_item(arg_list->args, i);
             constant.name  = param->name;
             constant.value = arg->expr->value;
             constant.type  = arg->expr->type;
 
             array_push(working_poly_constants, constant);
-            report_loc_info_no_context_no_exit(
-                ASTP(param)->loc.beg, "CASE 1: %s resolved to %s",
+            report_range_info_no_context_no_exit(
+                &ASTP(param)->loc, "CASE 1: %s resolved to %s",
                 get_string(constant.name),
                 get_string(value_to_string_id(constant.value, constant.type)));
         }
 
-        if (param->type_expr->flags & AST_FLAG_POLYMORPH) {
-            report_loc_info_no_context_no_exit(param->type_expr->loc.beg, "poly param case 2");
+        if (!(ASTP(param)->flags    & AST_FLAG_POLY_VARARGS)
+        &&  param->type_expr->flags & AST_FLAG_POLYMORPH) {
+
             arg = array_item(arg_list->args, i);
             solve_poly_type_expr(param->type_expr, arg->expr);
         }
@@ -1183,6 +1230,9 @@ static void operand_not_typed_error(ast_t *expr, ast_t *operand) {
 }
 
 static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
+    u32 tkl;
+    u32 tkr;
+
     /*
     ** OP_DOT is special because the right operand could fail in symbol resolution
     ** if checked alone.
@@ -1207,6 +1257,9 @@ static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
         return;
     }
 
+    tkl = type_kind(expr->left->type);
+    tkr = type_kind(expr->right->type);
+
     switch (expr->op) {
         case OP_DOT: /* Handled above. */ break;
 
@@ -1215,22 +1268,27 @@ static void check_bin_expr(ast_bin_expr_t *expr, scope_t *scope) {
             break;
 
         case OP_SUBSCRIPT:
-            if (type_kind(expr->left->type) != TY_PTR) {
+            if (tkl == TY_PTR) {
+                ASTP(expr)->type = get_under_type(expr->left->type);
+            } else if (tkl == TY_STR) {
+                ASTP(expr)->type = TY_U8;
+            } else {
                 report_range_err_no_exit(&ASTP(expr)->loc,
-                                         "left-hand-side operand of '[]' operator must be a pointer type");
+                                         "left-hand-side operand of '[]' operator must be str or a pointer type");
                 report_range_info_no_context(&expr->left->loc,
                                              "operand has type %s",
                                              get_string(get_type_string_id(expr->left->type)));
                 return;
             }
-            if (!type_kind_is_int(expr->right->type)) {
+
+            if (!type_kind_is_int(tkr)) {
                 report_range_err_no_exit(&ASTP(expr)->loc,
                                          "right-hand-side operand of '[]' operator must be an integer type");
                 report_range_info_no_context(&expr->right->loc,
                                          "operand has type %s",
                                          get_string(get_type_string_id(expr->right->type)));
             }
-            ASTP(expr)->type = get_under_type(expr->left->type);
+
             break;
 
         case OP_PLUS:

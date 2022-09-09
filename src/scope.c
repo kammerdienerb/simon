@@ -65,6 +65,7 @@ void init_scopes(void) {
     insert_builtin_type("s64",    TY_S64);
     insert_builtin_type("f32",    TY_F32);
     insert_builtin_type("f64",    TY_F64);
+    insert_builtin_type("str",    TY_STR);
 
 
     INSERT_BUILTIN_PROC_LIKE("cast", TY_BUILTIN_SPECIAL); /* This gets custom typechecking in ast.c */

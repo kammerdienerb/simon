@@ -38,7 +38,6 @@
     X(AST_INT)                 \
     X(AST_FLOAT)               \
     X(AST_STRING)              \
-    X(AST_BOOL)                \
     X(AST_IDENT)               \
     X(AST_UNARY_EXPR)          \
     X(AST_BIN_EXPR)            \
@@ -51,13 +50,18 @@
     X(AST_BREAK)               \
     X(AST_CONTINUE)
 
-#define X_AST_DECLARATIONS   \
-    X(AST_DECL_VAR)          \
-    X(AST_DECL_PROC)         \
-    X(AST_DECL_STRUCT)       \
-    X(AST_DECL_MACRO)        \
+#define X_AST_DECLARATIONS     \
+    X(AST_DECL_VAR)            \
+    X(AST_DECL_PROC)           \
+    X(AST_DECL_STRUCT)         \
+    X(AST_DECL_MACRO)          \
     X(AST_DECL_MODULE)
 
+#define X_AST_LEAF_EXPRS       \
+    X(AST_INT)                 \
+    X(AST_FLOAT)               \
+    X(AST_STRING)              \
+    X(AST_IDENT)
 
 enum {
 #define X(kind) kind,
@@ -97,7 +101,6 @@ typedef struct ast {
 
 
 int ast_kind_is_decl(int kind);
-int ast_kind_can_be_symbol_origin(int kind);
 const char *ast_get_kind_str(int kind);
 #define AST_STR(kind) (ast_get_kind_str((kind)))
 

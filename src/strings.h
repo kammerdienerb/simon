@@ -17,6 +17,7 @@ typedef u64         string_id;
 
 #define STRING_ID_NULL (0)
 extern string_id UNDERSCORE_ID;
+extern string_id ELLIPSIS_ID;
 extern string_id __BUILTIN_PRINTS_ID;
 extern string_id __BUILTIN_PRINTP_ID;
 extern string_id __BUILTIN_PRINTI_ID;

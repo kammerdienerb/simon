@@ -1,4 +1,4 @@
-foo := proc(x: *%U) {
+foo := proc(x: **%U) {
 }
 
 M := module {

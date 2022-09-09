@@ -1,7 +1,9 @@
 fmt := module {
-    _fmt := proc(fmt: *u8, args: %...) {
+    _fmt := proc(fmt: str, args: %...) {
     }
 }
 
 [[ program_entry ]]
-main := proc() {}
+main := proc() {
+    fmt._fmt("{} {} {}", 123, "this is a test", 1.23);
+}

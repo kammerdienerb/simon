@@ -7,6 +7,7 @@
 
 
 string_id UNDERSCORE_ID;
+string_id ELLIPSIS_ID;
 string_id __BUILTIN_PRINTS_ID;
 string_id __BUILTIN_PRINTP_ID;
 string_id __BUILTIN_PRINTI_ID;
@@ -94,6 +95,7 @@ void init_strings(void) {
     }
 
     UNDERSCORE_ID            = get_string_id("_");
+    ELLIPSIS_ID              = get_string_id("...");
     __BUILTIN_PRINTS_ID      = get_string_id("__builtin_prints");
     __BUILTIN_PRINTP_ID      = get_string_id("__builtin_printp");
     __BUILTIN_PRINTI_ID      = get_string_id("__builtin_printi");
