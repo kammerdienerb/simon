@@ -29,6 +29,7 @@
     X(TY_VARGS)           \
     X(_TY_TYPE_LIST)      \
     X(TY_STRUCT)          \
+    X(TY_STRUCT_MONO)     \
     X(TY_PROC)            \
     X(TY_POLY)
 
@@ -66,7 +67,7 @@ enum {
     X(TY_S64)
 
 #define X_FLOAT_TYPES \
-    X(TY_F32)          \
+    X(TY_F32)         \
     X(TY_F64)
 
 #define X_NUM_TYPES \
@@ -88,6 +89,7 @@ typedef struct type {
     union {
         u32 flags;
         u32 list_len;
+        u32 mono_constants_idx;
     };
     union {
         /* Generic types with underlying types (like pointers or arrays) */
@@ -96,7 +98,7 @@ typedef struct type {
             u32 _pad;
         };
         /* Struct type */
-        string_id name_id;
+        ast_decl_t *decl;
         /* Procedure types */
         struct {
             u32 param_list_id;
@@ -122,12 +124,16 @@ int type_kind(u32 ty);
 u32 get_ptr_type(u32 ty);
 u32 get_vargs_type(u32 ty);
 u32 get_under_type(u32 ty);
-u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope);
+u32 get_struct_type(ast_decl_t *st);
+u32 get_struct_mono_type(ast_decl_t *st, u32 constants_idx);
+u32 get_struct_field_type(u32 ty, string_id field_name);
 u32 get_type_list_type(u32 n_types, u32 *types);
 u32 get_proc_type(u32 n_param_types, u32 *param_types, u32 ret_type);
 u32 get_num_param_types(u32 proc_ty);
 u32 get_param_type(u32 proc_ty, u32 idx);
 u32 get_ret_type(u32 proc_ty);
 string_id get_type_string_id(u32 ty);
+ast_decl_t *struct_type_to_decl(u32 ty);
+type_t get_type_t(u32 ty);
 
 #endif

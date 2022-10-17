@@ -27,6 +27,8 @@ int type_is_poly(u32 ty) {
                 return 1;
             }
         }
+    } else if (t->kind == TY_STRUCT_MONO) {
+        return 0;
     } else if (t->flags & TY_FLAG_IS_POLY) {
         return 1;
     }
@@ -211,34 +213,50 @@ u32 get_under_type(u32 ty) {
     return get_type_structure(ty)->under_id;
 }
 
-u32 get_struct_type(ast_struct_t *st, string_id name_id, scope_t *scope) {
-    type_t      t;
-    const char *scope_name;
-    const char *name;
-    char        buff[SCOPE_NAME_BUFF_SIZE];
+u32 get_struct_type(ast_decl_t *st) {
+    type_t t;
+
+    ASSERT(ASTP(st)->kind == AST_DECL_STRUCT, "not a struct declaration");
 
     t.kind  = TY_STRUCT;
-    t.flags = 0;
-
-    if (scope->parent == NULL) {
-        t.name_id = name_id;
-    } else {
-        scope_name = get_string(scope->name_id);
-        name       = get_string(name_id);
-
-        if (strlen(scope_name) + strlen(name) + 2 > SCOPE_NAME_BUFF_SIZE) {
-            report_simple_err("INTERNAL ERROR: name too long");
-            ASSERT(0, "name too long");
-        }
-
-        strncpy(buff, scope_name, SCOPE_NAME_BUFF_SIZE - strlen(buff) - 1);
-        strncat(buff, ".", SCOPE_NAME_BUFF_SIZE - strlen(buff) - 1);
-        strncat(buff, name, SCOPE_NAME_BUFF_SIZE - strlen(buff) - 1);
-
-        t.name_id = get_string_id(buff);
-    }
+    t.flags = ASTP(st)->flags & AST_FLAG_POLYMORPH ? TY_FLAG_IS_POLY : 0;
+    t.decl  = st;
 
     return get_or_insert_type(t);
+}
+
+u32 get_struct_mono_type(ast_decl_t *st, u32 constants_idx) {
+    type_t t;
+
+    ASSERT(ASTP(st)->kind == AST_DECL_STRUCT, "not a struct declaration");
+
+    t.kind               = TY_STRUCT_MONO;
+    t.mono_constants_idx = constants_idx;
+    t.decl               = st;
+
+    return get_or_insert_type(t);
+}
+
+u32 get_struct_field_type(u32 ty, string_id field_name) {
+    type_t              *t;
+    ast_struct_t        *st;
+    ast_t              **it;
+    ast_struct_field_t  *field;
+
+    t = get_type_structure(ty);
+    ASSERT(t != NULL,            "did not find type");
+    ASSERT(t->kind == TY_STRUCT, "type is not a struct");
+
+    st = (ast_struct_t*)t->decl->val_expr;
+
+    array_traverse(st->fields, it) {
+        field = (ast_struct_field_t*)*it;
+        if (field->name == field_name) {
+            return ASTP(field)->type;
+        }
+    }
+
+    return TY_UNKNOWN;
 }
 
 u32 get_type_list_type(u32 n_types, u32 *types) {
@@ -304,11 +322,13 @@ u32 get_ret_type(u32 proc_ty) {
 #define TYPE_STRING_BUFF_SIZE (4096)
 
 static void build_type_string(u32 ty, char *buff) {
-    type_t     *tp;
-    type_t      t;
-    char        under_buff[TYPE_STRING_BUFF_SIZE];
-    const char *lazy_comma;
-    int         i;
+    type_t               *tp;
+    type_t                t;
+    polymorphed_t        *poly;
+    polymorph_constant_t *it;
+    const char           *lazy_comma;
+    char                  under_buff[TYPE_STRING_BUFF_SIZE];
+    int                   i;
 
     buff[0] = 0;
 
@@ -322,28 +342,44 @@ static void build_type_string(u32 ty, char *buff) {
     t = *tp;
 
     switch (t.kind) {
-        case TY_UNKNOWN:   strncat(buff, "<unknown type>",      TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_NOT_TYPED: strncat(buff, "<not typed>",         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_MODULE:    strncat(buff, "module",              TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_MACRO:     strncat(buff, "macro",               TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_TYPE:      strncat(buff, "type",                TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_PROC:      strncat(buff, "procedure",           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_PTR:       strncat(buff, "*",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_STR:       strncat(buff, "str",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_VARGS:     strncat(buff, "...",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U8:        strncat(buff, "u8",                  TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U16:       strncat(buff, "u16",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U32:       strncat(buff, "u32",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U64:       strncat(buff, "u64",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S8:        strncat(buff, "s8",                  TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S16:       strncat(buff, "s16",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S32:       strncat(buff, "s32",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S64:       strncat(buff, "s64",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_F32:       strncat(buff, "f32",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_F64:       strncat(buff, "f64",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_STRUCT:    strncat(buff, get_string(t.name_id), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_POLY:      strncat(buff, "<polymorphic>",       TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case _TY_TYPE_LIST: break; /* Handled below. */
+        case TY_UNKNOWN:     strncat(buff, "<unknown type>",              TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_NOT_TYPED:   strncat(buff, "<not typed>",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_MODULE:      strncat(buff, "module",                      TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_MACRO:       strncat(buff, "macro",                       TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_TYPE:        strncat(buff, "type",                        TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_PROC:        strncat(buff, "procedure",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_PTR:         strncat(buff, "*",                           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_STR:         strncat(buff, "str",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_VARGS:       strncat(buff, "...",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U8:          strncat(buff, "u8",                          TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U16:         strncat(buff, "u16",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U32:         strncat(buff, "u32",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U64:         strncat(buff, "u64",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S8:          strncat(buff, "s8",                          TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S16:         strncat(buff, "s16",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S32:         strncat(buff, "s32",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S64:         strncat(buff, "s64",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_F32:         strncat(buff, "f32",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_F64:         strncat(buff, "f64",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_STRUCT:      strncat(buff, get_string(t.decl->full_name), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_STRUCT_MONO: {
+            strncat(buff, get_string(t.decl->full_name), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+            strncat(buff, "(", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+            lazy_comma = "";
+            poly = array_item(((ast_struct_t*)t.decl->val_expr)->polymorphs, t.mono_constants_idx);
+            array_traverse(poly->constants, it) {
+                strncat(buff, lazy_comma, TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+                strncat(buff, get_string(it->name), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+                strncat(buff, ": ", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+                strncat(buff, get_string(value_to_string_id(it->value, it->type)), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+                lazy_comma = ", ";
+
+            }
+            strncat(buff, ")", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+            break;
+        }
+        case TY_POLY:        strncat(buff, "<polymorphic>",               TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case _TY_TYPE_LIST:  break; /* Handled below. */
         default:
             ASSERT(0, "unhandled type kind in build_type_string()");
             return;
@@ -378,4 +414,21 @@ string_id get_type_string_id(u32 ty) {
     build_type_string(ty, buff);
 
     return get_string_id(buff);
+}
+
+ast_decl_t *struct_type_to_decl(u32 ty) {
+    type_t *t;
+
+    t = get_type_structure(ty);
+
+    return t->decl;
+}
+
+type_t get_type_t(u32 ty) {
+    type_t *t;
+
+    t = get_type_structure(ty);
+    ASSERT(t != NULL, "did not find type");
+
+    return *t;
 }

@@ -1,9 +1,51 @@
-fmt := module {
-    _fmt := proc(fmt: str, args: %...) {
-    }
-}
+strlen := __builtin_strlen;
 
 [[ program_entry ]]
 main := proc() {
     fmt._fmt("{} {} {}", 123, "this is a test", 1.23);
+}
+
+fmt := module {
+    JUST_LEFT   := 0;
+    JUST_RIGHT  := 1;
+    JUST_CENTER := 2;
+
+    HEX_LOWER   := 1;
+    HEX_UPPER   := 2;
+
+
+    [[ bitfield_struct(u64) ]]
+    Format_Info := struct {
+        [[ bitfield( 0, 31) ]] width:     u32,
+        [[ bitfield(32, 33) ]] just:      u8,
+        [[ bitfield(34, 35) ]] hex:       u8,
+        [[ bitfield(36, 49) ]] float_int: u32,
+        [[ bitfield(50, 63) ]] float_rat: u32,
+    }
+
+
+    to_formatted_str := proc(arg: %T, f: Format_Info): str {
+        \ERROR "fmt.to_formatted_str() has not been specialized for this type"
+    }
+
+    _fmt := proc(fmt: str, args: %...) {
+        len       := strlen(fmt);
+        which_arg := 0;
+
+        loop i := 0; i < len; i += 1 {
+            if fmt[i] == '%' {
+                info: Format_Info;
+                a   := 0;
+
+                \VARGS [
+                    if a == which_arg {
+                        to_formatted_str(__builtin_varg(), info);
+                    }
+                    a += 1;
+                ]
+
+                which_arg += 1;
+            }
+        }
+    }
 }

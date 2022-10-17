@@ -2,11 +2,14 @@
 #include "strings.h"
 #include "src_range.h"
 #include "options.h"
+#include "array.h"
 
 static int output_is_tty;
 static pthread_mutex_t output_mtx = PTHREAD_MUTEX_INITIALIZER;
 #define LOCK_OUTPUT()   (pthread_mutex_lock(&output_mtx))
 #define UNLOCK_OUTPUT() (pthread_mutex_unlock(&output_mtx))
+
+static array_t breadcrumbs;
 
 #define TERM_RESET   "\e[0m"
 #define TERM_RED     "\e[31m"
@@ -17,11 +20,23 @@ static pthread_mutex_t output_mtx = PTHREAD_MUTEX_INITIALIZER;
 #define TERM_CYAN    "\e[36m"
 #define TERM_BOLD    "\e[1m"
 
+#define ERR_ATTR   TERM_BOLD
+#define INFO_ATTR  TERM_BOLD
+#define FIXIT_ATTR TERM_BOLD
+#define LOC_ATTR   ""
+#define RANGE_ATTR TERM_RESET
 
-#define ERR_COLOR   TERM_BOLD TERM_RED
-#define INFO_COLOR  TERM_BOLD TERM_YELLOW
+#define ERR_COLOR   TERM_RED
+#define INFO_COLOR  TERM_YELLOW
+#define FIXIT_COLOR TERM_CYAN
 #define LOC_COLOR   TERM_BLUE
 #define RANGE_COLOR TERM_RESET
+
+#define ERR_STYLE   ERR_ATTR ERR_COLOR
+#define INFO_STYLE  INFO_ATTR INFO_COLOR
+#define FIXIT_STYLE FIXIT_ATTR FIXIT_COLOR
+#define LOC_STYLE   LOC_ATTR LOC_COLOR
+#define RANGE_STYLE RANGE_ATTR RANGE_COLOR
 
 #define N_CONTEXT_LINES (2)
 
@@ -32,7 +47,9 @@ do {                                  \
     }                                 \
 } while (0)
 
-void init_ui(void) { }
+void init_ui(void) {
+    breadcrumbs = array_make(breadcrumb_t);
+}
 
 void set_output_is_tty(void) {
     output_is_tty = isatty(1);
@@ -50,7 +67,26 @@ void verb_message(const char *fmt, ...) {
     }
 }
 
+static void print_breadcrumbs(void) {
+    breadcrumb_t *it;
+
+    if (array_len(breadcrumbs) == 0) { return; }
+
+    UNLOCK_OUTPUT();
+
+    array_rtraverse(breadcrumbs, it) {
+        if (it->kind == BREADCRUMB_RANGE) {
+            report_range_info_no_context_no_exit(&it->range, "%s", it->buff);
+        } else {
+            report_loc_info_no_context_no_exit(it->range.beg, "%s", it->buff);
+        }
+    }
+}
+
 static void common_exit(int status) {
+    print_breadcrumbs();
+
+    ASSERT(status == 0, "error on exit");
     exit(status);
 }
 
@@ -58,7 +94,7 @@ void _report_simple_err(int should_exit, const char *fmt, ...) {
     va_list va;
 
     LOCK_OUTPUT();
-    C(ERR_COLOR);
+    C(ERR_STYLE);
     printf("error");
     C(TERM_RESET);
 
@@ -78,7 +114,7 @@ void _report_simple_info(int should_exit, const char *fmt, ...) {
     va_list va;
 
     LOCK_OUTPUT();
-    C(INFO_COLOR);
+    C(INFO_STYLE);
     printf("info");
     C(TERM_RESET);
 
@@ -106,7 +142,7 @@ static int n_digits(u64 num) {
     return digits;
 }
 
-static void print_range(src_range_t *range, const char *all_color, const char *range_color, const char *loc_color, int n_context_lines) {
+static void print_range(src_range_t *range, const char *all_color, const char *range_color, const char *loc_color, int n_context_lines, int color_source, int trailing_newline) {
     ifile_t *f;
     int      n_nl;
     char    *context_start;
@@ -167,7 +203,9 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
 
         if (p == range->beg.buff_ptr) {
             underline = 1;// !output_is_tty;
-            C(range_color);
+            if (color_source) {
+                C(range_color);
+            }
         } else if (p == range->end.buff_ptr) {
             underline = -underline;
             C(all_color);
@@ -180,9 +218,13 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
                     while (line_start < p) {
                         if (line_start >= range->beg.buff_ptr
                         &&  line_start  < range->end.buff_ptr) {
-                            C(range_color);
-                            putchar('^');
-                            C(all_color);
+                            if (color_source) {
+                                C(range_color);
+                                putchar('^');
+                                C(all_color);
+                            } else {
+                                putchar('^');
+                            }
                         } else if (*line_start == '\t') {
                             putchar('\t');
                         } else {
@@ -227,14 +269,20 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
                 line_start += 1;
             }
             C(all_color);
-            putchar('\n');
+            if (trailing_newline) {
+                putchar('\n');
+            }
         } else if (line_nr == range->end.line) {
             for (i = 0; i < line_nr_digits + 3; i += 1) { putchar(' '); }
             C(range_color);
             for (i = 1; i < range->end.col; i += 1) { putchar('^'); }
             C(all_color);
-            putchar('\n');
+            if (trailing_newline) {
+                putchar('\n');
+            }
         }
+    } else if (context_end == f->end) {
+        putchar('\n');
     }
 
     C(TERM_RESET);
@@ -249,11 +297,11 @@ void _report_loc_err(int should_exit, src_point_t pt, const char *fmt, ...) {
     range.end.buff_ptr    += 1;
 
     LOCK_OUTPUT();
-    C(LOC_COLOR);
+    C(LOC_STYLE);
     printf("%s:%d:%d", get_string(pt.path_id), pt.line, pt.col);
     C(TERM_RESET);
     printf(": ");
-    C(ERR_COLOR);
+    C(ERR_STYLE);
     printf("error");
     C(TERM_RESET);
 
@@ -263,7 +311,7 @@ void _report_loc_err(int should_exit, src_point_t pt, const char *fmt, ...) {
     va_end(va);
     printf("\n");
 
-    print_range(&range, RANGE_COLOR, ERR_COLOR, LOC_COLOR, N_CONTEXT_LINES);
+    print_range(&range, RANGE_STYLE, ERR_STYLE, LOC_STYLE, N_CONTEXT_LINES, 1, 1);
     printf("\n");
 
     if (should_exit) {
@@ -283,11 +331,11 @@ void _report_loc_info(int should_exit, src_point_t pt, const char *fmt, ...) {
 
 
     LOCK_OUTPUT();
-    C(LOC_COLOR);
+    C(LOC_STYLE);
     printf("%s:%d:%d", get_string(pt.path_id), pt.line, pt.col);
     C(TERM_RESET);
     printf(": ");
-    C(INFO_COLOR);
+    C(INFO_STYLE);
     printf("info");
     C(TERM_RESET);
 
@@ -297,7 +345,7 @@ void _report_loc_info(int should_exit, src_point_t pt, const char *fmt, ...) {
     va_end(va);
     printf("\n");
 
-    print_range(&range, RANGE_COLOR, INFO_COLOR, LOC_COLOR, N_CONTEXT_LINES);
+    print_range(&range, RANGE_STYLE, INFO_STYLE, LOC_STYLE, N_CONTEXT_LINES, 1, 1);
     printf("\n");
 
     if (should_exit) {
@@ -313,11 +361,11 @@ void _report_range_err(int should_exit, src_range_t *range, const char *fmt, ...
     validate_range(range);
 
     LOCK_OUTPUT();
-    C(LOC_COLOR);
+    C(LOC_STYLE);
     printf("%s:%d:%d", get_string(range->beg.path_id), range->beg.line, range->beg.col);
     C(TERM_RESET);
     printf(": ");
-    C(ERR_COLOR);
+    C(ERR_STYLE);
     printf("error");
     C(TERM_RESET);
 
@@ -327,7 +375,7 @@ void _report_range_err(int should_exit, src_range_t *range, const char *fmt, ...
     va_end(va);
     printf("\n");
 
-    print_range(range, RANGE_COLOR, ERR_COLOR, LOC_COLOR, N_CONTEXT_LINES);
+    print_range(range, RANGE_STYLE, ERR_STYLE, LOC_STYLE, N_CONTEXT_LINES, 1, 1);
     printf("\n");
 
     if (should_exit) {
@@ -343,11 +391,11 @@ void _report_range_info(int should_exit, src_range_t *range, const char *fmt, ..
     validate_range(range);
 
     LOCK_OUTPUT();
-    C(LOC_COLOR);
+    C(LOC_STYLE);
     printf("%s:%d:%d", get_string(range->beg.path_id), range->beg.line, range->beg.col);
     C(TERM_RESET);
     printf(": ");
-    C(INFO_COLOR);
+    C(INFO_STYLE);
     printf("info");
     C(TERM_RESET);
 
@@ -357,7 +405,7 @@ void _report_range_info(int should_exit, src_range_t *range, const char *fmt, ..
     va_end(va);
     printf("\n");
 
-    print_range(range, RANGE_COLOR, INFO_COLOR, LOC_COLOR, N_CONTEXT_LINES);
+    print_range(range, RANGE_STYLE, INFO_STYLE, LOC_STYLE, N_CONTEXT_LINES, 1, 1);
     printf("\n");
 
     if (should_exit) {
@@ -376,11 +424,11 @@ void _report_loc_err_no_context(int should_exit, src_point_t pt, const char *fmt
     range.end.buff_ptr    += 1;
 
     LOCK_OUTPUT();
-    C(LOC_COLOR);
+    C(LOC_STYLE);
     printf("%s:%d:%d", get_string(pt.path_id), pt.line, pt.col);
     C(TERM_RESET);
     printf(": ");
-    C(ERR_COLOR);
+    C(ERR_STYLE);
     printf("error");
     C(TERM_RESET);
 
@@ -390,7 +438,7 @@ void _report_loc_err_no_context(int should_exit, src_point_t pt, const char *fmt
     va_end(va);
     printf("\n");
 
-    print_range(&range, RANGE_COLOR, ERR_COLOR, LOC_COLOR, 0);
+    print_range(&range, RANGE_STYLE, ERR_STYLE, LOC_STYLE, 0, 1, 1);
     printf("\n");
 
     if (should_exit) {
@@ -410,11 +458,11 @@ void _report_loc_info_no_context(int should_exit, src_point_t pt, const char *fm
 
 
     LOCK_OUTPUT();
-    C(LOC_COLOR);
+    C(LOC_STYLE);
     printf("%s:%d:%d", get_string(pt.path_id), pt.line, pt.col);
     C(TERM_RESET);
     printf(": ");
-    C(INFO_COLOR);
+    C(INFO_STYLE);
     printf("info");
     C(TERM_RESET);
 
@@ -424,7 +472,7 @@ void _report_loc_info_no_context(int should_exit, src_point_t pt, const char *fm
     va_end(va);
     printf("\n");
 
-    print_range(&range, RANGE_COLOR, INFO_COLOR, LOC_COLOR, 0);
+    print_range(&range, RANGE_STYLE, INFO_STYLE, LOC_STYLE, 0, 1, 1);
     printf("\n");
 
     if (should_exit) {
@@ -440,11 +488,11 @@ void _report_range_err_no_context(int should_exit, src_range_t *range, const cha
     validate_range(range);
 
     LOCK_OUTPUT();
-    C(LOC_COLOR);
+    C(LOC_STYLE);
     printf("%s:%d:%d", get_string(range->beg.path_id), range->beg.line, range->beg.col);
     C(TERM_RESET);
     printf(": ");
-    C(ERR_COLOR);
+    C(ERR_STYLE);
     printf("error");
     C(TERM_RESET);
 
@@ -454,7 +502,7 @@ void _report_range_err_no_context(int should_exit, src_range_t *range, const cha
     va_end(va);
     printf("\n");
 
-    print_range(range, RANGE_COLOR, ERR_COLOR, LOC_COLOR, 0);
+    print_range(range, RANGE_STYLE, ERR_STYLE, LOC_STYLE, 0, 1, 1);
     printf("\n");
 
     if (should_exit) {
@@ -470,11 +518,11 @@ void _report_range_info_no_context(int should_exit, src_range_t *range, const ch
     validate_range(range);
 
     LOCK_OUTPUT();
-    C(LOC_COLOR);
+    C(LOC_STYLE);
     printf("%s:%d:%d", get_string(range->beg.path_id), range->beg.line, range->beg.col);
     C(TERM_RESET);
     printf(": ");
-    C(INFO_COLOR);
+    C(INFO_STYLE);
     printf("info");
     C(TERM_RESET);
 
@@ -484,8 +532,51 @@ void _report_range_info_no_context(int should_exit, src_range_t *range, const ch
     va_end(va);
     printf("\n");
 
-    print_range(range, RANGE_COLOR, INFO_COLOR, LOC_COLOR, 0);
+    print_range(range, RANGE_STYLE, INFO_STYLE, LOC_STYLE, 0, 1, 1);
     printf("\n");
+
+    if (should_exit) {
+        common_exit(1);
+    }
+
+    UNLOCK_OUTPUT();
+}
+
+void _report_fixit(int should_exit, src_point_t pt, const char *fmt, ...) {
+    char         buff[4096];
+    va_list      va;
+    char        *brk;
+    char         sav_brk;
+    src_range_t  range;
+
+    va_start(va, fmt);
+    memset(buff, 0, sizeof(buff));
+    vsnprintf(buff, sizeof(buff) - 1, fmt, va);
+    va_end(va);
+
+    for (brk = buff; *brk && *brk != '\a'; brk += 1);
+    sav_brk = *brk;
+    if (sav_brk) { *brk = 0; }
+
+    range.beg = range.end  = pt;
+    range.end.col         += 1;
+    range.end.buff_ptr    += 1;
+
+
+    LOCK_OUTPUT();
+    C(LOC_STYLE);
+    printf("%s:%d:%d", get_string(pt.path_id), pt.line, pt.col);
+    C(TERM_RESET);
+    printf(": ");
+    C(FIXIT_STYLE);
+    printf("fix-it");
+    C(TERM_RESET);
+    printf(": ");
+    printf("%s\n", buff);
+    print_range(&range, RANGE_STYLE, FIXIT_STYLE, LOC_STYLE, 0, 0, 0);
+    printf(" %s%s%s\n\n", FIXIT_COLOR, brk + 1, TERM_RESET);
+
+    *brk = sav_brk;
 
     if (should_exit) {
         common_exit(1);
@@ -508,7 +599,7 @@ void report_file_err(const char *path, int err) {
         default:           err_str = "unknown error";             break;
     }
 
-    C(ERR_COLOR);
+    C(ERR_STYLE);
     printf("error");
     C(TERM_RESET);
     printf(": file '%s': %s\n", path, err_str);
@@ -516,4 +607,40 @@ void report_file_err(const char *path, int err) {
     common_exit(err);
 
     UNLOCK_OUTPUT();
+}
+
+void push_loc_breadcrumb(src_point_t pt, const char *fmt, ...) {
+    breadcrumb_t b;
+    va_list      va;
+
+    b.kind      = BREADCRUMB_POINT;
+    b.range.beg = pt;
+
+    va_start(va, fmt);
+    memset(b.buff, 0, sizeof(b.buff));
+    vsnprintf(b.buff, sizeof(b.buff) - 1, fmt, va);
+    va_end(va);
+
+    array_push(breadcrumbs, b);
+}
+
+void push_range_breadcrumb(src_range_t *range, const char *fmt, ...) {
+    breadcrumb_t b;
+    va_list      va;
+
+    b.kind = BREADCRUMB_RANGE;
+    memcpy(&b.range, range, sizeof(b.range));
+
+    va_start(va, fmt);
+    memset(b.buff, 0, sizeof(b.buff));
+    vsnprintf(b.buff, sizeof(b.buff) - 1, fmt, va);
+    va_end(va);
+
+    array_push(breadcrumbs, b);
+}
+
+void pop_breadcrumb(void) {
+    if (array_len(breadcrumbs) > 0) {
+        array_pop(breadcrumbs);
+    }
 }

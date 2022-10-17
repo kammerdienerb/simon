@@ -12,7 +12,12 @@ string_id __BUILTIN_PRINTS_ID;
 string_id __BUILTIN_PRINTP_ID;
 string_id __BUILTIN_PRINTI_ID;
 string_id __BUILTIN_STACK_ALLOC_ID;
+string_id __BUILTIN_VARG_ID;
 string_id CAST_ID;
+string_id EXTERN_ID;
+string_id PROGRAM_ENTRY_ID;
+string_id BITFIELD_STRUCT_ID;
+string_id BITFIELD_ID;
 
 static char *cstr_dup(const char *str) {
     u64   len;
@@ -100,7 +105,12 @@ void init_strings(void) {
     __BUILTIN_PRINTP_ID      = get_string_id("__builtin_printp");
     __BUILTIN_PRINTI_ID      = get_string_id("__builtin_printi");
     __BUILTIN_STACK_ALLOC_ID = get_string_id("__builtin_stack_alloc");
+    __BUILTIN_VARG_ID        = get_string_id("__builtin_varg");
     CAST_ID                  = get_string_id("cast");
+    EXTERN_ID                = get_string_id("extern");
+    PROGRAM_ENTRY_ID         = get_string_id("program_entry");
+    BITFIELD_STRUCT_ID       = get_string_id("bitfield_struct");
+    BITFIELD_ID              = get_string_id("bitfield");
 }
 
 string_id get_string_id(const char *string) {

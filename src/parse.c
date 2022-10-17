@@ -23,7 +23,6 @@ typedef struct {
     array_t       top_level_nodes;
     scope_t      *global_scope;
     array_t       scope_stack;
-    ast_decl_t   *program_entry;
     int           allow_poly_idents;
     int           poly_expr_pattern;
 } parse_context_t;
@@ -51,12 +50,6 @@ const char * op_str_table[] = {
 };
 
 
-
-
-void multiple_entry_error(ast_decl_t *new, ast_decl_t *old) {
-    report_range_err_no_exit(&ASTP(new)->loc, "only one procedure can be delcared as 'program_entry'");
-    report_range_info(&ASTP(old)->loc, "another 'program_entry' procedure defined here:");
-}
 
 
 
@@ -464,7 +457,7 @@ static int parse_string_literal(parse_context_t *cxt, string_id *string_out) {
 
     curs += 1;
 
-    last = '\0';
+    last = 0;
     while (curs < cxt->end) {
         if (*curs == '\"') {
             if (last != '\\') {
@@ -472,7 +465,12 @@ static int parse_string_literal(parse_context_t *cxt, string_id *string_out) {
                 break;
             }
         }
-        last  = *curs;
+
+        if (last == '\\' && *curs == '\\') {
+            last = 0;
+        } else {
+            last = *curs;
+        }
         curs += 1;
     }
 
@@ -480,6 +478,38 @@ static int parse_string_literal(parse_context_t *cxt, string_id *string_out) {
 
     if (len > 0 && string_out) {
         *string_out = get_string_id_n(cxt->cursor, len);
+    }
+
+    return len;
+}
+
+static int parse_char_literal(parse_context_t *cxt, string_id *char_out) {
+    char *curs;
+    int   len;
+
+    len  = 0;
+    curs = cxt->cursor;
+
+    if (curs >= cxt->end) { return 0; }
+
+    if (*curs != '\'') { return 0; }
+
+    curs += 1;
+
+    if (*curs == '\\') {
+        curs += 1;
+    }
+
+    curs += 1;
+
+    if (*curs != '\'') { return 0; }
+
+    curs += 1;
+
+    len = curs - cxt->cursor;
+
+    if (len > 0 && char_out) {
+        *char_out = get_string_id_n(cxt->cursor, len);
     }
 
     return len;
@@ -530,6 +560,11 @@ static int parse_string_literal(parse_context_t *cxt, string_id *string_out) {
 #define OPTIONAL_STR_LIT(cxt, id_ptr) \
     OPTIONAL((cxt), parse_string_literal((cxt), (id_ptr)))
 
+#define EXPECT_CHAR_LIT(cxt, id_ptr, fmt, ...) \
+    EXPECT((cxt), parse_char_literal((cxt), (id_ptr)), (fmt), ##__VA_ARGS__)
+#define OPTIONAL_CHAR_LIT(cxt, id_ptr) \
+    OPTIONAL((cxt), parse_char_literal((cxt), (id_ptr)))
+
 #define AST_ALLOC(cxt, t) \
     (bump_alloc(&(cxt)->tls->bump_alloc, sizeof(t)))
 
@@ -568,20 +603,18 @@ do {                                                                            
 
 
 static ast_t * parse_expr(parse_context_t *cxt);
+static ast_t * parse_block(parse_context_t *cxt);
+static ast_t * parse_static_directive_block(parse_context_t *cxt);
 
 static ast_t * parse_static_directive(parse_context_t *cxt) {
     ast_t                   *result;
     src_range_t              loc;
     ast_static_if_t         *static_if_result;
-    ast_static_if_builtin_t *static_if_builtin_result;
-    ast_static_elif_t       *static_elif_result;
-    ast_static_else_t       *static_else_result;
-    ast_static_endif_t      *static_endif_result;
     ast_static_assert_t     *static_assert_result;
     ast_static_comment_t    *static_comment_result;
     ast_static_error_t      *static_error_result;
+    ast_static_vargs_t      *static_vargs_result;
     string_id                err_str;
-    int                      parent_scope_kind;
 
     result = NULL;
 
@@ -606,82 +639,6 @@ static ast_t * parse_static_directive(parse_context_t *cxt) {
         SCOPE_PUSH(cxt, AST_STATIC_IF, ASTP(static_if_result));
 
         result = ASTP(static_if_result);
-    } else if (OPTIONAL_WORD(cxt, "IF_BUILTIN")) {
-        static_if_builtin_result             = AST_ALLOC(cxt, ast_static_if_builtin_t);
-        ASTP(static_if_builtin_result)->kind = AST_STATIC_IF_BUILTIN;
-
-        loc.end = GET_END_POINT(cxt);
-
-        static_if_builtin_result->expr = parse_expr(cxt);
-        if (static_if_builtin_result->expr == NULL) {
-            report_loc_err(GET_BEG_POINT(cxt), "expected valid expression for 'IF_BUILTIN' static directive");
-            return NULL;
-        }
-
-        SCOPE_PUSH(cxt, AST_STATIC_IF_BUILTIN, ASTP(static_if_builtin_result));
-
-        result = ASTP(static_if_builtin_result);
-    } else if (OPTIONAL_WORD(cxt, "ELIF")) {
-        static_elif_result             = AST_ALLOC(cxt, ast_static_elif_t);
-        ASTP(static_elif_result)->kind = AST_STATIC_ELIF;
-
-        loc.end = GET_END_POINT(cxt);
-
-        parent_scope_kind = SCOPE(cxt)->kind;
-        if (parent_scope_kind != AST_STATIC_IF
-        &&  parent_scope_kind != AST_STATIC_IF_BUILTIN
-        &&  parent_scope_kind != AST_STATIC_ELIF) {
-            report_range_err(&loc, "misplaced 'ELIF' static directive");
-            return NULL;
-        }
-
-        SCOPE_POP(cxt);
-
-        static_elif_result->expr = parse_expr(cxt);
-        if (static_elif_result->expr == NULL) {
-            report_loc_err(GET_BEG_POINT(cxt), "expected valid expression for 'ELIF' static directive");
-            return NULL;
-        }
-
-        SCOPE_PUSH(cxt, AST_STATIC_ELIF, ASTP(static_elif_result));
-
-        result = ASTP(static_elif_result);
-    } else if (OPTIONAL_WORD(cxt, "ELSE")) {
-        static_else_result             = AST_ALLOC(cxt, ast_static_else_t);
-        ASTP(static_else_result)->kind = AST_STATIC_ELSE;
-
-        loc.end = GET_END_POINT(cxt);
-
-        parent_scope_kind = SCOPE(cxt)->kind;
-        if (parent_scope_kind != AST_STATIC_IF
-        &&  parent_scope_kind != AST_STATIC_IF_BUILTIN
-        &&  parent_scope_kind != AST_STATIC_ELIF) {
-            report_range_err(&loc, "misplaced 'ELSE' static directive");
-            return NULL;
-        }
-
-        SCOPE_POP(cxt);
-        SCOPE_PUSH(cxt, AST_STATIC_ELSE, ASTP(static_else_result));
-
-        result = ASTP(static_else_result);
-    } else if (OPTIONAL_WORD(cxt, "ENDIF")) {
-        static_endif_result             = AST_ALLOC(cxt, ast_static_endif_t);
-        ASTP(static_endif_result)->kind = AST_STATIC_ENDIF;
-
-        loc.end = GET_END_POINT(cxt);
-
-        parent_scope_kind = SCOPE(cxt)->kind;
-        if (parent_scope_kind != AST_STATIC_IF
-        &&  parent_scope_kind != AST_STATIC_IF_BUILTIN
-        &&  parent_scope_kind != AST_STATIC_ELIF
-        &&  parent_scope_kind != AST_STATIC_ELSE) {
-            report_range_err(&loc, "misplaced 'ENDIF' static directive");
-            return NULL;
-        }
-
-        SCOPE_POP(cxt);
-
-        result = ASTP(static_endif_result);
     } else if (OPTIONAL_WORD(cxt, "ASSERT")) {
         static_assert_result             = AST_ALLOC(cxt, ast_static_assert_t);
         ASTP(static_assert_result)->kind = AST_STATIC_ASSERT;
@@ -695,6 +652,7 @@ static ast_t * parse_static_directive(parse_context_t *cxt) {
         }
 
         result = ASTP(static_assert_result);
+
     } else if (OPTIONAL_WORD(cxt, "COMMENT")) {
         static_comment_result             = AST_ALLOC(cxt, ast_static_comment_t);
         ASTP(static_comment_result)->kind = AST_STATIC_COMMENT;
@@ -702,8 +660,10 @@ static ast_t * parse_static_directive(parse_context_t *cxt) {
         loc.end = GET_END_POINT(cxt);
 
         consume_to_eol(cxt);
+        clean(cxt, 0);
 
         result = ASTP(static_comment_result);
+
     } else if (OPTIONAL_WORD(cxt, "ERROR")) {
         static_error_result             = AST_ALLOC(cxt, ast_static_error_t);
         ASTP(static_error_result)->kind = AST_STATIC_ERROR;
@@ -713,6 +673,19 @@ static ast_t * parse_static_directive(parse_context_t *cxt) {
         EXPECT_STR_LIT(cxt, &static_error_result->str, "expected string literal for error message");
 
         result = ASTP(static_error_result);
+
+    } else if (OPTIONAL_WORD(cxt, "VARGS")) {
+        static_vargs_result             = AST_ALLOC(cxt, ast_static_vargs_t);
+        ASTP(static_vargs_result)->kind = AST_STATIC_VARGS;
+        loc.end = GET_END_POINT(cxt);
+
+        static_vargs_result->block = parse_static_directive_block(cxt);
+        if (static_vargs_result->block == NULL) {
+            report_loc_err(GET_BEG_POINT(cxt), "expected '[' to open block for 'VARGS' static directive");
+            return NULL;
+        }
+
+        result  = ASTP(static_vargs_result);
     } else {
         loc.beg = GET_BEG_POINT(cxt);
         if (OPTIONAL_IDENT(cxt, &err_str)) {
@@ -864,6 +837,10 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
         result                           = AST_ALLOC(cxt, ast_string_t);
         result->kind                     = AST_STRING;
         ((ast_string_t*)result)->str_rep = str_rep;
+    } else if (OPTIONAL_CHAR_LIT(cxt, &str_rep)) {
+        result                         = AST_ALLOC(cxt, ast_char_t);
+        result->kind                   = AST_CHAR;
+        ((ast_char_t*)result)->str_rep = str_rep;
     } else if (OPTIONAL_NO_EAT_CHAR(cxt, '(')) {
         ASSERT(OPTIONAL_CHAR(cxt, '('), "eat");
         result = parse_expr(cxt);
@@ -1070,15 +1047,40 @@ static ast_t * parse_expr_more(parse_context_t *cxt, ast_t *left, int min_prec) 
 
 static ast_t * parse_expr_prec(parse_context_t *cxt, int min_prec) {
     ast_t *operand;
+    ast_t *top;
 
     operand = parse_operand(cxt);
     if (operand == NULL) { return NULL; }
 
-    return parse_expr_more(cxt, operand, min_prec);
+    top = parse_expr_more(cxt, operand, min_prec);
+
+    if (top != NULL) { top->flags |= AST_FLAG_EXPR_TOP; }
+
+    return top;
 }
 
 static ast_t * parse_expr(parse_context_t *cxt) {
     return parse_expr_prec(cxt, 0);
+}
+
+static int parse_tags(parse_context_t *cxt, array_t *tags) {
+    int    n_tags;
+    ast_t *tag_expr;
+
+    n_tags = 0;
+
+    while (OPTIONAL_LIT(cxt, "[[")) {
+        tag_expr = parse_expr(cxt);
+        if (tag_expr == NULL) {
+            report_loc_err(GET_END_POINT(cxt), "expected valid tag expression");
+            return 0;
+        }
+        EXPECT_LIT(cxt, "]]", "expected ']]'");
+        array_push(*tags, tag_expr);
+        n_tags += 1;
+    }
+
+    return n_tags;
 }
 
 static ast_t * parse_declaration(parse_context_t *cxt);
@@ -1086,13 +1088,14 @@ static ast_t * parse_declaration(parse_context_t *cxt);
 static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
     ast_struct_t       *result;
     ast_param_t        *param;
+    array_t             tags;
     ast_struct_field_t *field;
 
     result                = AST_ALLOC(cxt, ast_struct_t);
-    ASTP(result)->type    = TY_TYPE;
     ASTP(result)->kind    = AST_STRUCT;
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
     result->params        = array_make(ast_t*);
+    result->polymorphs    = array_make(polymorphed_t);
     result->fields        = array_make(ast_t*);
 
     SCOPE_PUSH_NAMED(cxt, AST_STRUCT, ASTP(result), name);
@@ -1108,7 +1111,10 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
             ASTP(param)->loc.beg = GET_BEG_POINT(cxt);
             param->name          = STRING_ID_NULL;
 
-            if (OPTIONAL_CHAR(cxt, '%')) { ASTP(param)->flags |= AST_FLAG_POLYMORPH; }
+            if (OPTIONAL_CHAR(cxt, '%')) {
+                ASTP(param)->flags  |= AST_FLAG_POLYMORPH;
+                ASTP(result)->flags |= AST_FLAG_POLYMORPH;
+            }
 
             EXPECT_IDENT(cxt, &param->name, "expected parameter name");
 
@@ -1160,16 +1166,20 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
     EXPECT_CHAR(cxt, '{', "expected '{' to open struct '%s'", get_string(name));
 
     while (!OPTIONAL_CHAR(cxt, '}')) {
+        tags = array_make(ast_t*);
+        parse_tags(cxt, &tags);
+
         field                = AST_ALLOC(cxt, ast_struct_field_t);
         ASTP(field)->kind    = AST_STRUCT_FIELD;
         ASTP(field)->loc.beg = GET_BEG_POINT(cxt);
         field->name          = STRING_ID_NULL;
+        field->tags          = tags;
 
         EXPECT_IDENT(cxt, &field->name, "expected field name in struct '%s'", get_string(name));
 
-        EXPECT_CHAR(cxt, ':', "expected ':'");
-
         ASTP(field)->loc.end = GET_END_POINT(cxt);
+
+        EXPECT_CHAR(cxt, ':', "expected ':'");
 
         field->type_expr = parse_expr_prec(cxt, ASSIGNMENT_PREC + 1);
         if (field->type_expr == NULL) {
@@ -1200,7 +1210,6 @@ static ast_t * parse_module_body(parse_context_t *cxt, string_id name) {
     ast_t        *child;
 
     result                = AST_ALLOC(cxt, ast_module_t);
-    ASTP(result)->type    = TY_MODULE;
     ASTP(result)->kind    = AST_MODULE;
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
     result->children      = array_make(ast_t*);
@@ -1231,21 +1240,24 @@ static ast_t * parse_module_body(parse_context_t *cxt, string_id name) {
 
 static ast_t * parse_stmt(parse_context_t *cxt);
 
-static ast_t * parse_block_with_scope(parse_context_t *cxt) {
+static ast_t * _parse_block(parse_context_t *cxt, int do_scope, char ch) {
     ast_block_t *result;
     ast_t       *stmt;
 
-    if (!OPTIONAL_NO_EAT_CHAR(cxt, '{')) { return NULL; }
+    if (!OPTIONAL_NO_EAT_CHAR(cxt, ch)) { return NULL; }
 
     result                = AST_ALLOC(cxt, ast_block_t);
-    ASTP(result)->kind    = AST_BLOCK;
+    ASTP(result)->kind    = ch == '{' ? AST_BLOCK : AST_SD_BLOCK;
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
     result->stmts         = array_make(ast_t*);
 
-    ASSERT(OPTIONAL_CHAR(cxt, '{'), "eat");
-    SCOPE_PUSH(cxt, AST_BLOCK, ASTP(result));
+    ASSERT(OPTIONAL_CHAR(cxt, ch), "eat");
 
-    while (!OPTIONAL_CHAR(cxt, '}')) {
+    if (do_scope) {
+        SCOPE_PUSH(cxt, ASTP(result)->kind, ASTP(result));
+    }
+
+    while (!OPTIONAL_CHAR(cxt, ch + 2)) {
         stmt = parse_stmt(cxt);
         if (stmt == NULL) {
             report_loc_err(GET_BEG_POINT(cxt), "expected valid statement");
@@ -1254,39 +1266,19 @@ static ast_t * parse_block_with_scope(parse_context_t *cxt) {
         array_push(result->stmts, stmt);
     }
 
-    SCOPE_POP(cxt);
-
-    ASTP(result)->loc.end = GET_END_POINT(cxt);
-
-    return ASTP(result);
-}
-
-static ast_t * parse_block(parse_context_t *cxt) {
-    ast_block_t *result;
-    ast_t       *stmt;
-
-    if (!OPTIONAL_NO_EAT_CHAR(cxt, '{')) { return NULL; }
-
-    result                = AST_ALLOC(cxt, ast_block_t);
-    ASTP(result)->kind    = AST_BLOCK;
-    ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
-    result->stmts         = array_make(ast_t*);
-
-    ASSERT(OPTIONAL_CHAR(cxt, '{'), "eat");
-
-    while (!OPTIONAL_CHAR(cxt, '}')) {
-        stmt = parse_stmt(cxt);
-        if (stmt == NULL) {
-            report_loc_err(GET_BEG_POINT(cxt), "expected valid statement");
-            return NULL;
-        }
-        array_push(result->stmts, stmt);
+    if (do_scope) {
+        SCOPE_POP(cxt);
     }
 
     ASTP(result)->loc.end = GET_END_POINT(cxt);
 
     return ASTP(result);
 }
+
+
+static ast_t * parse_block_with_scope(parse_context_t *cxt)       { return _parse_block(cxt, 1, '{'); }
+static ast_t * parse_block(parse_context_t *cxt)                  { return _parse_block(cxt, 0, '{'); }
+static ast_t * parse_static_directive_block(parse_context_t *cxt) { return _parse_block(cxt, 1, '['); }
 
 static ast_t * parse_if(parse_context_t *cxt) {
     ast_if_t *result;
@@ -1496,9 +1488,9 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
 
     result                = AST_ALLOC(cxt, ast_proc_t);
     ASTP(result)->kind    = AST_PROC;
-    ASTP(result)->type    = TY_PROC;
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
     result->params        = array_make(ast_t*);
+    result->polymorphs    = array_make(polymorphed_t);
 
     EXPECT_CHAR(cxt, '(', "expected '(' to open the parameter list for procedure '%s'", get_string(name));
 
@@ -1615,32 +1607,53 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
     return ASTP(result);
 }
 
+static string_id get_full_name(string_id name_id, scope_t *scope) {
+    string_id   full_name;
+    const char *scope_name;
+    const char *name;
+    char        buff[SCOPE_NAME_BUFF_SIZE];
+
+    if (scope->parent == NULL) {
+        full_name = name_id;
+    } else {
+        scope_name = get_string(scope->name_id);
+        name       = get_string(name_id);
+
+        if (strlen(scope_name) + strlen(name) + 2 > SCOPE_NAME_BUFF_SIZE) {
+            report_simple_err("INTERNAL ERROR: name too long");
+            ASSERT(0, "name too long");
+        }
+
+        strncpy(buff, scope_name, SCOPE_NAME_BUFF_SIZE - strlen(buff) - 1);
+        strncat(buff, ".", SCOPE_NAME_BUFF_SIZE - strlen(buff) - 1);
+        strncat(buff, name, SCOPE_NAME_BUFF_SIZE - strlen(buff) - 1);
+
+        full_name = get_string_id(buff);
+    }
+
+    return full_name;
+}
+
 static ast_t * parse_declaration(parse_context_t *cxt) {
     array_t      tags;
-    string_id    tag;
+    ast_t      **tag_it;
+    ast_t       *tag_expr;
     int          has_tags;
     src_range_t  loc;
     int          is_extern;
-    int          is_program_entry;
     string_id    name;
     int          kind;
     ast_decl_t  *result;
     int          assigned;
 
-    tags             = array_make(string_id);
-    has_tags         = 0;
+    tags             = array_make(ast_t*);
+    has_tags         = parse_tags(cxt, &tags);
     is_extern        = 0;
-    is_program_entry = 0;
-    while (OPTIONAL_LIT(cxt, "[[")) {
-        EXPECT_IDENT(cxt, &tag, "expected assignment tag");
-        EXPECT_LIT(cxt, "]]", "expected ']]'");
-        array_push(tags, tag);
-        if (tag == get_string_id("extern")) {
-            is_extern = 1;
-        } else if (tag == get_string_id("program_entry")) {
-            is_program_entry = 1;
-        }
-        has_tags = 1;
+
+    array_traverse(tags, tag_it) {
+        tag_expr = *tag_it;
+
+        if (tag_is_string(tag_expr, EXTERN_ID)) { is_extern = 1; }
     }
 
     loc.beg = GET_BEG_POINT(cxt);
@@ -1702,43 +1715,26 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
     ASTP(result)->kind = kind;
     ASTP(result)->loc  = loc;
     result->name       = name;
-
-    if (is_program_entry) {
-        if (kind != AST_DECL_PROC) {
-            report_range_err(&ASTP(result)->loc, "'%s' is tagged 'program_entry', but is not a procedure", get_string(name));
-            return NULL;
-        }
-
-        if (cxt->program_entry != NULL) {
-            multiple_entry_error(result, cxt->program_entry);
-            return NULL;
-        }
-
-        cxt->program_entry = result;
-    }
+    result->full_name  = get_full_name(name, SCOPE(cxt));
 
     INSTALL(cxt, name, ASTP(result));
 
     if (assigned) {
         switch (kind) {
             case AST_DECL_PROC:
-                result->val_expr   = parse_proc_body(cxt, name, !is_extern);
-                ASTP(result)->type = TY_PROC;
+                result->val_expr = parse_proc_body(cxt, name, !is_extern);
                 if (is_extern) { result->val_expr->flags |= AST_FLAG_IS_EXTERN; }
                 OPTIONAL_CHAR(cxt, ';');
                 break;
             case AST_DECL_STRUCT:
-                result->val_expr   = parse_struct_body(cxt, name);
-                ASTP(result)->type = TY_TYPE;
+                result->val_expr = parse_struct_body(cxt, name);
                 OPTIONAL_CHAR(cxt, ';');
                 break;
             case AST_DECL_MACRO:
-                ASTP(result)->type = TY_MACRO;
                 OPTIONAL_CHAR(cxt, ';');
                 break;
             case AST_DECL_MODULE:
-                result->val_expr   = parse_module_body(cxt, name);
-                ASTP(result)->type = TY_MODULE;
+                result->val_expr = parse_module_body(cxt, name);
                 OPTIONAL_CHAR(cxt, ';');
                 break;
             case AST_DECL_VAR:
@@ -1752,6 +1748,9 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
 
     if (result->val_expr != NULL) {
         ASTP(result)->value = result->val_expr->value;
+        if (result->val_expr->flags & AST_FLAG_POLYMORPH) {
+            ASTP(result)->flags |= AST_FLAG_POLYMORPH;
+        }
     }
 
     return ASTP(result);
@@ -1771,7 +1770,6 @@ static void setup_cxt(parse_context_t *cxt) {
     cxt->top_level_nodes    = array_make(ast_t*);
     cxt->global_scope       = create_named_scope(NULL, AST_INVALID, NULL, get_string_id("<global scope>"));
     cxt->scope_stack        = array_make(scope_t*);
-    cxt->program_entry      = NULL;
     cxt->allow_poly_idents  = 0;
 
     array_push(cxt->scope_stack, cxt->global_scope);
@@ -1785,7 +1783,6 @@ static void parse(parse_context_t *cxt) {
     int           i;
     string_id    *name_it;
     scope_t     **subscope_it;
-    int           final_scope_kind;
 
     setup_cxt(cxt);
 
@@ -1807,19 +1804,6 @@ static void parse(parse_context_t *cxt) {
         }
         clean(cxt, 0);
         array_push(cxt->top_level_nodes, node);
-    }
-
-    final_scope_kind = SCOPE(cxt)->kind;
-
-    if (final_scope_kind != AST_INVALID) {
-        if (final_scope_kind == AST_STATIC_IF
-        ||  final_scope_kind == AST_STATIC_IF_BUILTIN
-        ||  final_scope_kind == AST_STATIC_ELIF
-        ||  final_scope_kind == AST_STATIC_ELSE) {
-            report_range_err(&SCOPE(cxt)->node->loc, "static directive is unmatched");
-        } else {
-            ASSERT(0, "scope mismatch");
-        }
     }
 
     ROOTS_LOCK(); {
@@ -1847,15 +1831,6 @@ static void parse(parse_context_t *cxt) {
         n_lines       += cxt->n_lines;
         n_blank_lines += cxt->n_blank_lines;
     } LINES_UNLOCK();
-
-    if (cxt->program_entry) {
-        PROGRAM_ENTRY_LOCK(); {
-            if (program_entry != NULL) {
-                multiple_entry_error(cxt->program_entry, program_entry);
-            }
-            program_entry = cxt->program_entry;
-        } PROGRAM_ENTRY_UNLOCK();
-    }
 }
 
 static void parse_file_thread(void *_path) {

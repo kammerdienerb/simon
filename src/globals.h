@@ -11,6 +11,7 @@
 extern tp_t            *tp;
 extern pthread_mutex_t  roots_mtx;
 extern array_t          roots;
+extern ast_decl_t      *program_entry;
 
 #define ROOTS_LOCK()                             \
 do {                                             \
@@ -58,23 +59,6 @@ do {                                             \
 do {                                             \
     if (tp != NULL) {                            \
         pthread_mutex_unlock(&lines_mtx);        \
-    }                                            \
-} while (0)
-
-extern pthread_mutex_t  program_entry_mtx;
-extern ast_decl_t      *program_entry;
-
-#define PROGRAM_ENTRY_LOCK()                     \
-do {                                             \
-    if (tp != NULL) {                            \
-        pthread_mutex_lock(&program_entry_mtx);  \
-    }                                            \
-} while (0)
-
-#define PROGRAM_ENTRY_UNLOCK()                   \
-do {                                             \
-    if (tp != NULL) {                            \
-        pthread_mutex_unlock(&program_entry_mtx);\
     }                                            \
 } while (0)
 

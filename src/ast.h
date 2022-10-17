@@ -16,13 +16,10 @@
     X(AST_BUILTIN)             \
                                \
     X(AST_STATIC_IF)           \
-    X(AST_STATIC_IF_BUILTIN)   \
-    X(AST_STATIC_ELIF)         \
-    X(AST_STATIC_ELSE)         \
-    X(AST_STATIC_ENDIF)        \
     X(AST_STATIC_ASSERT)       \
     X(AST_STATIC_COMMENT)      \
     X(AST_STATIC_ERROR)        \
+    X(AST_STATIC_VARGS)        \
     X(AST_MODULE)              \
     X(AST_PROC)                \
     X(AST_STRUCT)              \
@@ -38,10 +35,12 @@
     X(AST_INT)                 \
     X(AST_FLOAT)               \
     X(AST_STRING)              \
+    X(AST_CHAR)                \
     X(AST_IDENT)               \
     X(AST_UNARY_EXPR)          \
     X(AST_BIN_EXPR)            \
     X(AST_BLOCK)               \
+    X(AST_SD_BLOCK)            \
     X(AST_ARG_LIST)            \
     X(AST_IF)                  \
     X(AST_LOOP)                \
@@ -69,12 +68,13 @@ X_AST
 #undef X
 };
 
-#define AST_FLAG_CHECKED              (1 << 0)
+/* #define AST_FLAG_CHECKED              (1 << 0) */
 #define AST_FLAG_POLYMORPH            (1 << 1)
 #define AST_FLAG_VARARGS              (1 << 2)
 #define AST_FLAG_POLY_VARARGS         (1 << 3)
 #define AST_FLAG_CALL_IS_CAST         (1 << 4)
 #define AST_FLAG_IS_EXTERN            (1 << 5)
+#define AST_FLAG_EXPR_TOP             (1 << 6)
 
 struct ast;
 
@@ -105,6 +105,16 @@ const char *ast_get_kind_str(int kind);
 #define AST_STR(kind) (ast_get_kind_str((kind)))
 
 
+typedef struct {
+    string_id name;
+    value_t   value;
+    u32       type;
+} polymorph_constant_t;
+
+typedef struct {
+    array_t constants;
+    u32     type;
+} polymorphed_t;
 
 
 struct scope;
@@ -125,18 +135,6 @@ AST_DEFINE(static_if,
     ast_t *expr;
 );
 
-AST_DEFINE(static_if_builtin,
-    ast_t *expr;
-);
-
-AST_DEFINE(static_elif,
-    ast_t *expr;
-);
-
-AST_DEFINE(static_else);
-
-AST_DEFINE(static_endif);
-
 AST_DEFINE(static_assert,
     ast_t *expr;
 );
@@ -145,6 +143,10 @@ AST_DEFINE(static_comment);
 
 AST_DEFINE(static_error,
     string_id str;
+);
+
+AST_DEFINE(static_vargs,
+    ast_t *block;
 );
 
 AST_DEFINE(module,
@@ -171,6 +173,7 @@ AST_DEFINE(proc,
 AST_DEFINE(struct_field,
     string_id  name;
     ast_t     *type_expr;
+    array_t    tags;
 );
 
 AST_DEFINE(struct,
@@ -185,6 +188,7 @@ AST_DEFINE(macro,
 AST_DEFINE(decl,
     scope_t   *scope;
     string_id  name;
+    string_id  full_name;
     ast_t     *type_expr;
     ast_t     *val_expr;
     array_t    tags;
@@ -199,6 +203,10 @@ AST_DEFINE(float,
 );
 
 AST_DEFINE(string,
+    string_id str_rep;
+);
+
+AST_DEFINE(char,
     string_id str_rep;
 );
 
@@ -256,7 +264,27 @@ AST_DEFINE(return,
 AST_DEFINE(break);
 AST_DEFINE(continue);
 
-void init_checking(void);
-void check_node(ast_t *node, scope_t *scope, ast_decl_t *parent_decl);
+typedef struct {
+    scope_t    *scope;
+    ast_decl_t *parent_decl;
+    ast_decl_t *unit_decl;
+    ast_proc_t *proc;
+    array_t    *poly_constants;
+    array_t    *poly_param_reset;
+    u32         poly_constants_idx;
+    u32         varg_ty;
+    u32         flags;
+} check_context_t;
+
+#define CHECK_FLAG_IN_PROC        (1 << 0)
+#define CHECK_FLAG_IN_LOOP        (1 << 1)
+#define CHECK_FLAG_IN_PARAM       (1 << 2)
+#define CHECK_FLAG_IN_VARGS       (1 << 3)
+#define CHECK_FLAG_POLY_TYPE_ONLY (1 << 4)
+
+void check_all(void);
+
+string_id value_to_string_id(value_t val, u32 type);
+int tag_is_string(ast_t *tag_expr, string_id id);
 
 #endif

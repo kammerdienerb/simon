@@ -1,14 +1,11 @@
-foo := proc(x: **%U) {
+S := struct(%T: type) {
+    x: T
 }
 
-M := module {
-    Vec3 := struct {
-        x: u32, y: u32, z: u32,
-    }
+foo := proc(a: %T(u32)) {
 }
 
 [[ program_entry ]]
 main := proc() {
-    x: *M.Vec3;
-    foo(x);
+    foo(S(u32));
 }

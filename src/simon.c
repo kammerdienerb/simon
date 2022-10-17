@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
 
     do_check();
 
-    do_backend();
+/*     do_backend(); */
 
     verb_message("total time: %lu us\n", measure_time_now_us() - start_us);
 
@@ -126,37 +126,11 @@ void do_parse(void) {
 }
 
 void do_check(void) {
-    u64       start_us;
-    scope_t  *entry_scope;
-    ast_t   **rootp;
+    u64 start_us;
 
     start_us = measure_time_now_us();
 
-    if (array_len(roots) == 0) {
-        report_simple_err("no meaningful input provided");
-        return;
-    }
-
-    if (program_entry == NULL) {
-        report_simple_err("at least one procedure must be tagged as 'program_entry'");
-        return;
-    }
-
-    entry_scope = get_subscope_from_node(global_scope, program_entry->val_expr);
-    if (entry_scope         == NULL
-    ||  entry_scope->parent == NULL
-    ||  entry_scope->parent != global_scope) {
-
-        report_range_err(&ASTP(program_entry)->loc,
-                         "'program_entry' procedure must be in global scope");
-        return;
-    }
-
-    init_checking();
-
-    array_traverse(roots, rootp) {
-        check_node(*rootp, global_scope, NULL);
-    }
+    check_all();
 
     verb_message("type-checking and semantic analysis took %lu us\n", measure_time_now_us() - start_us);
 }
