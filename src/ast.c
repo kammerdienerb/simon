@@ -27,8 +27,8 @@ void check_all(void) {
     poly_backlog_entry_t   backlog_entry;
     polymorphed_t         *polymorphed;
     char                   buff[512];
+    const char            *lazy_comma;
     polymorph_constant_t  *it;
-    const char            *lazy_comma = "";
 
     if (array_len(roots) == 0) {
         report_simple_err("no meaningful input provided");
@@ -57,7 +57,8 @@ void check_all(void) {
         backlog_entry.cxt.poly_constants  = &polymorphed->constants;
         backlog_entry.cxt.flags          &= ~CHECK_FLAG_IN_PROC;
 
-        buff[0] = 0;
+        buff[0]    = 0;
+        lazy_comma = "";
         array_traverse(*backlog_entry.cxt.poly_constants, it) {
             strncat(buff, lazy_comma, sizeof(buff) - strlen(buff) - 1);
             strncat(buff, get_string(it->name), sizeof(buff) - strlen(buff) - 1);
@@ -67,7 +68,7 @@ void check_all(void) {
         }
 
         push_range_breadcrumb(&backlog_entry.range,
-                              "in %s (which is polymorphic), with these arguments:\nvalues of parameters: (%s)",
+                              "in %s (which is polymorphic), where [ %s ] from these arguments:",
                               get_string(backlog_entry.cxt.parent_decl->name),
                               buff);
 
