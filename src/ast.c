@@ -29,6 +29,8 @@ void check_all(void) {
     char                   buff[512];
     const char            *lazy_comma;
     polymorph_constant_t  *it;
+    u32                    save_ty;
+    value_t                save_val;
 
     if (array_len(roots) == 0) {
         report_simple_err("no meaningful input provided");
@@ -72,7 +74,14 @@ void check_all(void) {
                               get_string(backlog_entry.cxt.parent_decl->name),
                               buff);
 
+        save_ty  = backlog_entry.node->type;
+        save_val = backlog_entry.node->value;
+
         check_node(backlog_entry.cxt, backlog_entry.node);
+
+        backlog_entry.node->type  = save_ty;
+        backlog_entry.node->value = save_val;
+
         pop_breadcrumb();
     }
 
@@ -288,48 +297,124 @@ static void _report_declaration_path(int should_exit, array_t path) {
 /* } */
 
 static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
-    ast_ident_t    *ident;
-    ast_bin_expr_t *expr;
+    ast_decl_t         *decl  = NULL;
+    ast_proc_t         *proc  = NULL;
+    ast_struct_t       *st    = NULL;
+    ast_module_t       *mod   = NULL;
+    ast_struct_field_t *field = NULL;
+    ast_ident_t        *ident;
+    ast_bin_expr_t     *expr;
+    ast_arg_list_t     *arg_list;
+    array_t            *args;
+    int                 n_args;
+    ast_t              *arg;
 
-#ifdef SIMON_DO_ASSERTIONS
+    if (ast_kind_is_decl(node->kind)) { decl = (ast_decl_t*)node; }
+
     switch (node->kind) {
-        #define X(k) case k:
-        X_AST_DECLARATIONS
-        #undef X
+        case AST_DECL_VAR:
+            break;
+        case AST_DECL_PROC:
+            proc = (ast_proc_t*)decl->val_expr;
+            break;
+        case AST_DECL_STRUCT:
+            st = (ast_struct_t*)decl->val_expr;
+            break;
+        case AST_DECL_MACRO:
+            ASSERT(0, "unimplemented");
+            break;
+        case AST_DECL_MODULE:
+            mod = (ast_module_t*)decl->val_expr;
+            break;
         case AST_STRUCT_FIELD:
+            field = (ast_struct_field_t*)node;
             break;
         default:
             ASSERT(0, "this kind of node should not have tags");
             break;
     }
-#endif
+
+    (void)proc;
+    (void)st;
+    (void)mod;
+    (void)field;
 
     if (tag->kind == AST_IDENT) {
         ident = (ast_ident_t*)tag;
 
         if (ident->str_rep == PROGRAM_ENTRY_ID) {
-            if (node->kind != AST_DECL_PROC) {
-                report_range_err(&node->loc, "'%s' is tagged 'program_entry', but is not a procedure", get_string(((ast_decl_t*)node)->name));
+            if (proc == NULL) {
+                report_range_err(&node->loc, "'%s' is tagged 'program_entry', but is not a procedure", get_string(decl->name));
             }
 
             if (program_entry != NULL) {
-                multiple_entry_error((ast_decl_t*)node, program_entry);
+                multiple_entry_error(decl, program_entry);
             }
 
-            program_entry = (ast_decl_t*)node;
+            program_entry = decl;
+        } else if (ident->str_rep == EXTERN_ID) {
+            if (proc == NULL) {
+                report_range_err(&node->loc, "'%s' is tagged 'extern', but is not a procedure", get_string(decl->name));
+            }
+
+            ASSERT(node->flags & AST_FLAG_IS_EXTERN, "not flagged extern");
         } else {
             report_range_err(&tag->loc, "unknown tag '%s'", get_string(ident->str_rep));
         }
     } else if (tag->kind == AST_BIN_EXPR) {
         expr = (ast_bin_expr_t*)tag;
-        if (expr->left->kind != AST_IDENT) {
+        if (expr->left->kind != AST_IDENT
+        ||  expr->op != OP_CALL
+        ||  expr->right->kind != AST_ARG_LIST) {
             report_range_err_no_exit(&tag->loc, "invalid tag expression");
             report_simple_info("tags may be of the form `tag` or `tag(arguments)`");
         }
 
-        ident = (ast_ident_t*)expr->left;
+        ident    = (ast_ident_t*)expr->left;
+        arg_list = (ast_arg_list_t*)expr->right;
+
+        check_node(cxt, ASTP(arg_list));
+
+        args   = &arg_list->args;
+        n_args = array_len(*args);
+
         if (ident->str_rep == BITFIELD_STRUCT_ID) {
-            report_range_info_no_context_no_exit(&expr->left->loc, "unhandled");
+            if (st == NULL) {
+                report_range_err(&ASTP(ident)->loc, "tag 'bitfield_struct' only applies to structs");
+            }
+
+            if (n_args != 1) {
+                report_range_err(&ASTP(arg_list)->loc, "tag 'bitfield_struct' only expects one argument");
+            }
+
+            arg = ((arg_t*)array_item(*args, 0))->expr;
+
+            if (arg->type != TY_TYPE) {
+                report_range_err_no_exit(&arg->loc, "tag 'bitfield_struct' argument must have type type");
+                report_simple_info("got %s", get_string(get_type_string_id(arg->type)));
+            }
+
+            if (type_kind(arg->value.t) != TY_GENERIC_INT) {
+                report_range_err_no_exit(&arg->loc, "tag 'bitfield_struct' argument must be an unsigned integer type");
+                report_simple_info("have type %s", get_string(get_type_string_id(arg->value.t)));
+            }
+
+            switch (arg->value.t) {
+                case TY_S8:
+                case TY_S16:
+                case TY_S32:
+                case TY_S64:
+                    report_range_err_no_exit(&arg->loc, "tag 'bitfield_struct' argument must be an unsigned integer type");
+                    report_simple_err("have type %s", get_string(get_type_string_id(arg->value.t)));
+                    break;
+                case TY_U8:  st->bitfield_struct_bits = 8;  break;
+                case TY_U16: st->bitfield_struct_bits = 16; break;
+                case TY_U32: st->bitfield_struct_bits = 32; break;
+                case TY_U64: st->bitfield_struct_bits = 64; break;
+                default:
+                    ASSERT(0, "huh?");
+                    break;
+            }
         } else if (ident->str_rep == BITFIELD_ID) {
             report_range_info_no_context_no_exit(&expr->left->loc, "unhandled");
         } else {
@@ -341,7 +426,9 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
 static void check_tags(check_context_t cxt, ast_t *node, array_t *tags) {
     ast_t **it;
 
-    array_traverse(*tags, it) { check_tag(cxt, node, *it); }
+    array_traverse(*tags, it) {
+        check_tag(cxt, node, *it);
+    }
 }
 
 static void check_decl(check_context_t cxt, ast_decl_t *decl) {
@@ -678,10 +765,10 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
 
         /* @todo -- check that the types can actually cast */
 
-    } else if (builtin->name == __BUILTIN_VARG_ID) {
+    } else if (builtin->name == _BUILTIN_VARG_ID) {
         if (!(cxt.flags & CHECK_FLAG_IN_VARGS)) {
-            report_range_err(&ASTP(expr)->loc, "__builtin_varg() may only be used in a \\VARGS context");
-/*             report_range_err_no_exit(&ASTP(expr)->loc, "__builtin_varg() may only be used in a \\VARGS context"); */
+            report_range_err(&ASTP(expr)->loc, "_builtin_varg() may only be used in a \\VARGS context");
+/*             report_range_err_no_exit(&ASTP(expr)->loc, "_builtin_varg() may only be used in a \\VARGS context"); */
 /*             report_fixit_no_exit(ASTP(expr)->loc.beg, "start a \\VARGS context\a\\VARGS"); */
 /*             report_fixit(ASTP(expr)->loc.end, "end the \\VARGS context\a\\ENDVARGS"); */
         }
@@ -689,7 +776,7 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
         if (array_len(arg_list->args) > 0) {
             arg_p = array_item(arg_list->args, 0);
             report_range_err_no_exit(&arg_p->expr->loc,
-                                     "too many arguments for __builtin_varg()");
+                                     "too many arguments for _builtin_varg()");
             report_simple_info("expected 0, but got %d", array_len(arg_list->args));
         }
 
@@ -852,6 +939,8 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
     array_t               constants;
     polymorphed_t         polymorphed;
     polymorphed_t        *polymorphed_p;
+    u32                   save_ty;
+    value_t               save_val;
     poly_backlog_entry_t  backlog_entry;
 
     constants        = get_polymorph_constants(params, arg_list);
@@ -860,6 +949,8 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
     if (polymorphed.type == TY_NONE) {
         polymorphed.constants = constants;
         polymorphed_p         = array_push(*polymorphs, polymorphed);
+        save_ty               = node->type;
+        save_val              = node->value;
 
         cxt.scope = cxt.parent_decl->scope;
         ASSERT(cxt.scope != NULL, "did not get scope");
@@ -874,6 +965,9 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
         } else {
             polymorphed.type = polymorphed_p->type = node->value.t;
         }
+
+        node->type  = save_ty;
+        node->value = save_val;
 
         cxt.flags &= ~CHECK_FLAG_POLY_TYPE_ONLY;
 

@@ -8,11 +8,11 @@
 
 string_id UNDERSCORE_ID;
 string_id ELLIPSIS_ID;
-string_id __BUILTIN_PRINTS_ID;
-string_id __BUILTIN_PRINTP_ID;
-string_id __BUILTIN_PRINTI_ID;
-string_id __BUILTIN_STACK_ALLOC_ID;
-string_id __BUILTIN_VARG_ID;
+string_id _BUILTIN_PRINTS_ID;
+string_id _BUILTIN_PRINTP_ID;
+string_id _BUILTIN_PRINTI_ID;
+string_id _BUILTIN_STACK_ALLOC_ID;
+string_id _BUILTIN_VARG_ID;
 string_id CAST_ID;
 string_id EXTERN_ID;
 string_id PROGRAM_ENTRY_ID;
@@ -101,11 +101,11 @@ void init_strings(void) {
 
     UNDERSCORE_ID            = get_string_id("_");
     ELLIPSIS_ID              = get_string_id("...");
-    __BUILTIN_PRINTS_ID      = get_string_id("__builtin_prints");
-    __BUILTIN_PRINTP_ID      = get_string_id("__builtin_printp");
-    __BUILTIN_PRINTI_ID      = get_string_id("__builtin_printi");
-    __BUILTIN_STACK_ALLOC_ID = get_string_id("__builtin_stack_alloc");
-    __BUILTIN_VARG_ID        = get_string_id("__builtin_varg");
+    _BUILTIN_PRINTS_ID      = get_string_id("_builtin_prints");
+    _BUILTIN_PRINTP_ID      = get_string_id("_builtin_printp");
+    _BUILTIN_PRINTI_ID      = get_string_id("_builtin_printi");
+    _BUILTIN_STACK_ALLOC_ID = get_string_id("_builtin_stack_alloc");
+    _BUILTIN_VARG_ID        = get_string_id("_builtin_varg");
     CAST_ID                  = get_string_id("cast");
     EXTERN_ID                = get_string_id("extern");
     PROGRAM_ENTRY_ID         = get_string_id("program_entry");

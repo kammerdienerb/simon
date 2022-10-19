@@ -17,8 +17,8 @@
 decl1  : u32;      # default-initialized, unsigned, 32-bit integer variable
 decl2  : s64 = -1; # initialized, signed, 64-bit integer variable
 decl3  := *decl2;  # type inferred, initialized, s64 pointer variable (the address of decl2)
-print  := __builtin_prints;
-printi := __builtin_printi;
+print  := _builtin_prints;
+printi := _builtin_printi;
 
 #   Kinds of declarations:
 #     1. Variables (see above).

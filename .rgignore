@@ -1,4 +1,5 @@
 !.yedrc
+!*.c
 tests
 notes
 tags

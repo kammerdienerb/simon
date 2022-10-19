@@ -3,6 +3,7 @@
 #include "src_range.h"
 #include "options.h"
 #include "array.h"
+#include "globals.h"
 
 static int output_is_tty;
 static pthread_mutex_t output_mtx = PTHREAD_MUTEX_INITIALIZER;
@@ -85,6 +86,8 @@ static void print_breadcrumbs(void) {
 
 static void common_exit(int status) {
     print_breadcrumbs();
+
+    fflush(output_file);
 
     ASSERT(status == 0, "error on exit");
     exit(status);

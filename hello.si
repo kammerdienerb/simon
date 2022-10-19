@@ -1,24 +1,33 @@
 sys := module {
-    [[ extern ]] open  := proc(path: *char, oflag: s32): s32;
-    [[ extern ]] read  := proc(fd: s32, bytes: *char, len: u64): s32;
-    [[ extern ]] write := proc(fd: s32, bytes: *char, len: u64): s32;
+    [[ extern ]] open  := proc(path: str, oflag: s32): s32;
+    [[ extern ]] read  := proc(fd: s32, bytes: str, len: u64): s32;
+    [[ extern ]] write := proc(fd: s32, bytes: str, len: u64): s32;
+    write := proc(fd: s32, bytes: str, len: u64): s32 {
+        return _builtin_syscall(SYS_WRITE, fd, bytes, len);
+    }
 }
 
 util := module {
-    slen := proc(s: *char) : u64 {
+    slen := proc(s: str) : u64 {
         len := cast(u64, 0);
 
-        loop ; @s != cast(char, 0) ; s += 1 { len += 1; }
+        loop i := 0; s[i] != cast(u8, 0) ; i += 1 { len += 1; }
 
         return len;
     }
 
-    puts := proc(s: *char) {
+    puts := proc(s: str) {
         sys.write(cast(s32, 1), s, slen(s));
     }
 }
 
+Config := module {
+    repetitions := 10;
+}
+
 [[ program_entry ]]
 hello := proc() {
-    util.puts("this is a config file parser\n");
+    loop i := 0; i < Config.repetitions; i += 1 {
+        util.puts("hello, world\n");
+    }
 }

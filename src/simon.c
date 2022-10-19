@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
 
     do_check();
 
-/*     do_backend(); */
+    do_backend();
 
     verb_message("total time: %lu us\n", measure_time_now_us() - start_us);
 

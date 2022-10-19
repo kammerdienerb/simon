@@ -1528,7 +1528,7 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
         if (OPTIONAL_LIT(cxt, "%...")) {
             seen_vargs            = 1;
             ASTP(param)->flags   |= AST_FLAG_VARARGS | AST_FLAG_POLY_VARARGS;
-            ASTP(result)->flags  |= AST_FLAG_VARARGS | AST_FLAG_POLYMORPH;
+            ASTP(result)->flags  |= AST_FLAG_VARARGS | AST_FLAG_POLYMORPH | AST_FLAG_POLY_VARARGS;
         } else {
             if (OPTIONAL_LIT(cxt, "...")) {
                 seen_vargs            = 1;
@@ -1723,7 +1723,10 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
         switch (kind) {
             case AST_DECL_PROC:
                 result->val_expr = parse_proc_body(cxt, name, !is_extern);
-                if (is_extern) { result->val_expr->flags |= AST_FLAG_IS_EXTERN; }
+                if (is_extern) {
+                    result->val_expr->flags |= AST_FLAG_IS_EXTERN;
+                    result->ast.flags       |= AST_FLAG_IS_EXTERN;
+                }
                 OPTIONAL_CHAR(cxt, ';');
                 break;
             case AST_DECL_STRUCT:

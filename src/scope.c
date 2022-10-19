@@ -69,12 +69,13 @@ void init_scopes(void) {
 
 
     INSERT_BUILTIN_PROC_LIKE("cast", TY_BUILTIN_SPECIAL); /* This gets custom typechecking in ast.c */
-    INSERT_BUILTIN_PROC_LIKE("__builtin_strlen", TY_U64, TY_STR);
-    INSERT_BUILTIN_PROC_LIKE("__builtin_prints", TY_NOT_TYPED, get_ptr_type(TY_U8));
-    INSERT_BUILTIN_PROC_LIKE("__builtin_printp", TY_NOT_TYPED, get_ptr_type(TY_U8));
-    INSERT_BUILTIN_PROC_LIKE("__builtin_printi", TY_NOT_TYPED, TY_S64);
-    INSERT_BUILTIN_PROC_LIKE("__builtin_stack_alloc", get_ptr_type(TY_U8), TY_U64);
-    INSERT_BUILTIN_PROC_LIKE("__builtin_varg", TY_BUILTIN_SPECIAL);
+    INSERT_BUILTIN_PROC_LIKE("_builtin_strlen", TY_U64, TY_STR);
+    INSERT_BUILTIN_PROC_LIKE("_builtin_prints", TY_NOT_TYPED, get_ptr_type(TY_U8));
+    INSERT_BUILTIN_PROC_LIKE("_builtin_printp", TY_NOT_TYPED, get_ptr_type(TY_U8));
+    INSERT_BUILTIN_PROC_LIKE("_builtin_printi", TY_NOT_TYPED, TY_S64);
+    INSERT_BUILTIN_PROC_LIKE("_builtin_putc",   TY_NOT_TYPED, TY_U8);
+    INSERT_BUILTIN_PROC_LIKE("_builtin_stack_alloc", get_ptr_type(TY_U8), TY_U64);
+    INSERT_BUILTIN_PROC_LIKE("_builtin_varg", TY_BUILTIN_SPECIAL);
 }
 
 scope_t *create_scope(scope_t *parent, int kind, ast_t *node) {

@@ -180,6 +180,7 @@ AST_DEFINE(struct,
     array_t params;
     array_t fields;
     array_t polymorphs;
+    u8      bitfield_struct_bits;
 );
 
 AST_DEFINE(macro,
@@ -228,7 +229,7 @@ AST_DEFINE(unary_expr,
 AST_DEFINE(bin_expr,
     ast_t *left;
     ast_t *right;
-    int      op;
+    int    op;
 );
 
 typedef struct {
