@@ -1,3 +1,10 @@
 # basic.si
 
+[[ program_entry ]]
+main := proc() {
+    foo(1);
+    foo("abc");
+}
 
+bar := proc(arg: %T) {  }
+foo := proc(arg: %T) { bar(arg); }

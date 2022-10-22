@@ -202,6 +202,8 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
             C(loc_color);
             printf(" │ ");
             C(all_color);
+
+            if (underline && color_source) { C(range_color); }
         }
 
         if (p == range->beg.buff_ptr) {
@@ -221,13 +223,9 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
                     while (line_start < p) {
                         if (line_start >= range->beg.buff_ptr
                         &&  line_start  < range->end.buff_ptr) {
-                            if (color_source) {
-                                C(range_color);
-                                putchar('^');
-                                C(all_color);
-                            } else {
-                                putchar('^');
-                            }
+                            if (color_source) { C(range_color); }
+                            putchar('^');
+                            if (color_source) { C(all_color); }
                         } else if (*line_start == '\t') {
                             putchar('\t');
                         } else {
@@ -236,7 +234,9 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
                         line_start += 1;
                     }
                     if (line_start == range->beg.buff_ptr) {
+                        if (color_source) { C(range_color); }
                         putchar('^');
+                        if (color_source) { C(all_color); }
                     } else {
                         putchar('\n');
                     }
@@ -278,7 +278,18 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
         } else if (line_nr == range->end.line) {
             for (i = 0; i < line_nr_digits + 3; i += 1) { putchar(' '); }
             C(range_color);
-            for (i = 1; i < range->end.col; i += 1) { putchar('^'); }
+            if (range->beg.line == range->end.line) {
+                for (i = 1; i < range->beg.col; i += 1) {
+                    putchar(' ');
+                }
+                for (i = range->beg.col; i < range->end.col; i += 1) {
+                    putchar('^');
+                }
+            } else {
+                for (i = 1; i < range->end.col; i += 1) {
+                    putchar('^');
+                }
+            }
             C(all_color);
             if (trailing_newline) {
                 putchar('\n');
@@ -577,7 +588,9 @@ void _report_fixit(int should_exit, src_point_t pt, const char *fmt, ...) {
     printf(": ");
     printf("%s\n", buff);
     print_range(&range, RANGE_STYLE, FIXIT_STYLE, LOC_STYLE, 0, 0, 0);
-    printf(" %s%s%s\n\n", FIXIT_COLOR, brk + 1, TERM_RESET);
+    C(FIXIT_STYLE);
+    printf(" %s\n\n", brk + 1);
+    C(TERM_RESET);
 
     *brk = sav_brk;
 

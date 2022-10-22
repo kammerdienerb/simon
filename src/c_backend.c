@@ -14,6 +14,8 @@ static polymorphed_t *polymorphed;
 static u32            poly_version;
 static ast_proc_t    *proc;
 static u32            proc_ty;
+static u32            varg_ty;
+static u32            which_varg;
 
 #define EMIT_C(c)                                \
 do {                                             \
@@ -100,7 +102,7 @@ static void emit_type_declarator(u32 t) {
             EMIT_STRING_ID(get_type_string_id(t));
             break;
         case TY_STR:
-            EMIT_STRING("char*");
+            EMIT_STRING("str");
             break;
         case TY_PTR:
             emit_type_declarator(get_under_type(t));
@@ -153,6 +155,19 @@ static void emit_expr(ast_t *expr) {
 
             ASSERT(ident->resolved_node != NULL, "ident not resolved");
 
+            if (ident->resolved_node->flags & AST_FLAG_POLYMORPH
+            &&  ident->poly_idx != -1) {
+
+
+                ASSERT(ast_kind_is_decl(ident->resolved_node->kind), "poly, but doesn't reference a decl?");
+                decl = (ast_decl_t*)ident->resolved_node;
+
+                emit_underscore_name(decl->full_name);
+                EMIT_STRING_F("__p%d", ident->poly_idx);
+
+                goto renamed;
+            }
+
             if (ident->resolved_node->flags & AST_FLAG_IS_EXTERN) {
                 emit_base_name(ident->str_rep);
                 goto renamed;
@@ -177,6 +192,9 @@ renamed:;
                 EMIT_STRING("*");
             } else {
                 switch (op) {
+                    case OP_ADDR:
+                        EMIT_STRING("&");
+                        break;
                     case OP_DEREF:
                         EMIT_STRING("*");
                         break;
@@ -200,6 +218,8 @@ renamed:;
                     arg = array_item(arg_list->args, 1);
                     emit_expr(arg->expr);
                     EMIT_STRING(")");
+                } else if (ASTP(bin_expr)->flags & AST_FLAG_CALL_IS_BUILTIN_VARG) {
+                    EMIT_STRING_F("__varg%d", which_varg);
                 } else {
                     emit_expr(bin_expr->left);
                     EMIT_STRING("(");
@@ -209,13 +229,23 @@ renamed:;
             } else {
                 emit_expr(bin_expr->left);
 
-                if (op == OP_SUBSCRIPT) {
-                    EMIT_C('[');
-                    emit_expr(bin_expr->right);
-                    EMIT_C(']');
-                } else {
-                    EMIT_STRING_F(" %s ", OP_STR(op));
-                    emit_expr(bin_expr->right);
+                switch (bin_expr->op) {
+                    case OP_AND:
+                        EMIT_STRING(" && ");
+                        emit_expr(bin_expr->right);
+                        break;
+                    case OP_OR:
+                        EMIT_STRING(" || ");
+                        emit_expr(bin_expr->right);
+                        break;
+                    case OP_SUBSCRIPT:
+                        EMIT_C('[');
+                        emit_expr(bin_expr->right);
+                        EMIT_C(']');
+                        break;
+                    default:
+                        EMIT_STRING_F(" %s ", OP_STR(op));
+                        emit_expr(bin_expr->right);
                 }
             }
 
@@ -259,7 +289,6 @@ static void emit_param(ast_param_t *param) {
                 EMIT_STRING(lazy_comma);
                 emit_type_declarator(list_type.id_list[i]);
                 EMIT_C(' ');
-                EMIT_STRING_ID(param->name);
                 EMIT_STRING_F("__varg%d", i);
                 lazy_comma = ", ";
             }
@@ -520,7 +549,21 @@ static void emit_block(ast_block_t *block, int indent_level) {
 }
 
 static void emit_stmt(ast_t *stmt, int indent_level) {
-    INDENT(indent_level);
+    u32                   vargs_ty;
+    polymorph_constant_t *it;
+    type_t                list_type;
+    ast_block_t          *block;
+    int                   i;
+    ast_t                *subblock;
+
+    switch (stmt->kind) {
+        case AST_BLOCK:
+        case AST_SD_BLOCK:
+        case AST_STATIC_VARGS:
+            break;
+        default:
+            INDENT(indent_level);
+    }
 
     switch (stmt->kind) {
         case AST_DECL_VAR:
@@ -531,6 +574,10 @@ static void emit_stmt(ast_t *stmt, int indent_level) {
         case AST_UNARY_EXPR:
             emit_expr(stmt);
             EMIT_STRING(";\n");
+            break;
+        case AST_BLOCK:
+        case AST_SD_BLOCK:
+            emit_block((ast_block_t*)stmt, indent_level);
             break;
         case AST_IF:
             EMIT_STRING("if (");
@@ -581,6 +628,36 @@ static void emit_stmt(ast_t *stmt, int indent_level) {
             EMIT_STRING(";\n");
             break;
         case AST_STATIC_VARGS:
+            if (stmt->type == TY_POLY) {
+                ASSERT(polymorphed != NULL, "no poly constants?");
+                vargs_ty = TY_UNKNOWN;
+
+                array_rtraverse(polymorphed->constants, it) {
+                    if (it->name == ELLIPSIS_ID) {
+                        ASSERT(it->type == TY_TYPE, "... should be a type value");
+                        vargs_ty = it->value.t;
+                        break;
+                    }
+                }
+                ASSERT(vargs_ty != TY_UNKNOWN, "did not find ... constant");
+                ASSERT(type_kind(vargs_ty) == _TY_TYPE_LIST, "... type is not a type list");
+
+                list_type = get_type_t(vargs_ty);
+                block     = (ast_block_t*)((ast_static_vargs_t*)stmt)->block;
+                ASSERT(array_len(block->stmts) == list_type.list_len, "num vargs blocks doesn't match num types");
+
+                which_varg = 0;
+                for (i = 0; i < list_type.list_len; i += 1) {
+                    varg_ty  = list_type.id_list[i];
+                    subblock = *(ast_t**)array_item(block->stmts, i);
+                    emit_stmt(subblock, indent_level);
+                    which_varg += 1;
+                }
+            } else {
+                ASSERT(0, "unimplemented");
+            }
+
+            varg_ty = TY_UNKNOWN;
             break;
         default:
             report_simple_err("encountered AST kind %s in emit_stmt()",
@@ -720,6 +797,7 @@ static void emit_var(ast_decl_t *parent_decl) {
     }
 
     EMIT_C(';');
+    EMIT_C('\n');
 }
 
 static void emit_vars_module(ast_decl_t *parent_decl) {
@@ -763,13 +841,12 @@ static void emit_vars_global(void) {
     }
 }
 
-static void emit_proc(ast_decl_t *parent_decl) {
+static void emit_proc(ast_decl_t *parent_decl, ast_proc_t *p) {
     ast_decl_t **mod_it;
     const char  *lazy_comma;
     ast_t      **it;
 
-
-    proc = (ast_proc_t*)parent_decl->val_expr;
+    proc = p;
 
     if (ASTP(proc)->flags & AST_FLAG_IS_EXTERN) { return; }
 
@@ -840,18 +917,21 @@ static void emit_procs_module(ast_decl_t *parent_decl) {
         if (node->kind == AST_DECL_MODULE) {
             emit_procs_module((ast_decl_t*)node);
         } else if (node->kind == AST_DECL_PROC) {
+            decl = (ast_decl_t*)node;
+
             if (node->flags & AST_FLAG_POLYMORPH) {
-                decl         = (ast_decl_t*)node;
                 proc         = (ast_proc_t*)decl->val_expr;
                 poly_version = 0;
                 array_traverse(proc->polymorphs, it) {
                     polymorphed = it;
-                    emit_proc(decl);
+                    emit_proc(decl, (ast_proc_t*)it->node);
                     polymorphed = NULL;
                     poly_version += 1;
                 }
             } else {
-                emit_proc((ast_decl_t*)node);
+                polymorphed  = NULL;
+                poly_version = 0;
+                emit_proc(decl, (ast_proc_t*)decl->val_expr);
             }
         }
     }
@@ -872,18 +952,21 @@ static void emit_procs_global(void) {
         if (root->kind == AST_DECL_MODULE) {
             emit_procs_module((ast_decl_t*)root);
         } else if (root->kind == AST_DECL_PROC) {
+            decl = (ast_decl_t*)root;
+
             if (root->flags & AST_FLAG_POLYMORPH) {
-                decl         = (ast_decl_t*)root;
                 proc         = (ast_proc_t*)decl->val_expr;
                 poly_version = 0;
                 array_traverse(proc->polymorphs, it) {
                     polymorphed = it;
-                    emit_proc(decl);
+                    emit_proc(decl, (ast_proc_t*)it->node);
                     polymorphed = NULL;
                     poly_version += 1;
                 }
             } else {
-                emit_proc((ast_decl_t*)root);
+                polymorphed  = NULL;
+                poly_version = 0;
+                emit_proc(decl, (ast_proc_t*)decl->val_expr);
             }
         }
     }

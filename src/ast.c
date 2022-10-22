@@ -6,7 +6,7 @@
 #include "parse.h"
 #include "array.h"
 #include "memory.h"
-
+#include "tls.h"
 
 typedef struct {
     ast_t           *node;
@@ -19,6 +19,249 @@ static array_t poly_backlog;
 
 static void check_node(check_context_t cxt, ast_t *node);
 
+
+#define AST_ALLOC(t) \
+    (bump_alloc(&(get_tls()->bump_alloc), sizeof(t)))
+
+#define CPY_WHOLE(dst, src) (memcpy((void*)(dst), (void*)(src), sizeof(__typeof(*(dst)))))
+
+#define ALLOC_CPY(dst, src)          \
+do {                                 \
+    dst = AST_ALLOC(__typeof(*dst)); \
+    CPY_WHOLE(dst, src);             \
+} while (0)
+
+#define CPY_FIELD(dst, src, nm) ((dst)->nm = copy_tree(((__typeof(dst))(src))->nm));
+
+
+static ast_t *copy_tree(ast_t *node) {
+
+    if (node == NULL) { return NULL; }
+
+    switch (node->kind) {
+#define X(_kind) case _kind:
+        X_AST_DECLARATIONS
+#undef X
+        {
+            ast_decl_t  *decl; ALLOC_CPY(decl, node);
+            ast_t      **it;
+            ast_t       *new;
+
+            CPY_FIELD(decl, node, type_expr);
+            CPY_FIELD(decl, node, val_expr);
+
+            decl->tags = array_make(ast_t*);
+            array_traverse(((ast_decl_t*)node)->tags, it) {
+                new = copy_tree(*it);
+                array_push(decl->tags, new);
+            }
+
+            return ASTP(decl);
+        }
+        case AST_STATIC_IF:           goto unhandled;
+        case AST_STATIC_ASSERT: {
+            ast_static_assert_t *asrt; ALLOC_CPY(asrt, node);
+
+            CPY_FIELD(asrt, node, expr);
+
+            return ASTP(asrt);
+        }
+        case AST_STATIC_COMMENT: { ast_static_comment_t *sc; ALLOC_CPY(sc, node); return ASTP(sc); }
+        case AST_STATIC_ERROR:   { ast_static_error_t   *se; ALLOC_CPY(se, node); return ASTP(se); }
+        case AST_STATIC_VARGS: {
+            ast_static_vargs_t *vargs; ALLOC_CPY(vargs, node);
+
+            CPY_FIELD(vargs, node, block);
+
+            return ASTP(vargs);
+        }
+        case AST_MODULE: {
+            ast_module_t  *mod; ALLOC_CPY(mod, node);
+            ast_t        **it;
+            ast_t         *new;
+
+            mod->children = array_make(ast_t*);
+            array_traverse(((ast_module_t*)node)->children, it) {
+                new = copy_tree(*it);
+                array_push(mod->children, new);
+            }
+
+            return ASTP(mod);
+        }
+        case AST_PROC: {
+            ast_proc_t  *proc; ALLOC_CPY(proc, node);
+            ast_t      **it;
+            ast_t       *new;
+
+            proc->params = array_make(ast_t*);
+            array_traverse(((ast_proc_t*)node)->params, it) {
+                new = copy_tree(*it);
+                array_push(proc->params, new);
+            }
+            CPY_FIELD(proc, node, ret_type_expr);
+            CPY_FIELD(proc, node, block);
+            proc->polymorphs = array_make(polymorphed_t);
+
+            return ASTP(proc);
+        }
+        case AST_STRUCT: {
+            ast_struct_t  *st; ALLOC_CPY(st, node);
+            ast_t        **it;
+            ast_t         *new;
+
+            st->params = array_make(ast_t*);
+            array_traverse(((ast_struct_t*)node)->params, it) {
+                new = copy_tree(*it);
+                array_push(st->params, new);
+            }
+            st->fields = array_make(ast_t*);
+            array_traverse(((ast_struct_t*)node)->fields, it) {
+                new = copy_tree(*it);
+                array_push(st->fields, new);
+            }
+            st->polymorphs = array_make(polymorphed_t);
+
+            return ASTP(st);
+        }
+        case AST_STRUCT_FIELD: {
+            ast_struct_field_t   *field; ALLOC_CPY(field, node);
+            ast_t              **it;
+            ast_t               *new;
+
+            CPY_FIELD(field, node, type_expr);
+
+            field->tags = array_make(ast_t*);
+            array_traverse(((ast_struct_field_t*)node)->tags, it) {
+                new = copy_tree(*it);
+                array_push(field->tags, new);
+            }
+
+            return ASTP(field);
+        }
+        case AST_MACRO: goto unhandled;
+        case AST_PARAM: {
+            ast_param_t *param; ALLOC_CPY(param, node);
+
+            CPY_FIELD(param, node, type_expr);
+            CPY_FIELD(param, node, val);
+
+            return ASTP(param);
+        }
+        case AST_INT: {
+            ast_int_t *i; ALLOC_CPY(i, node);
+            return ASTP(i);
+        }
+        case AST_FLOAT: {
+            ast_float_t *f; ALLOC_CPY(f, node);
+            return ASTP(f);
+        }
+        case AST_STRING: {
+            ast_string_t *s; ALLOC_CPY(s, node);
+            return ASTP(s);
+        }
+        case AST_CHAR: {
+            ast_char_t *c; ALLOC_CPY(c, node);
+            return ASTP(c);
+        }
+        case AST_IDENT: {
+            ast_ident_t *ident; ALLOC_CPY(ident, node);
+
+            ident->resolved_node = NULL;
+
+            return ASTP(ident);
+        }
+        case AST_UNARY_EXPR: {
+            ast_unary_expr_t *expr; ALLOC_CPY(expr, node);
+
+            CPY_FIELD(expr, node, child);
+            CPY_FIELD(expr, node, array_size_expr);
+
+            return ASTP(expr);
+        }
+        case AST_BIN_EXPR: {
+            ast_bin_expr_t *expr; ALLOC_CPY(expr, node);
+
+            CPY_FIELD(expr, node, left);
+            CPY_FIELD(expr, node, right);
+
+            return ASTP(expr);
+        }
+        case AST_BLOCK:
+        case AST_SD_BLOCK: {
+            ast_block_t  *block; ALLOC_CPY(block, node);
+            ast_t       **it;
+            ast_t        *new;
+
+            block->stmts = array_make(ast_t*);
+            array_traverse(((ast_block_t*)node)->stmts, it) {
+                new = copy_tree(*it);
+                array_push(block->stmts, new);
+            }
+
+            return ASTP(block);
+        }
+        case AST_ARG_LIST: {
+            ast_arg_list_t *arg_list; ALLOC_CPY(arg_list, node);
+            arg_t          *it;
+            arg_t           new_arg;
+
+            arg_list->args = array_make(arg_t);
+
+            array_traverse(((ast_arg_list_t*)node)->args, it) {
+                new_arg.name = it->name;
+                new_arg.expr = copy_tree(it->expr);
+                array_push(arg_list->args, new_arg);
+            }
+
+            return ASTP(arg_list);
+        }
+        case AST_IF: {
+            ast_if_t *_if; ALLOC_CPY(_if, node);
+
+            CPY_FIELD(_if, node, expr);
+            CPY_FIELD(_if, node, then_block);
+            CPY_FIELD(_if, node, els);
+
+            return ASTP(_if);
+        }
+        case AST_LOOP: {
+            ast_loop_t *loop; ALLOC_CPY(loop, node);
+
+            CPY_FIELD(loop, node, init);
+            CPY_FIELD(loop, node, cond);
+            CPY_FIELD(loop, node, post);
+            CPY_FIELD(loop, node, block);
+
+            return ASTP(loop);
+        }
+        case AST_RETURN: {
+            ast_return_t *ret; ALLOC_CPY(ret, node);
+
+            CPY_FIELD(ret, node, expr);
+
+            return ASTP(ret);
+        }
+        case AST_DEFER: {
+            ast_defer_t *defer; ALLOC_CPY(defer, node);
+
+            CPY_FIELD(defer, node, block);
+
+            return ASTP(defer);
+        }
+        case AST_BREAK:    { ast_break_t    *brk; ALLOC_CPY(brk, node); return ASTP(brk); }
+        case AST_CONTINUE: { ast_continue_t *cnt; ALLOC_CPY(cnt, node); return ASTP(cnt); }
+        default:
+        unhandled:;
+    }
+
+#ifdef SIMON_DO_ASSERTIONS
+    report_range_err_no_exit(&node->loc, "INTERNAL ERROR: AST_%s unhandled in copy_tree()", ast_get_kind_str(node->kind));
+    ASSERT(0, "unhandled AST node kind in copy_tree()");
+#endif
+
+    return NULL;
+}
+
 void check_all(void) {
     scope_t               *entry_scope;
     ast_t                **rootp;
@@ -29,8 +272,6 @@ void check_all(void) {
     char                   buff[512];
     const char            *lazy_comma;
     polymorph_constant_t  *it;
-    u32                    save_ty;
-    value_t                save_val;
 
     if (array_len(roots) == 0) {
         report_simple_err("no meaningful input provided");
@@ -74,13 +315,7 @@ void check_all(void) {
                               get_string(backlog_entry.cxt.parent_decl->name),
                               buff);
 
-        save_ty  = backlog_entry.node->type;
-        save_val = backlog_entry.node->value;
-
         check_node(backlog_entry.cxt, backlog_entry.node);
-
-        backlog_entry.node->type  = save_ty;
-        backlog_entry.node->value = save_val;
 
         pop_breadcrumb();
     }
@@ -416,7 +651,7 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
                     break;
             }
         } else if (ident->str_rep == BITFIELD_ID) {
-            report_range_info_no_context_no_exit(&expr->left->loc, "unhandled");
+/*             report_range_info_no_context_no_exit(&expr->left->loc, "unhandled"); */
         } else {
             report_range_err(&expr->left->loc, "unknown tag '%s'", get_string(ident->str_rep));
         }
@@ -431,9 +666,25 @@ static void check_tags(check_context_t cxt, ast_t *node, array_t *tags) {
     }
 }
 
+static void reinstall(ast_t *node, string_id name, scope_t *scope) {
+    int        i;
+    string_id *it;
+
+    i = 0;
+    array_traverse(scope->symbols, it) {
+        if (*it == name) {
+            *(ast_t**)array_item(scope->nodes, i) = node;
+            break;
+        }
+        i += 1;
+    }
+}
+
 static void check_decl(check_context_t cxt, ast_decl_t *decl) {
     u32 val_t;
     u32 decl_t;
+
+    if (cxt.poly_constants != NULL) { reinstall(ASTP(decl), decl->name, cxt.scope); }
 
     check_tags(cxt, ASTP(decl), &decl->tags);
 
@@ -445,6 +696,13 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
     if (decl->val_expr != NULL) {
         check_node(cxt, decl->val_expr);
         val_t = decl->val_expr->type;
+
+        if (val_t == TY_NOT_TYPED) {
+            report_range_err(&decl->val_expr->loc,
+                             "initialization expression of '%s' does not produce a value",
+                             get_string(decl->name));
+        }
+
         ASTP(decl)->value = decl->val_expr->value;
     }
 
@@ -477,23 +735,39 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
     ASTP(decl)->type = decl_t;
 }
 
+static u32 current_poly_vargs_type(check_context_t cxt) {
+    polymorph_constant_t *it;
+
+    if (cxt.poly_constants != NULL) {
+        array_rtraverse(*cxt.poly_constants, it) {
+            if (it->name == ELLIPSIS_ID) {
+                ASSERT(it->type == TY_TYPE, "... should be a type value");
+                return it->value.t;
+            }
+        }
+    }
+
+    return TY_UNKNOWN;
+}
+
 static void check_proc(check_context_t cxt, ast_proc_t *proc) {
     int       descend;
     scope_t  *new_scope;
-    array_t   poly_param_reset;
     u32       n_params;
+    type_t    list_type;
     u32      *param_types;
     int       i;
     ast_t   **it;
+    int       j;
     u32       ret_type;
 
-    descend = 0;
-    if (!(cxt.flags & CHECK_FLAG_IN_PROC)) {
-        cxt.flags |= CHECK_FLAG_IN_PROC;
-        descend = 1;
-    }
+    descend = !(cxt.flags & CHECK_FLAG_IN_PROC);
 
-    poly_param_reset = array_make(ast_t*);
+    if (ASTP(proc)->flags & AST_FLAG_POLYMORPH
+    &&  cxt.poly_constants == NULL) {
+
+        descend = 0;
+    }
 
     if (!descend
     &&  cxt.poly_constants == NULL
@@ -502,21 +776,35 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
         goto out;
     }
 
+    new_scope = proc->scope;
+
     cxt.proc      = proc;
     cxt.unit_decl = cxt.parent_decl;
 
-    new_scope = get_subscope_from_node(cxt.scope, ASTP(proc));
-    ASSERT(new_scope != NULL, "didn't get scope");
-
     cxt.scope = new_scope;
 
-    cxt.poly_param_reset = &poly_param_reset;
+    n_params = array_len(proc->params);
 
-    n_params    = array_len(proc->params);
+    if (n_params > 0
+    &&  cxt.poly_constants != NULL
+    &&  (*(ast_t**)array_last(proc->params))->flags & AST_FLAG_POLY_VARARGS) {
+
+        list_type  = get_type_t(current_poly_vargs_type(cxt));
+        n_params  -= 1;
+        n_params  += list_type.list_len;
+    }
+
     param_types = alloca(sizeof(u32) * n_params);
     i           = 0;
     array_traverse(proc->params, it) {
         check_node(cxt, *it);
+        if (cxt.poly_constants != NULL && (*it)->flags & AST_FLAG_POLY_VARARGS) {
+            for (j = 0; j < list_type.list_len; j += 1) {
+                param_types[i] = list_type.id_list[j];
+                i += 1;
+            }
+            break;
+        }
         param_types[i] = (*it)->type;
         i += 1;
     }
@@ -545,10 +833,14 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
     ** I'm not sure if this should just be done everywhere like this (shouldn't
     ** be _that_ many spots), or if something a little smarter should be done.
     */
-    ASTP(cxt.parent_decl)->type  = ASTP(proc)->type;
-    ASTP(cxt.parent_decl)->value = ASTP(proc)->value;
+    if (cxt.poly_constants == NULL) {
+        ASTP(cxt.parent_decl)->type  = ASTP(proc)->type;
+        ASTP(cxt.parent_decl)->value = ASTP(proc)->value;
+    }
 
     if (!descend) { goto out; }
+
+    cxt.flags |= CHECK_FLAG_IN_PROC;
 
     if (!(cxt.flags & CHECK_FLAG_POLY_TYPE_ONLY)) {
         if (!(ASTP(proc)->flags & AST_FLAG_POLYMORPH) || cxt.poly_constants != NULL) {
@@ -562,19 +854,19 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
     }
 
 out:;
-    array_traverse(poly_param_reset, it) {
-        (*it)->type    = TY_POLY;
-        (*it)->value.t = TY_POLY;
-    }
-    array_free(poly_param_reset);
-    cxt.poly_param_reset = NULL;
 }
 
 static void check_param(check_context_t cxt, ast_param_t *param) {
+    if (cxt.poly_constants != NULL) { reinstall(ASTP(param), param->name, cxt.scope); }
+
     cxt.flags |= CHECK_FLAG_IN_PARAM;
 
     if (ASTP(param)->flags & AST_FLAG_POLY_VARARGS) {
-        ASTP(param)->type = get_vargs_type(TY_POLY);
+        if (cxt.poly_constants != NULL) {
+            ASTP(param)->type = current_poly_vargs_type(cxt);
+        } else {
+            ASTP(param)->type = get_vargs_type(TY_POLY);
+        }
         return;
     }
 
@@ -780,7 +1072,8 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
             report_simple_info("expected 0, but got %d", array_len(arg_list->args));
         }
 
-        ASTP(expr)->type = cxt.varg_ty;
+        ASTP(expr)->flags |= AST_FLAG_CALL_IS_BUILTIN_VARG;
+        ASTP(expr)->type   = cxt.varg_ty;
     } else {
         ASSERT(0, "unhandled builtin special");
     }
@@ -918,60 +1211,69 @@ static array_t get_polymorph_constants(array_t *params, ast_arg_list_t *arg_list
     return constants;
 }
 
-static u32 get_already_polymorphed_type(array_t *polymorphs, array_t *constants) {
+static u32 get_already_polymorphed_type(array_t *polymorphs, array_t *constants, u32 *idx_out) {
+    u32            idx;
     polymorphed_t *it;
 
+    idx = 0;
     array_traverse(*polymorphs, it) {
-        if (array_len(it->constants) != array_len(*constants)) { continue; }
+        if (array_len(it->constants) != array_len(*constants)) { goto next; }
 
         if (memcmp(array_data(it->constants),
                    array_data(*constants),
                    array_len(it->constants) * sizeof(polymorph_constant_t)) == 0) {
 
+            if (idx_out != NULL) {
+                *idx_out = idx;
+            }
+
             return it->type;
         }
+next:;
+        idx += 1;
     }
 
     return TY_NONE;
 }
 
-static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymorphs, array_t *params, ast_arg_list_t *arg_list) {
+static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymorphs, array_t *params, ast_arg_list_t *arg_list, u32 *idx_out) {
     array_t               constants;
     polymorphed_t         polymorphed;
     polymorphed_t        *polymorphed_p;
-    u32                   save_ty;
-    value_t               save_val;
     poly_backlog_entry_t  backlog_entry;
 
     constants        = get_polymorph_constants(params, arg_list);
-    polymorphed.type = get_already_polymorphed_type(polymorphs, &constants);
+    polymorphed.type = get_already_polymorphed_type(polymorphs, &constants, idx_out);
 
     if (polymorphed.type == TY_NONE) {
         polymorphed.constants = constants;
+        polymorphed.node      = copy_tree(node);
         polymorphed_p         = array_push(*polymorphs, polymorphed);
-        save_ty               = node->type;
-        save_val              = node->value;
 
         cxt.scope = cxt.parent_decl->scope;
         ASSERT(cxt.scope != NULL, "did not get scope");
 
+        if (node->kind == AST_PROC) {
+            cxt.proc = (ast_proc_t*)node;
+        }
         cxt.poly_constants_idx  = array_len(*polymorphs) - 1;
         cxt.poly_constants      = &constants;
         cxt.flags              |= CHECK_FLAG_POLY_TYPE_ONLY;
-        check_node(cxt, node);
+        check_node(cxt, polymorphed.node);
 
-        if (node->kind == AST_PROC) {
-            polymorphed.type = polymorphed_p->type = node->type;
-        } else {
-            polymorphed.type = polymorphed_p->type = node->value.t;
+        if (idx_out != NULL) {
+            *idx_out = cxt.poly_constants_idx;
         }
 
-        node->type  = save_ty;
-        node->value = save_val;
+        if (node->kind == AST_PROC) {
+            polymorphed.type = polymorphed_p->type = polymorphed.node->type;
+        } else {
+            polymorphed.type = polymorphed_p->type = polymorphed.node->value.t;
+        }
 
         cxt.flags &= ~CHECK_FLAG_POLY_TYPE_ONLY;
 
-        backlog_entry.node       = node;
+        backlog_entry.node       = polymorphed.node;
         backlog_entry.polymorphs = polymorphs;
         backlog_entry.cxt        = cxt;
         backlog_entry.range      = ASTP(arg_list)->loc;
@@ -984,32 +1286,33 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
     return polymorphed.type;
 }
 
-static u32 get_proc_polymorph_type(check_context_t cxt, ast_proc_t *proc, ast_arg_list_t *arg_list) {
-    return get_polymorph_type(cxt, ASTP(proc), &proc->polymorphs, &proc->params, arg_list);
+static u32 get_proc_polymorph_type(check_context_t cxt, ast_proc_t *proc, ast_arg_list_t *arg_list, u32 *idx_out) {
+    return get_polymorph_type(cxt, ASTP(proc), &proc->polymorphs, &proc->params, arg_list, idx_out);
 }
 
-static u32 get_struct_polymorph_type(check_context_t cxt, ast_struct_t *st, ast_arg_list_t *arg_list) {
-    return get_polymorph_type(cxt, ASTP(st), &st->polymorphs, &st->params, arg_list);
+static u32 get_struct_polymorph_type(check_context_t cxt, ast_struct_t *st, ast_arg_list_t *arg_list, u32 *idx_out) {
+    return get_polymorph_type(cxt, ASTP(st), &st->polymorphs, &st->params, arg_list, idx_out);
 }
 
 static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
-    u32             proc_ty;
-    ast_arg_list_t *arg_list;
-    u32             n_args;
-    ast_ident_t    *left_ident;
-    ast_decl_t     *struct_decl;
-    u32             n_params;
-    arg_t          *arg_p;
-    u32             i;
-    u32             param_type;
-    u32             arg_type;
-    u32             varg_ty;
-    u32             last_ty;
-    ast_t          *proc_origin;
-    array_t         path;
-    ast_proc_t     *proc;
-    ast_t          *parm_decl;
-    u32             poly_proc_ty;
+    u32              proc_ty;
+    ast_arg_list_t  *arg_list;
+    u32              n_args;
+    ast_ident_t     *left_ident;
+    ast_decl_t      *struct_decl;
+    u32              idx;
+    u32              n_params;
+    arg_t           *arg_p;
+    u32              i;
+    u32              param_type;
+    u32              arg_type;
+    u32              varg_ty;
+    u32              last_ty;
+    ast_t           *proc_origin;
+    array_t          path;
+    ast_proc_t      *proc;
+    ast_t           *parm_decl;
+    u32              poly_proc_ty;
 
     proc_ty  = expr->left->type;
     arg_list = (ast_arg_list_t*)expr->right;
@@ -1049,7 +1352,11 @@ static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
             cxt.parent_decl = struct_decl;
 
             ASTP(expr)->type    = TY_TYPE;
-            ASTP(expr)->value.t = get_struct_polymorph_type(cxt, (ast_struct_t*)struct_decl->val_expr, arg_list);
+            ASTP(expr)->value.t = get_struct_polymorph_type(cxt, (ast_struct_t*)struct_decl->val_expr, arg_list, &idx);
+
+            if (left_ident != NULL) {
+                left_ident->poly_idx = idx;
+            }
         }
 
         return;
@@ -1154,9 +1461,13 @@ too_few:
     if (proc != NULL
     && ASTP(proc)->flags & AST_FLAG_POLYMORPH) {
         cxt.parent_decl  = (ast_decl_t*)proc_origin;
-        poly_proc_ty     = get_proc_polymorph_type(cxt, proc, arg_list);
+        poly_proc_ty     = get_proc_polymorph_type(cxt, proc, arg_list, &idx);
         expr->left->type = poly_proc_ty;
         proc_ty          = poly_proc_ty;
+
+        if (left_ident != NULL) {
+            left_ident->poly_idx = idx;
+        }
 
         n_params = get_num_param_types(proc_ty);
 
@@ -1343,8 +1654,12 @@ too_few:
 static void check_ident(check_context_t cxt, ast_ident_t *ident) {
     scope_t              *resolved_node_scope;
     polymorph_constant_t *it;
-    ast_t                *reset_p;
 
+    if (ASTP(ident)->flags & AST_FLAG_POLYMORPH
+    &&  cxt.poly_constants != NULL) {
+
+        reinstall(ASTP(ident), ident->str_rep, cxt.scope);
+    }
 
     if (ident->str_rep == UNDERSCORE_ID) {
         report_range_err_no_exit(&ASTP(ident)->loc, "'_' can be assigned to, but not referenced");
@@ -1367,9 +1682,6 @@ static void check_ident(check_context_t cxt, ast_ident_t *ident) {
             if (it->name == ident->str_rep) {
                 ASTP(ident)->type  = it->type;
                 ASTP(ident)->value = it->value;
-
-                reset_p = ASTP(ident);
-                array_push(*cxt.poly_param_reset, reset_p);
                 return;
             }
         }
@@ -1483,6 +1795,7 @@ static void check_module_dot(check_context_t cxt, ast_bin_expr_t *expr) {
 
     new_ident->str_rep       = get_string_id_n(new_name_buff, new_name_len);
     new_ident->resolved_node = found_node;
+    new_ident->poly_idx      = -1;
 }
 
 static void check_dot(check_context_t cxt, ast_bin_expr_t *expr) {
@@ -1625,6 +1938,25 @@ static void check_mul(check_context_t cxt, ast_bin_expr_t *expr) {
     ASTP(expr)->type = t1;
 }
 
+static void check_logical(check_context_t cxt, ast_bin_expr_t *expr) {
+    u32 t1;
+    u32 t2;
+    u32 tk1;
+    u32 tk2;
+
+    t1  = expr->left->type;
+    t2  = expr->right->type;
+    tk1 = type_kind(t1);
+    tk2 = type_kind(t2);
+
+    if (tk1 != TY_GENERIC_INT && tk2 != TY_GENERIC_INT) {
+        binop_bad_type_error(expr);
+        return;
+    }
+
+    ASTP(expr)->type = TY_U64;
+}
+
 static void operand_not_typed_error(ast_t *expr, ast_t *operand) {
     int op;
 
@@ -1753,6 +2085,11 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
             ASTP(expr)->value = expr->right->value;
             break;
 
+        case OP_AND:
+        case OP_OR:
+            check_logical(cxt, expr);
+            break;
+
         default:
             ASSERT(0, "unhandled binary operator");
             return;
@@ -1868,8 +2205,7 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
         return;
     }
 
-    new_scope = get_subscope_from_node(cxt.scope, ASTP(st));
-    ASSERT(new_scope != NULL, "didn't get scope");
+    new_scope = st->scope;
 
     cxt.unit_decl = cxt.parent_decl;
     cxt.scope     = new_scope;
@@ -1914,8 +2250,7 @@ static void check_if(check_context_t cxt, ast_if_t *_if) {
 
     ASTP(_if)->type = TY_NOT_TYPED;
 
-    new_scope = get_subscope_from_node(cxt.scope, ASTP(_if));
-    ASSERT(new_scope != NULL, "didn't get scope");
+    new_scope = _if->scope;
 
     orig_scope = cxt.scope;
     cxt.scope  = new_scope;
@@ -1943,8 +2278,7 @@ static void check_loop(check_context_t cxt, ast_loop_t *loop) {
 
     ASTP(loop)->type = TY_NOT_TYPED;
 
-    new_scope = get_subscope_from_node(cxt.scope, ASTP(loop));
-    ASSERT(new_scope != NULL, "didn't get scope");
+    new_scope = loop->scope;
 
     cxt.scope = new_scope;
 
@@ -2038,11 +2372,12 @@ static void check_static_error(check_context_t cxt, ast_static_error_t *static_e
 }
 
 static void check_static_vargs(check_context_t cxt, ast_static_vargs_t *static_vargs) {
-    u32                   proc_ty;
-    u32                   vargs_ty;
-    polymorph_constant_t *it;
-    type_t                list_type;
-    int                   i;
+    u32      vargs_ty;
+    array_t  blocks;
+    type_t   list_type;
+    int      i;
+    ast_t   *new;
+    u32      proc_ty;
 
     ASTP(static_vargs)->type = TY_NOT_TYPED;
 
@@ -2057,40 +2392,36 @@ static void check_static_vargs(check_context_t cxt, ast_static_vargs_t *static_v
         return;
     }
 
-    proc_ty = ASTP(cxt.proc)->type;
-    ASSERT(get_num_param_types(proc_ty) > 0, "proc type must have params to be varargs");
-
-    vargs_ty = get_param_type(proc_ty, get_num_param_types(proc_ty) - 1);
-    ASSERT(type_kind(vargs_ty) == TY_VARGS, "last param type is not varargs");
-
-    cxt.scope = get_subscope_from_node(cxt.scope, static_vargs->block);
-    ASSERT(cxt.scope != NULL, "did not get subscope");
-
-    cxt.varg_ty = get_under_type(vargs_ty);
-
+    cxt.scope  = ((ast_block_t*)static_vargs->block)->scope;
     cxt.flags |= CHECK_FLAG_IN_VARGS;
 
-    if (cxt.varg_ty == TY_POLY) {
-        ASSERT(cxt.poly_constants != NULL, "no poly constants?");
-        vargs_ty = TY_UNKNOWN;
-
-        array_rtraverse(*cxt.poly_constants, it) {
-            if (it->name == ELLIPSIS_ID) {
-                ASSERT(it->type == TY_TYPE, "... should be a type value");
-                vargs_ty = it->value.t;
-                break;
-            }
-        }
+    if (ASTP(cxt.proc)->flags & AST_FLAG_POLY_VARARGS) {
+        vargs_ty = current_poly_vargs_type(cxt);
         ASSERT(vargs_ty != TY_UNKNOWN, "did not find ... constant");
         ASSERT(type_kind(vargs_ty) == _TY_TYPE_LIST, "... type is not a type list");
 
+        blocks    = array_make(ast_t*);
         list_type = get_type_t(vargs_ty);
 
         for (i = 0; i < list_type.list_len; i += 1) {
             cxt.varg_ty = list_type.id_list[i];
-            check_node(cxt, static_vargs->block);
+            new = copy_tree(static_vargs->block);
+            check_node(cxt, new);
+            array_push(blocks, new);
         }
+
+        ((ast_block_t*)static_vargs->block)->stmts = blocks;
+
+        ASTP(static_vargs)->type = TY_POLY;
     } else {
+        proc_ty = ASTP(cxt.proc)->type;
+        ASSERT(get_num_param_types(proc_ty) > 0, "proc type must have params to be varargs");
+
+        vargs_ty = get_param_type(proc_ty, get_num_param_types(proc_ty) - 1);
+        ASSERT(type_kind(vargs_ty) == TY_VARGS, "last param type is not varargs");
+
+        cxt.varg_ty = get_under_type(vargs_ty);
+
         check_node(cxt, static_vargs->block);
     }
 }

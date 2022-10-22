@@ -1,6 +1,26 @@
 [[ program_entry ]]
 main := proc() {
-    fmt._fmt("{} {} {}", 123, "this is a test", 1.23);
+    fmt._fmt("this {10x} is {30c} a {4.3} test\n", 123, "this is a test", 1.23);
+}
+
+sys := module {
+    [[ extern ]] open  := proc(path: str, oflag: s32): s32;
+    [[ extern ]] read  := proc(fd: s32, bytes: str, len: u64): s32;
+    [[ extern ]] write := proc(fd: s32, bytes: str, len: u64): s32;
+    [[ extern ]] exit  := proc(code: s64);
+}
+
+util := module {
+    slen := proc(s: str) : u64 {
+        len := cast(u64, 0);
+
+        loop i := 0; s[i] != cast(u8, 0) ; i += 1 { len += 1; }
+
+        return len;
+    }
+
+    putc := proc(c: u8)  { sys.write(cast(s32, 1), cast(str, *c), cast(u64, 1)); }
+    puts := proc(s: str) { sys.write(cast(s32, 1), s, slen(s));                  }
 }
 
 fmt := module {
@@ -23,28 +43,33 @@ fmt := module {
 
 
     to_formatted_str := proc(arg: %T, f: Format_Info): str {
-        return "<argument>";
+        return "ARG";
     }
 
     _fmt := proc(fmt: str, args: %...) {
-        len       := _builtin_strlen(fmt);
+        len       := util.slen(fmt);
         which_arg := 0;
 
         loop i := 0; i < len; i += 1 {
-            if fmt[i] == '%' {
+            if fmt[i] == '{' {
                 info: Format_Info;
-                a   := 0;
 
+                loop ; i < len and fmt[i] != '}'; i += 1 {
+                    # parse formatting stuff
+                }
+
+                a := 0;
                 \VARGS [
                     if a == which_arg {
                         s := to_formatted_str(_builtin_varg(), info);
+                        util.puts(s);
                     }
                     a += 1;
                 ]
 
                 which_arg += 1;
             } else {
-                _builtin_putc(fmt[i]);
+                util.putc(fmt[i]);
             }
         }
     }

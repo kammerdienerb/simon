@@ -565,9 +565,9 @@ static int parse_char_literal(parse_context_t *cxt, string_id *char_out) {
 #define OPTIONAL_CHAR_LIT(cxt, id_ptr) \
     OPTIONAL((cxt), parse_char_literal((cxt), (id_ptr)))
 
+
 #define AST_ALLOC(cxt, t) \
     (bump_alloc(&(cxt)->tls->bump_alloc, sizeof(t)))
-
 
 
 
@@ -825,6 +825,7 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
         result->kind                          = AST_IDENT;
         ((ast_ident_t*)result)->str_rep       = str_rep;
         ((ast_ident_t*)result)->resolved_node = NULL;
+        ((ast_ident_t*)result)->poly_idx      = -1;
     } else if (OPTIONAL_FLOAT(cxt, &str_rep)) {
         result                        = AST_ALLOC(cxt, ast_float_t);
         result->kind                  = AST_FLOAT;
@@ -1099,6 +1100,7 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
     result->fields        = array_make(ast_t*);
 
     SCOPE_PUSH_NAMED(cxt, AST_STRUCT, ASTP(result), name);
+    result->scope = SCOPE(cxt);
 
     cxt->allow_poly_idents = 1;
 
@@ -1217,6 +1219,7 @@ static ast_t * parse_module_body(parse_context_t *cxt, string_id name) {
     EXPECT_CHAR(cxt, '{', "expected '{' to open module '%s'", get_string(name));
 
     SCOPE_PUSH_NAMED(cxt, AST_MODULE, ASTP(result), name);
+    result->scope = SCOPE(cxt);
 
     while (!OPTIONAL_CHAR(cxt, '}')) {
         child = parse_declaration(cxt);
@@ -1256,6 +1259,7 @@ static ast_t * _parse_block(parse_context_t *cxt, int do_scope, char ch) {
     if (do_scope) {
         SCOPE_PUSH(cxt, ASTP(result)->kind, ASTP(result));
     }
+    result->scope = SCOPE(cxt);
 
     while (!OPTIONAL_CHAR(cxt, ch + 2)) {
         stmt = parse_stmt(cxt);
@@ -1294,6 +1298,7 @@ static ast_t * parse_if(parse_context_t *cxt) {
     ASTP(result)->loc.end = GET_END_POINT(cxt);
 
     SCOPE_PUSH(cxt, AST_IF, ASTP(result));
+    result->scope = SCOPE(cxt);
 
     result->expr = parse_expr(cxt);
     if (result->expr == NULL) {
@@ -1314,8 +1319,9 @@ static ast_t * parse_if(parse_context_t *cxt) {
 
         if (result->els == NULL) {
             SCOPE_PUSH(cxt, AST_IF, ASTP(result));
-
             result->els = parse_block(cxt);
+            ((ast_block_t*)result->els)->scope = SCOPE(cxt);
+
             if (result->els == NULL) {
                 report_loc_err(GET_BEG_POINT(cxt), "expected '{' to open 'else' block");
                 return NULL;
@@ -1342,6 +1348,7 @@ static ast_t * parse_loop(parse_context_t *cxt) {
     ASTP(result)->loc.end = GET_END_POINT(cxt);
 
     SCOPE_PUSH(cxt, AST_LOOP, ASTP(result));
+    result->scope = SCOPE(cxt);
 
     result->init = result->cond = result->post = NULL;
 
@@ -1495,6 +1502,7 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
     EXPECT_CHAR(cxt, '(', "expected '(' to open the parameter list for procedure '%s'", get_string(name));
 
     SCOPE_PUSH_NAMED(cxt, AST_PROC, ASTP(result), name);
+    result->scope = SCOPE(cxt);
 
     cxt->allow_poly_idents = 1;
 

@@ -7,6 +7,10 @@
 static array_t type_table;
 static u32     empty_type_list;
 
+void report_type_stats(void) {
+    printf("%d total types in the type table\n", array_len(type_table));
+}
+
 static type_t * get_type_structure(u32 ty) {
     ASSERT(ty < array_len(type_table), "invalid type id");
 

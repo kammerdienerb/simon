@@ -51,6 +51,10 @@ int main(int argc, char **argv) {
 
     verb_message("total time: %lu us\n", measure_time_now_us() - start_us);
 
+    if (options.verbose) {
+        report_type_stats();
+    }
+
     return 0;
 }
 

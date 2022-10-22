@@ -114,6 +114,7 @@ typedef struct type {
 
 
 int init_types(void);
+void report_type_stats(void);
 int type_is_poly(u32 ty);
 int type_has_compile_time_only_values(u32 ty);
 int type_kind_has_under(u32 kind);

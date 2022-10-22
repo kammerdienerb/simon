@@ -2,9 +2,7 @@ sys := module {
     [[ extern ]] open  := proc(path: str, oflag: s32): s32;
     [[ extern ]] read  := proc(fd: s32, bytes: str, len: u64): s32;
     [[ extern ]] write := proc(fd: s32, bytes: str, len: u64): s32;
-    write := proc(fd: s32, bytes: str, len: u64): s32 {
-        return _builtin_syscall(SYS_WRITE, fd, bytes, len);
-    }
+    [[ extern ]] exit  := proc(code: s64);
 }
 
 util := module {
@@ -30,4 +28,5 @@ hello := proc() {
     loop i := 0; i < Config.repetitions; i += 1 {
         util.puts("hello, world\n");
     }
+    sys.exit(0);
 }

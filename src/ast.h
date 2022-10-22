@@ -29,7 +29,6 @@
     X(AST_DECL_STRUCT)         \
     X(AST_DECL_MACRO)          \
     X(AST_DECL_MODULE)         \
-    X(AST_POLYMORPH_TYPE_NAME) \
     X(AST_PARAM)               \
     X(AST_STRUCT_FIELD)        \
     X(AST_INT)                 \
@@ -73,8 +72,9 @@ X_AST
 #define AST_FLAG_VARARGS              (1 << 2)
 #define AST_FLAG_POLY_VARARGS         (1 << 3)
 #define AST_FLAG_CALL_IS_CAST         (1 << 4)
-#define AST_FLAG_IS_EXTERN            (1 << 5)
-#define AST_FLAG_EXPR_TOP             (1 << 6)
+#define AST_FLAG_CALL_IS_BUILTIN_VARG (1 << 5)
+#define AST_FLAG_IS_EXTERN            (1 << 6)
+#define AST_FLAG_EXPR_TOP             (1 << 7)
 
 struct ast;
 
@@ -104,7 +104,6 @@ int ast_kind_is_decl(int kind);
 const char *ast_get_kind_str(int kind);
 #define AST_STR(kind) (ast_get_kind_str((kind)))
 
-
 typedef struct {
     string_id name;
     value_t   value;
@@ -112,9 +111,15 @@ typedef struct {
 } polymorph_constant_t;
 
 typedef struct {
-    array_t constants;
-    u32     type;
+    array_t  constants;
+    ast_t   *node;
+    u32      type;
 } polymorphed_t;
+
+typedef struct {
+    u32 body;
+    u32 ref;
+} poly_idx_pair_t;
 
 
 struct scope;
@@ -146,11 +151,13 @@ AST_DEFINE(static_error,
 );
 
 AST_DEFINE(static_vargs,
-    ast_t *block;
+    scope_t *scope;
+    ast_t   *block;
 );
 
 AST_DEFINE(module,
-    array_t children;
+    scope_t *scope;
+    array_t  children;
 );
 
 AST_DEFINE(param,
@@ -160,10 +167,12 @@ AST_DEFINE(param,
 );
 
 AST_DEFINE(block,
-    array_t stmts;
+    scope_t *scope;
+    array_t  stmts;
 );
 
 AST_DEFINE(proc,
+    scope_t *scope;
     array_t  params;
     ast_t   *ret_type_expr;
     ast_t   *block;
@@ -177,10 +186,11 @@ AST_DEFINE(struct_field,
 );
 
 AST_DEFINE(struct,
-    array_t params;
-    array_t fields;
-    array_t polymorphs;
-    u8      bitfield_struct_bits;
+    scope_t *scope;
+    array_t  params;
+    array_t  fields;
+    array_t  polymorphs;
+    u8       bitfield_struct_bits;
 );
 
 AST_DEFINE(macro,
@@ -211,13 +221,10 @@ AST_DEFINE(char,
     string_id str_rep;
 );
 
-AST_DEFINE(bool,
-    int is_true;
-);
-
 AST_DEFINE(ident,
     string_id  str_rep;
     ast_t     *resolved_node;
+    int        poly_idx;
 );
 
 AST_DEFINE(unary_expr,
@@ -242,16 +249,18 @@ AST_DEFINE(arg_list,
 );
 
 AST_DEFINE(if,
-    ast_t *expr;
-    ast_t *then_block;
-    ast_t *els; /* May be a block or another if stmt. */
+    scope_t *scope;
+    ast_t   *expr;
+    ast_t   *then_block;
+    ast_t   *els; /* May be a block or another if stmt. */
 );
 
 AST_DEFINE(loop,
-    ast_t *init;
-    ast_t *cond;
-    ast_t *post;
-    ast_t *block;
+    scope_t *scope;
+    ast_t   *init;
+    ast_t   *cond;
+    ast_t   *post;
+    ast_t   *block;
 );
 
 AST_DEFINE(defer,
@@ -265,13 +274,13 @@ AST_DEFINE(return,
 AST_DEFINE(break);
 AST_DEFINE(continue);
 
+
 typedef struct {
     scope_t    *scope;
     ast_decl_t *parent_decl;
     ast_decl_t *unit_decl;
     ast_proc_t *proc;
     array_t    *poly_constants;
-    array_t    *poly_param_reset;
     u32         poly_constants_idx;
     u32         varg_ty;
     u32         flags;
