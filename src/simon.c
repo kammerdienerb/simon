@@ -108,6 +108,7 @@ void do_parse(void) {
     int    n_files;
     u64    start_us;
     char **it;
+    u64    parse_time;
 
     n_files = array_len(options.input_files);
     verb_message("parsing %d file%s...\n", n_files, n_files > 1 ? "s" : "");
@@ -125,8 +126,10 @@ void do_parse(void) {
         wait_for_parsing_async();
     }
 
+    parse_time = measure_time_now_us() - start_us;
     verb_message("total lines: %lu\n", n_lines);
-    verb_message("parsing took %lu us\n", measure_time_now_us() - start_us);
+    verb_message("parsing took %lu us\n", parse_time);
+    verb_message("~ %lu lines/s\n", (u64)(((double)n_lines) / (((double)parse_time) / 1000000.0)));
 }
 
 void do_check(void) {

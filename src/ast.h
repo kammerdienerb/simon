@@ -113,6 +113,7 @@ typedef struct {
 typedef struct {
     array_t  constants;
     ast_t   *node;
+    ast_t   *specialization;
     u32      type;
 } polymorphed_t;
 

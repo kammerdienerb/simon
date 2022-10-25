@@ -18,6 +18,7 @@ string_id EXTERN_ID;
 string_id PROGRAM_ENTRY_ID;
 string_id BITFIELD_STRUCT_ID;
 string_id BITFIELD_ID;
+string_id SPECIALIZATION_ID;
 
 static char *cstr_dup(const char *str) {
     u64   len;
@@ -99,18 +100,19 @@ void init_strings(void) {
         array_push(kwd_ids, kwd_id);
     }
 
-    UNDERSCORE_ID            = get_string_id("_");
-    ELLIPSIS_ID              = get_string_id("...");
+    UNDERSCORE_ID           = get_string_id("_");
+    ELLIPSIS_ID             = get_string_id("...");
     _BUILTIN_PRINTS_ID      = get_string_id("_builtin_prints");
     _BUILTIN_PRINTP_ID      = get_string_id("_builtin_printp");
     _BUILTIN_PRINTI_ID      = get_string_id("_builtin_printi");
     _BUILTIN_STACK_ALLOC_ID = get_string_id("_builtin_stack_alloc");
     _BUILTIN_VARG_ID        = get_string_id("_builtin_varg");
-    CAST_ID                  = get_string_id("cast");
-    EXTERN_ID                = get_string_id("extern");
-    PROGRAM_ENTRY_ID         = get_string_id("program_entry");
-    BITFIELD_STRUCT_ID       = get_string_id("bitfield_struct");
-    BITFIELD_ID              = get_string_id("bitfield");
+    CAST_ID                 = get_string_id("cast");
+    EXTERN_ID               = get_string_id("extern");
+    PROGRAM_ENTRY_ID        = get_string_id("program_entry");
+    BITFIELD_STRUCT_ID      = get_string_id("bitfield_struct");
+    BITFIELD_ID             = get_string_id("bitfield");
+    SPECIALIZATION_ID       = get_string_id("specialization");
 }
 
 string_id get_string_id(const char *string) {

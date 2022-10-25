@@ -518,18 +518,34 @@ static void _report_declaration_path(int should_exit, array_t path) {
 #define report_declaration_path_no_exit(_path) (_report_declaration_path(0, (_path)))
 
 
-/* static void typecheck_assign(ast_t *lval, ast_t *rval, scope_t *scope) { */
-/*     ASSERT(rval->type != TY_UNKNOWN, "right hand side of assignment doesn't have a type"); */
-/*  */
-/*     if (rval->type != lval->type) { */
-/*         report_range_err(&ASTP(assign)->loc, */
-/*                          "'%s' has type %s, but you're trying to assign it a value of type %s", */
-/*                          get_string(assign->name), */
-/*                          get_string(get_type_string_id(origin->type)), */
-/*                          get_string(get_type_string_id(assign->val->type))); */
-/*         return; */
-/*     } */
-/* } */
+static void check_specialization(ast_t *tag, ast_t *node, ast_t *arg) {
+    ast_decl_t  *decl;
+    ast_ident_t *arg_ident;
+    ast_decl_t  *arg_decl;
+
+    decl = (ast_decl_t*)node;
+
+    ASSERT(arg->kind == AST_IDENT, "specialization arg not an ident");
+
+    arg_ident = (ast_ident_t*)arg;
+
+    ASSERT(arg_ident->resolved_node != NULL, "ident not resolved");
+    ASSERT(ast_kind_is_decl(arg_ident->resolved_node->kind), "ident does not resolve to a declaration");
+
+    arg_decl = (ast_decl_t*)arg_ident->resolved_node;
+
+    if (!(ASTP(arg_decl)->flags & AST_FLAG_POLYMORPH)) {
+        report_range_err_no_exit(&arg->loc, "can't make '%s' a specialization of something not polymorphic", get_string(decl->name));
+        report_range_info_no_context(&ASTP(arg_decl)->loc, "'%s', which is not polymorphic, is declared here", get_string(arg_decl->full_name));
+    }
+
+    if (ASTP(decl)->flags & AST_FLAG_POLYMORPH) {
+        report_range_err_no_exit(&ASTP(decl)->loc, "specializations may not be polymorphic");
+        report_range_info_no_context(&tag->loc, "'%s' tagged as a specialization of '%s' here", get_string(decl->name), get_string(arg_decl->full_name));
+    }
+
+    /* @here */
+}
 
 static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
     ast_decl_t         *decl  = NULL;
@@ -582,7 +598,7 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
                 report_range_err(&node->loc, "'%s' is tagged 'program_entry', but is not a procedure", get_string(decl->name));
             }
 
-            if (program_entry != NULL) {
+            if (program_entry != NULL && program_entry != decl) {
                 multiple_entry_error(decl, program_entry);
             }
 
@@ -619,7 +635,7 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
             }
 
             if (n_args != 1) {
-                report_range_err(&ASTP(arg_list)->loc, "tag 'bitfield_struct' only expects one argument");
+                report_range_err(&ASTP(arg_list)->loc, "tag 'bitfield_struct' expects exactly one argument");
             }
 
             arg = ((arg_t*)array_item(*args, 0))->expr;
@@ -651,7 +667,19 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
                     break;
             }
         } else if (ident->str_rep == BITFIELD_ID) {
-/*             report_range_info_no_context_no_exit(&expr->left->loc, "unhandled"); */
+            /* @todo */
+        } else if (ident->str_rep == SPECIALIZATION_ID) {
+            if (n_args != 1) {
+                report_range_err(&ASTP(arg_list)->loc, "tag 'specialization' expects exactly one argument");
+            }
+
+            arg = ((arg_t*)array_item(*args, 0))->expr;
+
+            if (arg->kind != AST_IDENT) {
+                report_range_err(&arg->loc, "tag 'specialization' argument must be an identifier");
+            }
+
+            check_specialization(tag, node, arg);
         } else {
             report_range_err(&expr->left->loc, "unknown tag '%s'", get_string(ident->str_rep));
         }
@@ -686,12 +714,10 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
 
     if (cxt.poly_constants != NULL) { reinstall(ASTP(decl), decl->name, cxt.scope); }
 
-    check_tags(cxt, ASTP(decl), &decl->tags);
+    cxt.parent_decl = decl;
 
     ASSERT(decl->type_expr || decl->val_expr,
            "decl misssing both type and val");
-
-    cxt.parent_decl = decl;
 
     if (decl->val_expr != NULL) {
         check_node(cxt, decl->val_expr);
@@ -760,6 +786,7 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
     ast_t   **it;
     int       j;
     u32       ret_type;
+    u32       had_type;
 
     descend = !(cxt.flags & CHECK_FLAG_IN_PROC);
 
@@ -825,6 +852,8 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
         ret_type = TY_NOT_TYPED;
     }
 
+    had_type = ASTP(proc)->type != TY_UNKNOWN;
+
     ASTP(proc)->type = get_proc_type(n_params, param_types, ret_type);
 
     /* @bad?, @refactor
@@ -838,9 +867,16 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
         ASTP(cxt.parent_decl)->value = ASTP(proc)->value;
     }
 
+    if (!had_type && ASTP(proc)->flags & AST_FLAG_POLYMORPH) {
+        /* Check these here _once_ since we won't descend poly procs. */
+        check_tags(cxt, ASTP(cxt.parent_decl), &(cxt.parent_decl)->tags);
+    }
+
     if (!descend) { goto out; }
 
     cxt.flags |= CHECK_FLAG_IN_PROC;
+
+    check_tags(cxt, ASTP(cxt.parent_decl), &(cxt.parent_decl)->tags);
 
     if (!(cxt.flags & CHECK_FLAG_POLY_TYPE_ONLY)) {
         if (!(ASTP(proc)->flags & AST_FLAG_POLYMORPH) || cxt.poly_constants != NULL) {
@@ -1246,9 +1282,10 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
     polymorphed.type = get_already_polymorphed_type(polymorphs, &constants, idx_out);
 
     if (polymorphed.type == TY_NONE) {
-        polymorphed.constants = constants;
-        polymorphed.node      = copy_tree(node);
-        polymorphed_p         = array_push(*polymorphs, polymorphed);
+        polymorphed.constants      = constants;
+        polymorphed.node           = copy_tree(node);
+        polymorphed.specialization = NULL;
+        polymorphed_p              = array_push(*polymorphs, polymorphed);
 
         cxt.scope = cxt.parent_decl->scope;
         ASSERT(cxt.scope != NULL, "did not get scope");
@@ -1692,6 +1729,8 @@ static void check_ident(check_context_t cxt, ast_ident_t *ident) {
         ASTP(ident)->value.t = TY_POLY;
     } else {
         if (ident->resolved_node->type == TY_UNKNOWN) {
+            if (ident->resolved_node == ASTP(cxt.parent_decl)) { return; }
+
             cxt.scope = resolved_node_scope;
             check_node(cxt, ident->resolved_node);
         }
@@ -2219,8 +2258,12 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
         i += 1;
     }
 
-    array_traverse(st->fields, it) {
-        check_node(cxt, *it);
+    if (ASTP(st)->type == TY_UNKNOWN) {
+        check_tags(cxt, ASTP(cxt.parent_decl), &(cxt.parent_decl)->tags);
+
+        array_traverse(st->fields, it) {
+            check_node(cxt, *it);
+        }
     }
 
     ASTP(st)->type = TY_TYPE;
@@ -2436,12 +2479,16 @@ static void check_node(check_context_t cxt, ast_t *node) {
             check_decl(cxt, (ast_decl_t*)node);
             break;
         case AST_MODULE:
-            node->type = TY_MODULE;
-            /*
-             * Prevent some recursion issues where nodes in the module reference
-             * the module and asking for the type would recurse infinitely.
-             */
-            ASTP(cxt.parent_decl)->type = TY_MODULE;
+            if (node->type == TY_UNKNOWN) {
+                /*
+                 * Prevent some recursion issues where nodes in the module reference
+                 * the module and asking for the type would recurse infinitely.
+                 */
+                node->type                  = TY_MODULE;
+                ASTP(cxt.parent_decl)->type = TY_MODULE;
+
+                check_tags(cxt, ASTP(cxt.parent_decl), &(cxt.parent_decl)->tags);
+            }
 
             cxt.scope = get_subscope_from_node(cxt.scope, node);
             ASSERT(cxt.scope != NULL, "did not get subscope");

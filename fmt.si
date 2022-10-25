@@ -1,6 +1,7 @@
 [[ program_entry ]]
 main := proc() {
     fmt._fmt("this {10x} is {30c} a {4.3} test\n", 123, "this is a test", 1.23);
+    sys.exit(0);
 }
 
 sys := module {
@@ -14,7 +15,7 @@ util := module {
     slen := proc(s: str) : u64 {
         len := cast(u64, 0);
 
-        loop i := 0; s[i] != cast(u8, 0) ; i += 1 { len += 1; }
+        loop i := 0; s[i] != cast(u8, 0); i += 1 { len += 1; }
 
         return len;
     }
@@ -72,5 +73,12 @@ fmt := module {
                 util.putc(fmt[i]);
             }
         }
+    }
+}
+
+formatters := module {
+    [[ specialization(fmt.to_formatted_str) ]]
+    to_formatted_str := proc(arg: s64, f: fmt.Format_Info): str {
+        return "<s64>";
     }
 }

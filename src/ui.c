@@ -211,7 +211,8 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
             if (color_source) {
                 C(range_color);
             }
-        } else if (p == range->end.buff_ptr) {
+        }
+        if (p == range->end.buff_ptr) {
             underline = -underline;
             C(all_color);
         }
@@ -221,8 +222,8 @@ static void print_range(src_range_t *range, const char *all_color, const char *r
                 if (p > line_start) {
                     for (i = 0; i < line_nr_digits + 3; i += 1) { putchar(' '); }
                     while (line_start < p) {
-                        if (line_start >= range->beg.buff_ptr
-                        &&  line_start  < range->end.buff_ptr) {
+                        if ((line_start >= range->beg.buff_ptr && line_start < range->end.buff_ptr)
+                        ||  (range->beg.buff_ptr == range->end.buff_ptr && line_start == range->beg.buff_ptr)) {
                             if (color_source) { C(range_color); }
                             putchar('^');
                             if (color_source) { C(all_color); }
