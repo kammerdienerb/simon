@@ -4,4 +4,4 @@
 # build/bin/simon -v syntax.si
 
 # build/bin/simon -v poly.si
-build/bin/simon -v fmt.si
+build/bin/simon -v test.si basic.si

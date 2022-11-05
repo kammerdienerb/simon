@@ -1,10 +1,53 @@
 # basic.si
 
-[[ program_entry ]]
-main := proc() {
-    foo(1);
-    foo("abc");
+DEFAULT_HEAP_ALLOCATOR: Heap_Allocator.T;
+
+heap_alloc := proc(n_bytes: u64): *u8 { return Allocator.alloc(*DEFAULT_HEAP_ALLOCATOR, n_bytes); }
+heap_free  := proc(ptr: *u8)          { Allocator.free(*DEFAULT_HEAP_ALLOCATOR, ptr);             }
+
+Allocator := module {
+    alloc := proc(allocator: *%allocator_type, n_bytes: u64): *u8 { \ERROR "allocator does not implement alloc()" }
+    free  := proc(allocator: *%allocator_type, ptr: *u8)          { \ERROR "allocator does not implement free()"  }
 }
 
-bar := proc(arg: %T) {  }
-foo := proc(arg: %T) { bar(arg); }
+Heap_Allocator := module {
+    T := struct {}
+
+    [[ specialization(Allocator.alloc) ]]
+    alloc := proc(allocator: *T, n_bytes: u64): *u8 { return ~~0; }
+
+    [[ specialization(Allocator.free) ]]
+    free := proc(allocator: *T, ptr: *u8) {  }
+}
+
+Fixed_Allocator := module {
+    T := struct {
+        ptr: *u8,
+        end: *u8,
+    }
+
+    new := proc(buff: *u8, size: u64): T {
+        ret: T;
+
+        ret.ptr = buff;
+        ret.end = buff + size;
+
+        return ret;
+    }
+
+    [[ specialization(Allocator.alloc) ]]
+    alloc := proc(allocator: *T, n_bytes: u64): *u8 {
+        # @todo: alignment
+
+        if (allocator.ptr + n_bytes > allocator.end) { return ~~0; }
+
+        ret := allocator.ptr;
+
+        allocator.ptr += n_bytes;
+
+        return ret;
+    }
+
+    [[ specialization(Allocator.free) ]]
+    free := proc(allocator: *T, ptr: *u8) {  }
+}

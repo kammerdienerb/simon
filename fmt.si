@@ -1,6 +1,6 @@
 [[ program_entry ]]
 main := proc() {
-    fmt._fmt("this {10x} is {30c} a {4.3} test\n", 123, "this is a test", 1.23);
+    fmt._fmt("this {10x} is {30c} a {4.3} test {}\n", 123, "abc", 1.23);
     sys.exit(0);
 }
 
@@ -44,7 +44,7 @@ fmt := module {
 
 
     to_formatted_str := proc(arg: %T, f: Format_Info): str {
-        return "ARG";
+        \ERROR "no specialization provided for type T"
     }
 
     _fmt := proc(fmt: str, args: %...) {
@@ -78,7 +78,17 @@ fmt := module {
 
 formatters := module {
     [[ specialization(fmt.to_formatted_str) ]]
-    to_formatted_str := proc(arg: s64, f: fmt.Format_Info): str {
+    s64_to_formatted_str := proc(arg: s64, f: fmt.Format_Info): str {
         return "<s64>";
+    }
+
+    [[ specialization(fmt.to_formatted_str) ]]
+    str_to_formatted_str := proc(arg: str, f: fmt.Format_Info): str {
+        return arg;
+    }
+
+    [[ specialization(fmt.to_formatted_str) ]]
+    f64_to_formatted_str := proc(arg: f64, f: fmt.Format_Info): str {
+        return "<f64>";
     }
 }

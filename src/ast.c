@@ -297,8 +297,10 @@ void check_all(void) {
 
         polymorphed = array_item(*backlog_entry.polymorphs, backlog_entry.cxt.poly_constants_idx);
 
+        if (polymorphed->specialization != NULL) { continue; }
+
         backlog_entry.cxt.poly_constants  = &polymorphed->constants;
-        backlog_entry.cxt.flags          &= ~CHECK_FLAG_IN_PROC;
+        backlog_entry.cxt.flags          &= ~CHECK_FLAG_DESCENDING;
 
         buff[0]    = 0;
         lazy_comma = "";
@@ -312,7 +314,7 @@ void check_all(void) {
 
         push_range_breadcrumb(&backlog_entry.range,
                               "in %s (which is polymorphic), where [ %s ] from these arguments:",
-                              get_string(backlog_entry.cxt.parent_decl->name),
+                              get_string(backlog_entry.cxt.parent_decl->full_name),
                               buff);
 
         check_node(backlog_entry.cxt, backlog_entry.node);
@@ -518,10 +520,24 @@ static void _report_declaration_path(int should_exit, array_t path) {
 #define report_declaration_path_no_exit(_path) (_report_declaration_path(0, (_path)))
 
 
-static void check_specialization(ast_t *tag, ast_t *node, ast_t *arg) {
-    ast_decl_t  *decl;
-    ast_ident_t *arg_ident;
-    ast_decl_t  *arg_decl;
+static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymorphs, array_t *params, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out);
+static u32 get_proc_polymorph_type(check_context_t cxt, ast_proc_t *proc, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out);
+static u32 get_struct_polymorph_type(check_context_t cxt, ast_struct_t *st, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out);
+
+
+static void check_specialization(check_context_t cxt, ast_t *tag, ast_t *node, ast_t *arg) {
+    ast_decl_t    *decl;
+    ast_ident_t   *arg_ident;
+    ast_decl_t    *arg_decl;
+    ast_proc_t    *proc;
+    ast_proc_t    *arg_proc;
+    u32            n_pargs;
+    poly_arg_t    *pargs;
+    int            i;
+    ast_param_t   *param;
+    poly_arg_t    *parg;
+    u32            idx;
+    polymorphed_t *polymorphed;
 
     decl = (ast_decl_t*)node;
 
@@ -544,7 +560,42 @@ static void check_specialization(ast_t *tag, ast_t *node, ast_t *arg) {
         report_range_info_no_context(&tag->loc, "'%s' tagged as a specialization of '%s' here", get_string(decl->name), get_string(arg_decl->full_name));
     }
 
-    /* @here */
+    if (decl->val_expr->kind == AST_PROC) {
+        proc     = (ast_proc_t*)decl->val_expr;
+        arg_proc = (ast_proc_t*)arg_decl->val_expr;
+        n_pargs  = array_len(proc->params);
+        pargs    = alloca(sizeof(*pargs) * n_pargs);
+
+        for (i = 0; i < n_pargs; i += 1) {
+            param           = *(ast_param_t**)array_item(proc->params, i);
+            parg            = pargs + i;
+            parg->value     = ASTP(param)->value;
+            parg->type      = ASTP(param)->type;
+            parg->node      = ASTP(param);
+            parg->has_value = param->val != NULL;
+        }
+
+        push_range_breadcrumb(&tag->loc,
+                              "when trying to make '%s' a specialization of '%s'",
+                              get_string(decl->full_name),
+                              get_string(arg_decl->full_name));
+        get_proc_polymorph_type(cxt, arg_proc, pargs, n_pargs, proc->params_loc, &idx);
+        pop_breadcrumb();
+
+        polymorphed = array_item(arg_proc->polymorphs, idx);
+
+        if (polymorphed->specialization != NULL) {
+            report_range_err_no_exit(&tag->loc, "specialization of '%s' with these parameters is already specified", get_string(arg_decl->full_name));
+            report_range_info_no_context(&polymorphed->specialization->loc, "previous specialization here:");
+        }
+
+        polymorphed->specialization = ASTP(decl);
+
+    } else if (decl->val_expr->kind == AST_STRUCT) {
+        ASSERT(0, "unimplemented");
+    } else {
+        ASSERT(0, "bad node kind in check_specialization");
+    }
 }
 
 static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
@@ -679,7 +730,7 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
                 report_range_err(&arg->loc, "tag 'specialization' argument must be an identifier");
             }
 
-            check_specialization(tag, node, arg);
+            check_specialization(cxt, tag, node, arg);
         } else {
             report_range_err(&expr->left->loc, "unknown tag '%s'", get_string(ident->str_rep));
         }
@@ -719,6 +770,25 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
     ASSERT(decl->type_expr || decl->val_expr,
            "decl misssing both type and val");
 
+    if (ASTP(decl)->kind == AST_DECL_VAR) {
+        cxt.flags |= CHECK_FLAG_DESCENDING;
+    }
+
+    if (decl->type_expr != NULL) {
+        check_node(cxt, decl->type_expr);
+
+        if (decl->type_expr->type != TY_TYPE) {
+            report_range_err_no_exit(&decl->type_expr->loc,
+                                     "expression declaring type of '%s' is not a type",
+                                     get_string(decl->name));
+            report_simple_info("got %s instead of type", get_string(get_type_string_id(decl->type_expr->type)));
+        }
+
+        decl_t = decl->type_expr->value.t;
+
+        cxt.autocast_ty = decl_t;
+    }
+
     if (decl->val_expr != NULL) {
         check_node(cxt, decl->val_expr);
         val_t = decl->val_expr->type;
@@ -732,10 +802,7 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
         ASTP(decl)->value = decl->val_expr->value;
     }
 
-    if (decl->type_expr != NULL) {
-        check_node(cxt, decl->type_expr);
-        decl_t = decl->type_expr->value.t;
-    } else {
+    if (decl->type_expr == NULL) {
         decl_t = val_t;
     }
 
@@ -788,7 +855,7 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
     u32       ret_type;
     u32       had_type;
 
-    descend = !(cxt.flags & CHECK_FLAG_IN_PROC);
+    descend = !(cxt.flags & CHECK_FLAG_DESCENDING);
 
     if (ASTP(proc)->flags & AST_FLAG_POLYMORPH
     &&  cxt.poly_constants == NULL) {
@@ -874,7 +941,7 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
 
     if (!descend) { goto out; }
 
-    cxt.flags |= CHECK_FLAG_IN_PROC;
+    cxt.flags |= CHECK_FLAG_DESCENDING;
 
     check_tags(cxt, ASTP(cxt.parent_decl), &(cxt.parent_decl)->tags);
 
@@ -920,6 +987,15 @@ static void check_param(check_context_t cxt, ast_param_t *param) {
 
     if (ASTP(param)->flags & AST_FLAG_POLYMORPH) {
         ASTP(param)->value.t = TY_POLY;
+    } else if (param->val != NULL) {
+        if (param->val->type != ASTP(param)->type) {
+            report_range_err(&param->val->loc,
+                             "default value for '%s' has type %s, which does not match declared type of %s",
+                             get_string(param->name),
+                             get_string(get_type_string_id(param->val->type)),
+                             get_string(get_type_string_id(ASTP(param)->type)));
+        }
+        ASTP(param)->value = param->val->value;
     }
 }
 
@@ -1117,14 +1193,14 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
     array_free(path);
 }
 
-static void solve_poly_type_expr(array_t *constants, ast_t *type_expr, ast_t *arg_expr) {
+static void solve_poly_type_expr(array_t *constants, ast_t *type_expr, poly_arg_t *arg) {
     ast_t                *texpr;
     u32                   at;
     u32                   pt;
     polymorph_constant_t  constant;
 
     texpr = type_expr;
-    at    = arg_expr->type;
+    at    = arg->type;
 
     for (;;) {
         pt = texpr->value.t;
@@ -1162,10 +1238,10 @@ static void solve_poly_type_expr(array_t *constants, ast_t *type_expr, ast_t *ar
                 default:
                     if (at != pt) {
 err:;
-                        report_range_err_no_exit(&arg_expr->loc,
+                        report_range_err_no_exit(&arg->node->loc,
                                                 "incorrect argument type: expected %s, but got %s",
                                                 get_string(get_type_string_id(type_expr->value.t)),
-                                                get_string(get_type_string_id(arg_expr->type)));
+                                                get_string(get_type_string_id(arg->type)));
                         report_range_info_no_context_no_exit(&type_expr->loc,
                                                             "when solving for polymorphic parameters in a type pattern");
                         report_simple_err("asdf");
@@ -1176,7 +1252,74 @@ err:;
     }
 }
 
-static array_t get_polymorph_constants(array_t *params, ast_arg_list_t *arg_list) {
+static void verify_polymorphic_args(array_t *params, poly_arg_t *args, u32 n_args, src_range_t params_loc, src_range_t args_loc) {
+    int                    is_poly_varg;
+    src_range_t            loc;
+    int                    i;
+    ast_t                **it;
+    ast_param_t           *param;
+    poly_arg_t            *arg;
+
+    is_poly_varg = !!(ASTP(*(ast_param_t**)array_last(*params))->flags & AST_FLAG_POLY_VARARGS);
+
+    if (array_len(*params) - is_poly_varg > n_args) {
+        report_loc_err_no_exit(args_loc.end, "too few arguments to solve for polymorphic constants");
+        report_simple_info_no_exit("expected %s%d argument%s, but only got %d",
+                                    is_poly_varg ? "at least " : "",
+                                    array_len(*params) - is_poly_varg,
+                                    array_len(*params) - is_poly_varg > 1 ? "s" : "",
+                                    n_args);
+        report_range_info_no_context(&params_loc, "polymorphic parameters defined here:");
+    }
+
+    if (!is_poly_varg && n_args > array_len(*params)) {
+        loc.beg = args[array_len(*params)].node->loc.beg;
+        loc.end = args_loc.end;
+        report_range_err_no_exit(&loc,
+                                 "too many arguments to solve for polymorphic constants");
+        report_simple_info_no_exit("expected %s%d argument%s, but got %d",
+                                    is_poly_varg ? "at least " : "",
+                                    array_len(*params),
+                                    array_len(*params) > 1 ? "s" : "",
+                                    n_args);
+        report_range_info_no_context(&params_loc, "polymorphic parameters defined here:");
+    }
+
+    i = 0;
+    array_traverse(*params, it) {
+        param = (ast_param_t*)*it;
+        arg   = args + i;
+
+        if (ASTP(param)->flags & AST_FLAG_POLY_VARARGS) {
+            break;
+        } else if (ASTP(param)->flags & AST_FLAG_POLYMORPH) {
+            if (!arg->has_value) {
+                if (arg->node->kind == AST_PARAM) {
+                    loc.beg = arg->node->loc.beg;
+                    loc.end = ((ast_param_t*)arg->node)->type_expr->loc.end;
+                    report_range_err_no_exit(&loc, "missing value for polymorph-by-value parameter");
+                    report_fixit_no_exit(loc.end, "add a value to satisfy the parameter\a = <value>");
+                } else {
+                    report_range_err_no_exit(&arg->node->loc, "missing value for polymorph-by-value parameter");
+                }
+                report_range_info_no_context(&ASTP(param)->loc, "polymorph-by-value parameter declared here:");
+            }
+        } else if (!(param->type_expr->flags & AST_FLAG_POLYMORPH)) {
+            if (arg->type != ASTP(param)->type) {
+                report_range_err_no_exit(arg->node->kind == AST_PARAM ? &(((ast_param_t*)arg->node)->type_expr->loc) : &arg->node->loc,
+                                         "argument type does not match non-polymorphic argument type");
+                report_range_info_no_context(&param->type_expr->loc,
+                                        	 "expected %s, but got %s",
+                                             get_string(get_type_string_id(ASTP(param)->type)),
+                                             get_string(get_type_string_id(arg->type)));
+            }
+        }
+
+        i += 1;
+    }
+}
+
+static array_t get_polymorph_constants(array_t *params, poly_arg_t *args, u32 n_args, src_range_t params_loc, src_range_t args_loc) {
     array_t                constants;
     int                    i;
     ast_t                **it;
@@ -1185,11 +1328,14 @@ static array_t get_polymorph_constants(array_t *params, ast_arg_list_t *arg_list
     u32                    n_vargs;
     u32                   *varg_types;
     u32                    varg_list_ty;
-    arg_t                 *arg;
+    poly_arg_t            *arg;
     polymorph_constant_t   constant;
 
 /*     report_range_info_no_context_no_exit(&ASTP(arg_list)->loc, */
 /*                                          "====================== POLYMORPH ======================"); */
+
+    verify_polymorphic_args(params, args, n_args, params_loc, args_loc);
+
 
     constants = array_make(polymorph_constant_t);
 
@@ -1201,12 +1347,12 @@ static array_t get_polymorph_constants(array_t *params, ast_arg_list_t *arg_list
         memset(&constant, 0, sizeof(constant));
 
         if (ASTP(param)->flags & AST_FLAG_POLY_VARARGS) {
-            n_vargs    = array_len(arg_list->args) - i;
+            n_vargs    = n_args - i;
             varg_types = alloca(sizeof(u32) * n_vargs);
 
             for (j = 0; j < n_vargs; j += 1) {
-                arg           = array_item(arg_list->args, i + j);
-                varg_types[j] = arg->expr->type;
+                arg           = args + i + j;
+                varg_types[j] = arg->type;
             }
 
             varg_list_ty = get_type_list_type(n_vargs, varg_types);
@@ -1222,10 +1368,10 @@ static array_t get_polymorph_constants(array_t *params, ast_arg_list_t *arg_list
 /*                 get_string(value_to_string_id(constant.value, constant.type))); */
         } else if (ASTP(param)->flags & AST_FLAG_POLYMORPH) {
 
-            arg            = array_item(arg_list->args, i);
+            arg            = args + i;
             constant.name  = param->name;
-            constant.value = arg->expr->value;
-            constant.type  = arg->expr->type;
+            constant.value = arg->value;
+            constant.type  = arg->type;
 
             array_push(constants, constant);
 /*             report_range_info_no_context_no_exit( */
@@ -1237,8 +1383,8 @@ static array_t get_polymorph_constants(array_t *params, ast_arg_list_t *arg_list
         if (!(ASTP(param)->flags    & AST_FLAG_POLY_VARARGS)
         &&  param->type_expr->flags & AST_FLAG_POLYMORPH) {
 
-            arg = array_item(arg_list->args, i);
-            solve_poly_type_expr(&constants, param->type_expr, arg->expr);
+            arg = args + i;
+            solve_poly_type_expr(&constants, param->type_expr, arg);
         }
 
         i += 1;
@@ -1272,13 +1418,15 @@ next:;
     return TY_NONE;
 }
 
-static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymorphs, array_t *params, ast_arg_list_t *arg_list, u32 *idx_out) {
+static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymorphs, array_t *params, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out) {
+    src_range_t           params_loc;
     array_t               constants;
     polymorphed_t         polymorphed;
     polymorphed_t        *polymorphed_p;
     poly_backlog_entry_t  backlog_entry;
 
-    constants        = get_polymorph_constants(params, arg_list);
+    params_loc       = node->kind == AST_PROC ? ((ast_proc_t*)node)->params_loc : ((ast_struct_t*)node)->params_loc;
+    constants        = get_polymorph_constants(params, args, n_args, params_loc, args_loc);
     polymorphed.type = get_already_polymorphed_type(polymorphs, &constants, idx_out);
 
     if (polymorphed.type == TY_NONE) {
@@ -1313,7 +1461,7 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
         backlog_entry.node       = polymorphed.node;
         backlog_entry.polymorphs = polymorphs;
         backlog_entry.cxt        = cxt;
-        backlog_entry.range      = ASTP(arg_list)->loc;
+        backlog_entry.range      = args_loc;
         array_push(poly_backlog, backlog_entry);
     } else {
 /*         report_simple_info_no_exit("polymorph already checked!"); */
@@ -1323,12 +1471,12 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
     return polymorphed.type;
 }
 
-static u32 get_proc_polymorph_type(check_context_t cxt, ast_proc_t *proc, ast_arg_list_t *arg_list, u32 *idx_out) {
-    return get_polymorph_type(cxt, ASTP(proc), &proc->polymorphs, &proc->params, arg_list, idx_out);
+static u32 get_proc_polymorph_type(check_context_t cxt, ast_proc_t *proc, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out) {
+    return get_polymorph_type(cxt, ASTP(proc), &proc->polymorphs, &proc->params, args, n_args, args_loc, idx_out);
 }
 
-static u32 get_struct_polymorph_type(check_context_t cxt, ast_struct_t *st, ast_arg_list_t *arg_list, u32 *idx_out) {
-    return get_polymorph_type(cxt, ASTP(st), &st->polymorphs, &st->params, arg_list, idx_out);
+static u32 get_struct_polymorph_type(check_context_t cxt, ast_struct_t *st, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out) {
+    return get_polymorph_type(cxt, ASTP(st), &st->polymorphs, &st->params, args, n_args, args_loc, idx_out);
 }
 
 static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
@@ -1337,10 +1485,12 @@ static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
     u32              n_args;
     ast_ident_t     *left_ident;
     ast_decl_t      *struct_decl;
+    poly_arg_t      *poly_args;
+    u32              i;
+    poly_arg_t      *parg;
     u32              idx;
     u32              n_params;
     arg_t           *arg_p;
-    u32              i;
     u32              param_type;
     u32              arg_type;
     u32              varg_ty;
@@ -1354,6 +1504,9 @@ static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
     proc_ty  = expr->left->type;
     arg_list = (ast_arg_list_t*)expr->right;
     n_args   = array_len(arg_list->args);
+
+    cxt.autocast_ty = proc_ty;
+    check_node(cxt, expr->right);
 
     if (proc_ty == TY_BUILTIN_SPECIAL) {
         check_builtin_special_call(cxt, expr);
@@ -1388,8 +1541,16 @@ static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
         } else {
             cxt.parent_decl = struct_decl;
 
+            poly_args = alloca(sizeof(*poly_args) * n_args);
+            for (i = 0; i < n_args; i += 1) {
+                parg        = poly_args + i;
+                parg->value = ((arg_t*)array_item(arg_list->args, i))->expr->value;
+                parg->type  = ((arg_t*)array_item(arg_list->args, i))->expr->type;
+                parg->node  = ((arg_t*)array_item(arg_list->args, i))->expr;
+            }
+
             ASTP(expr)->type    = TY_TYPE;
-            ASTP(expr)->value.t = get_struct_polymorph_type(cxt, (ast_struct_t*)struct_decl->val_expr, arg_list, &idx);
+            ASTP(expr)->value.t = get_struct_polymorph_type(cxt, (ast_struct_t*)struct_decl->val_expr, poly_args, n_args, ASTP(arg_list)->loc, &idx);
 
             if (left_ident != NULL) {
                 left_ident->poly_idx = idx;
@@ -1498,7 +1659,16 @@ too_few:
     if (proc != NULL
     && ASTP(proc)->flags & AST_FLAG_POLYMORPH) {
         cxt.parent_decl  = (ast_decl_t*)proc_origin;
-        poly_proc_ty     = get_proc_polymorph_type(cxt, proc, arg_list, &idx);
+
+        poly_args = alloca(sizeof(*poly_args) * n_args);
+        for (i = 0; i < n_args; i += 1) {
+            parg        = poly_args + i;
+            parg->value = ((arg_t*)array_item(arg_list->args, i))->expr->value;
+            parg->type  = ((arg_t*)array_item(arg_list->args, i))->expr->type;
+            parg->node  = ((arg_t*)array_item(arg_list->args, i))->expr;
+        }
+
+        poly_proc_ty     = get_proc_polymorph_type(cxt, proc, poly_args, n_args, ASTP(arg_list)->loc, &idx);
         expr->left->type = poly_proc_ty;
         proc_ty          = poly_proc_ty;
 
@@ -1839,6 +2009,7 @@ static void check_module_dot(check_context_t cxt, ast_bin_expr_t *expr) {
 
 static void check_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     u32 field_ty;
+    u32 st_ty;
 
     if (expr->right->kind != AST_IDENT) {
         report_range_err(&expr->right->loc,
@@ -1851,18 +2022,30 @@ static void check_dot(check_context_t cxt, ast_bin_expr_t *expr) {
             check_module_dot(cxt, expr);
             break;
         case TY_STRUCT:
-            field_ty = get_struct_field_type(expr->left->type, ((ast_ident_t*)expr->right)->str_rep);
+            st_ty = expr->left->type;
+            field_ty = get_struct_field_type(st_ty, ((ast_ident_t*)expr->right)->str_rep);
             if (field_ty == TY_UNKNOWN) {
                 report_range_err(&expr->right->loc,
                                  "type %s does not have a field named '%s'",
-                                 get_string(get_type_string_id(expr->left->type)),
+                                 get_string(get_type_string_id(st_ty)),
                                  get_string(((ast_ident_t*)expr->right)->str_rep));
             }
             ASTP(expr)->type = field_ty;
             break;
         case TY_PTR:
-            ASSERT(0, "unimplemented");
+            st_ty = get_under_type(expr->left->type);
+            if (type_kind(st_ty) != TY_STRUCT) { goto does_not_apply; }
+
+            field_ty = get_struct_field_type(st_ty, ((ast_ident_t*)expr->right)->str_rep);
+            if (field_ty == TY_UNKNOWN) {
+                report_range_err(&expr->right->loc,
+                                 "type %s does not have a field named '%s'",
+                                 get_string(get_type_string_id(st_ty)),
+                                 get_string(((ast_ident_t*)expr->right)->str_rep));
+            }
+            ASTP(expr)->type = field_ty;
             break;
+        does_not_apply:;
         default:
             report_range_err(&ASTP(expr)->loc,
                              "the '.' operator does not apply to left-hand-side operand type %s",
@@ -2044,7 +2227,9 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
         return;
     }
 
-    check_node(cxt, expr->right);
+    if (expr->op != OP_CALL) {
+        check_node(cxt, expr->right);
+    }
 
     if (expr->left->type == TY_NOT_TYPED) {
         operand_not_typed_error(ASTP(expr), expr->right);
@@ -2200,6 +2385,13 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
             }
             ASTP(expr)->type = expr->child->type;
             break;
+        case OP_AUTOCAST:
+            if (cxt.autocast_ty == TY_UNKNOWN) {
+                report_range_err(&ASTP(expr)->loc, "could not determine type for autocast");
+            }
+            /* @todo -- check that the types can actually cast */
+            ASTP(expr)->type = cxt.autocast_ty;
+            break;
         default:
             report_loc_err_no_exit(ASTP(expr)->loc.beg, "UNHANDLED OPERATOR: %s", OP_STR(expr->op));
             ASSERT(0, "unhandled unary operator");
@@ -2278,12 +2470,23 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
 }
 
 static void check_arg_list(check_context_t cxt, ast_arg_list_t *arg_list) {
+    u32    autocast_ty;
+    int    i;
     arg_t *arg;
 
     ASTP(arg_list)->type = TY_NOT_TYPED;
 
+    autocast_ty = cxt.autocast_ty;
+
+    i = 0;
     array_traverse(arg_list->args, arg) {
+        if (type_kind(autocast_ty) == TY_PROC) {
+            cxt.autocast_ty = get_param_type(autocast_ty, i);
+        }
+
         check_node(cxt, arg->expr);
+
+        i += 1;
     }
 }
 
@@ -2368,6 +2571,10 @@ static void check_return(check_context_t cxt, ast_return_t *ret) {
     }
 
     if (ret->expr != NULL) {
+        if (cxt.proc->ret_type_expr->value.t != TY_POLY) {
+            cxt.autocast_ty = cxt.proc->ret_type_expr->value.t;
+        }
+
         check_node(cxt, ret->expr);
 
         if (cxt.proc->ret_type_expr == NULL) {

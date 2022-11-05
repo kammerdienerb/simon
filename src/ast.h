@@ -118,9 +118,11 @@ typedef struct {
 } polymorphed_t;
 
 typedef struct {
-    u32 body;
-    u32 ref;
-} poly_idx_pair_t;
+    ast_t   *node;
+    value_t  value;
+    u32      has_value;
+    u32      type;
+} poly_arg_t;
 
 
 struct scope;
@@ -173,11 +175,12 @@ AST_DEFINE(block,
 );
 
 AST_DEFINE(proc,
-    scope_t *scope;
-    array_t  params;
-    ast_t   *ret_type_expr;
-    ast_t   *block;
-    array_t  polymorphs;
+    scope_t     *scope;
+    src_range_t  params_loc;
+    array_t      params;
+    ast_t       *ret_type_expr;
+    ast_t       *block;
+    array_t      polymorphs;
 );
 
 AST_DEFINE(struct_field,
@@ -187,11 +190,12 @@ AST_DEFINE(struct_field,
 );
 
 AST_DEFINE(struct,
-    scope_t *scope;
-    array_t  params;
-    array_t  fields;
-    array_t  polymorphs;
-    u8       bitfield_struct_bits;
+    scope_t     *scope;
+    src_range_t  params_loc;
+    array_t      params;
+    array_t      fields;
+    array_t      polymorphs;
+    u8           bitfield_struct_bits;
 );
 
 AST_DEFINE(macro,
@@ -283,11 +287,12 @@ typedef struct {
     ast_proc_t *proc;
     array_t    *poly_constants;
     u32         poly_constants_idx;
-    u32         varg_ty;
     u32         flags;
+    u32         varg_ty;
+    u32         autocast_ty;
 } check_context_t;
 
-#define CHECK_FLAG_IN_PROC        (1 << 0)
+#define CHECK_FLAG_DESCENDING     (1 << 0)
 #define CHECK_FLAG_IN_LOOP        (1 << 1)
 #define CHECK_FLAG_IN_PARAM       (1 << 2)
 #define CHECK_FLAG_IN_VARGS       (1 << 3)

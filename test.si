@@ -1,0 +1,7 @@
+[[ program_entry ]]
+main := proc() {
+    N: u64 = ~~1024;
+    block_alloc := Fixed_Allocator.new(_builtin_stack_alloc(N), N);
+
+    Allocator.alloc(*block_alloc, ~~64);
+}

@@ -311,6 +311,8 @@ u32 get_param_type(u32 proc_ty, u32 idx) {
     ASSERT(t->kind == TY_PROC, "type is not TY_PROC");
     params_t = get_type_structure(t->param_list_id);
 
+    if (idx >= params_t->list_len) { return TY_UNKNOWN; }
+
     return params_t->id_list[idx];
 }
 

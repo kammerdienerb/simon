@@ -87,6 +87,8 @@ static void emit_prelude(void) {
 "typedef float              f32;\n"
 "typedef double             f64;\n"
 "typedef char*              str;\n"
+"\n"
+"#define _builtin_stack_alloc(_n) (__builtin_alloca((_n)))\n"
 "\n";
 
     EMIT_STRING(prelude);
@@ -121,6 +123,8 @@ static void emit_expr(ast_t *expr) {
     ast_ident_t          *ident;
     polymorph_constant_t *it;
     ast_decl_t           *decl;
+    ast_proc_t           *proc;
+    polymorphed_t        *spec_polymorphed;
     ast_unary_expr_t     *un_expr;
     int                   op;
     ast_bin_expr_t       *bin_expr;
@@ -162,6 +166,18 @@ static void emit_expr(ast_t *expr) {
                 ASSERT(ast_kind_is_decl(ident->resolved_node->kind), "poly, but doesn't reference a decl?");
                 decl = (ast_decl_t*)ident->resolved_node;
 
+                if (decl->val_expr->kind == AST_PROC) {
+                    proc             = (ast_proc_t*)decl->val_expr;
+                    spec_polymorphed = array_item(proc->polymorphs, ident->poly_idx);
+
+                    if (spec_polymorphed->specialization != NULL) {
+                        emit_underscore_name(((ast_decl_t*)spec_polymorphed->specialization)->full_name);
+                        goto renamed;
+                    }
+                } else if (decl->val_expr->kind == AST_STRUCT) {
+                    ASSERT(0, "unimplemented");
+                }
+
                 emit_underscore_name(decl->full_name);
                 EMIT_STRING_F("__p%d", ident->poly_idx);
 
@@ -198,10 +214,18 @@ renamed:;
                     case OP_DEREF:
                         EMIT_STRING("*");
                         break;
+                    case OP_AUTOCAST:
+                        EMIT_STRING("((");
+                        emit_type_declarator(expr->type);
+                        EMIT_C(')');
+                        break;
                     default:
                         EMIT_STRING(OP_STR(op));
                 }
                 emit_expr(un_expr->child);
+                if (op == OP_AUTOCAST) {
+                    EMIT_C(')');
+                }
             }
             break;
         case AST_BIN_EXPR:
@@ -242,6 +266,16 @@ renamed:;
                         EMIT_C('[');
                         emit_expr(bin_expr->right);
                         EMIT_C(']');
+                        break;
+                    case OP_DOT:
+                        if (type_kind(bin_expr->left->type) == TY_PTR) {
+                            EMIT_C('-');
+                            EMIT_C('>');
+                        } else {
+                            EMIT_C('.');
+                        }
+                        ASSERT(bin_expr->right->kind == AST_IDENT, "right of dot not an ident");
+                        EMIT_STRING_ID(((ast_ident_t*)bin_expr->right)->str_rep);
                         break;
                     default:
                         EMIT_STRING_F(" %s ", OP_STR(op));
@@ -333,6 +367,8 @@ static void emit_proc_pre_decl(ast_decl_t *parent_decl) {
     ast_decl_t **mod_it;
     const char  *lazy_comma;
     ast_t      **it;
+
+    if (polymorphed != NULL && polymorphed->specialization != NULL) { return; }
 
     proc = (ast_proc_t*)parent_decl->val_expr;
 
@@ -666,8 +702,10 @@ static void emit_stmt(ast_t *stmt, int indent_level) {
 }
 
 static void emit_type(ast_decl_t *parent_decl) {
-    ast_struct_t  *st;
-    ast_decl_t   **mod_it;
+    ast_struct_t        *st;
+    ast_decl_t         **mod_it;
+    ast_t              **it;
+    ast_struct_field_t  *field;
 
     st = (ast_struct_t*)parent_decl->val_expr;
 
@@ -687,10 +725,18 @@ static void emit_type(ast_decl_t *parent_decl) {
         EMIT_STRING_F("__p%d", poly_version);
     }
 
-    if (st->bitfield_struct_bits != 0) {
-        EMIT_STRING("{\n");
-        EMIT_STRING("} ");
+    EMIT_STRING(" {\n");
+    array_traverse(st->fields, it) {
+        field = (ast_struct_field_t*)*it;
+
+        INDENT(1);
+        emit_type_declarator(field->type_expr->value.t);
+        EMIT_C(' ');
+        EMIT_STRING_ID(field->name);
+        EMIT_C(';');
+        EMIT_C('\n');
     }
+    EMIT_STRING("} ");
 
     array_traverse(mod_stack, mod_it) {
         EMIT_STRING("__");
@@ -703,6 +749,8 @@ static void emit_type(ast_decl_t *parent_decl) {
     }
 
     EMIT_C(';');
+    EMIT_C('\n');
+    EMIT_C('\n');
 }
 
 static void emit_types_module(ast_decl_t *parent_decl) {
@@ -845,6 +893,9 @@ static void emit_proc(ast_decl_t *parent_decl, ast_proc_t *p) {
     ast_decl_t **mod_it;
     const char  *lazy_comma;
     ast_t      **it;
+
+
+    if (polymorphed != NULL && polymorphed->specialization != NULL) { return; }
 
     proc = p;
 

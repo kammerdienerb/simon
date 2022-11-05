@@ -801,12 +801,13 @@ static int lookahead_unary_prefix_op(parse_context_t *cxt) {
 
     op = OP_INVALID;
 
-         if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_NOT)))    { op = OP_NOT;    }
-    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_ARRAY)))  { op = OP_ARRAY;  }
-    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_ADDR)))   { op = OP_ADDR;   }
-    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_DEREF)))  { op = OP_DEREF;  }
-    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_NEG)))    { op = OP_NEG;    }
-    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_BNEG)))   { op = OP_BNEG;   }
+         if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_NOT)))      { op = OP_NOT;      }
+    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_ARRAY)))    { op = OP_ARRAY;    }
+    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_ADDR)))     { op = OP_ADDR;     }
+    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_DEREF)))    { op = OP_DEREF;    }
+    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_NEG)))      { op = OP_NEG;      }
+    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_AUTOCAST))) { op = OP_AUTOCAST; }
+    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_BNEG)))     { op = OP_BNEG;     }
 
     return op;
 }
@@ -1104,8 +1105,14 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
 
     cxt->allow_poly_idents = 1;
 
-    if (OPTIONAL_CHAR(cxt, '(')) {
-        while (!OPTIONAL_CHAR(cxt, ')')) {
+    if (OPTIONAL_NO_EAT_CHAR(cxt, '(')) {
+        result->params_loc.beg = GET_BEG_POINT(cxt);
+
+        eat(cxt, 1); /* ) */
+
+        while (!OPTIONAL_NO_EAT_CHAR(cxt, ')')
+        ||     (((result->params_loc.end = GET_END_POINT(cxt)), 1) && (eat(cxt, 1) /* ) */, 0))) {
+
             cxt->poly_expr_pattern = 0;
 
             param                = AST_ALLOC(cxt, ast_param_t);
@@ -1157,6 +1164,7 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
             array_push(result->params, param);
 
             if (!OPTIONAL_CHAR(cxt, ',')) {
+                result->params_loc.end = GET_END_POINT(cxt);
                 EXPECT_CHAR(cxt, ')', "expected ')' to close the parameter list for struct '%s' or ',' to add more", get_string(name));
                 break;
             }
@@ -1501,13 +1509,17 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
 
     EXPECT_CHAR(cxt, '(', "expected '(' to open the parameter list for procedure '%s'", get_string(name));
 
+    result->params_loc.beg = GET_BEG_POINT(cxt);
+
     SCOPE_PUSH_NAMED(cxt, AST_PROC, ASTP(result), name);
     result->scope = SCOPE(cxt);
 
     cxt->allow_poly_idents = 1;
 
     seen_vargs = 0;
-    while (!OPTIONAL_CHAR(cxt, ')')) {
+    while (!OPTIONAL_NO_EAT_CHAR(cxt, ')')
+    ||     (((result->params_loc.end = GET_END_POINT(cxt)), 1) && (eat(cxt, 1) /* ) */, 0))) {
+
         cxt->poly_expr_pattern = 0;
 
         if (seen_vargs) {
@@ -1571,6 +1583,7 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
         array_push(result->params, param);
 
         if (!OPTIONAL_CHAR(cxt, ',')) {
+            result->params_loc.end = GET_END_POINT(cxt);
             EXPECT_CHAR(cxt, ')', "expected ')' to close the parameter list for procedure '%s' or ',' to add more", get_string(name));
             break;
         }
