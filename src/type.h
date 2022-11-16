@@ -34,9 +34,12 @@
     X(TY_POLY)
 
 #define TKINDPAIR_INT_INT ((((u64)TY_GENERIC_INT)   << 32ULL) + TY_GENERIC_INT)
+#define TKINDPAIR_PTR_PTR ((((u64)TY_PTR)           << 32ULL) + TY_PTR)
 #define TKINDPAIR_PTR_INT ((((u64)TY_PTR)           << 32ULL) + TY_GENERIC_INT)
 #define TKINDPAIR_FLT_FLT ((((u64)TY_GENERIC_FLOAT) << 32ULL) + TY_GENERIC_FLOAT)
 #define TKINDPAIR_FLT_INT ((((u64)TY_GENERIC_FLOAT) << 32ULL) + TY_GENERIC_INT)
+
+#define TY_INT_PTR (TY_U64)
 
 enum {
 #define X(ty) ty,
@@ -82,7 +85,9 @@ enum {
     X(TY_F32)       \
     X(TY_F64)
 
-#define TY_FLAG_IS_POLY (1)
+enum {
+    TY_FLAG_IS_POLY = (1),
+};
 
 typedef struct type {
     u32 kind;

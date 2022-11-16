@@ -8,6 +8,7 @@ static void init_tls_data(tls_t *tls) {
 }
 
 #if TLS_METHOD == TLS_PER_OS_THREAD
+
 static __thread tls_t local_tls;
 
 void init_tls(void) {

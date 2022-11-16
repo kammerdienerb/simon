@@ -827,6 +827,7 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
         ((ast_ident_t*)result)->str_rep       = str_rep;
         ((ast_ident_t*)result)->resolved_node = NULL;
         ((ast_ident_t*)result)->poly_idx      = -1;
+        ((ast_ident_t*)result)->varg_idx      = -1;
     } else if (OPTIONAL_FLOAT(cxt, &str_rep)) {
         result                        = AST_ALLOC(cxt, ast_float_t);
         result->kind                  = AST_FLOAT;
@@ -850,6 +851,7 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
             report_loc_err(GET_BEG_POINT(cxt), "expected valid expression after opening '('");
             return NULL;
         }
+        result->flags |= AST_FLAG_PAREN_EXPR;
         EXPECT_CHAR(cxt, ')', "expected closing ')'");
     } else if (OPTIONAL_CHAR(cxt, '%')) {
         EXPECT_IDENT(cxt, &str_rep, "expected valid identifier after '%%', which indicates the declaration of a polymorphic parameter");

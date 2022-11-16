@@ -25,10 +25,11 @@ static void check_node(check_context_t cxt, ast_t *node);
 
 #define CPY_WHOLE(dst, src) (memcpy((void*)(dst), (void*)(src), sizeof(__typeof(*(dst)))))
 
-#define ALLOC_CPY(dst, src)          \
-do {                                 \
-    dst = AST_ALLOC(__typeof(*dst)); \
-    CPY_WHOLE(dst, src);             \
+#define ALLOC_CPY(dst, src)               \
+do {                                      \
+    dst = AST_ALLOC(__typeof(*dst));      \
+    CPY_WHOLE(dst, src);                  \
+    ASTP(dst)->flags |= AST_FLAG_IS_COPY; \
 } while (0)
 
 #define CPY_FIELD(dst, src, nm) ((dst)->nm = copy_tree(((__typeof(dst))(src))->nm));
@@ -610,6 +611,8 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
     array_t            *args;
     int                 n_args;
     ast_t              *arg;
+    int                 i;
+    u64                 bits[2];
 
     if (ast_kind_is_decl(node->kind)) { decl = (ast_decl_t*)node; }
 
@@ -686,7 +689,7 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
             }
 
             if (n_args != 1) {
-                report_range_err(&ASTP(arg_list)->loc, "tag 'bitfield_struct' expects exactly one argument");
+                report_range_err(&ASTP(arg_list)->loc, "tag 'bitfield_struct' expects exactly 1 argument");
             }
 
             arg = ((arg_t*)array_item(*args, 0))->expr;
@@ -718,10 +721,47 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
                     break;
             }
         } else if (ident->str_rep == BITFIELD_ID) {
-            /* @todo */
+            st = (ast_struct_t*)cxt.parent_decl->val_expr;
+
+            if (!st->bitfield_struct_bits) {
+                report_range_err(&tag->loc,
+                                 "field '%s' is tagged with 'bitfield', but its parent struct '%s' is not a 'bitfield_struct'",
+                                 get_string(field->name),
+                                 get_string(cxt.parent_decl->name));
+            }
+
+            if (n_args != 2) {
+                report_range_err(&ASTP(arg_list)->loc, "tag 'bitfield' expects exactly 2 arguments");
+            }
+
+            for (i = 0; i < n_args; i += 1) {
+                arg = ((arg_t*)array_item(*args, i))->expr;
+
+                if (arg->kind != AST_INT
+                ||  arg->value.s < 0
+                ||  arg->value.s >= st->bitfield_struct_bits) {
+
+                    report_range_err_no_exit(&arg->loc, "tag 'bitfield' argument must be a valid bit position");
+                    report_simple_info("valid bit positions are 0-%d", st->bitfield_struct_bits - 1);
+                }
+
+                bits[i] = arg->value.u;
+            }
+
+            if (bits[1] < bits[0]) {
+                report_range_err(&arg->loc, "second argument of tag 'bitfield' must be greater than or equal to the first");
+            }
+
+            for (i = 0; i < st->bitfield_struct_bits; i += 1) {
+                if (i >= bits[0] && i <= bits[1]) {
+                    field->bitfield_mask |= 1ULL << i;
+                }
+            }
+
+            field->bitfield_shift = bits[0];
         } else if (ident->str_rep == SPECIALIZATION_ID) {
             if (n_args != 1) {
-                report_range_err(&ASTP(arg_list)->loc, "tag 'specialization' expects exactly one argument");
+                report_range_err(&ASTP(arg_list)->loc, "tag 'specialization' expects exactly 1 argument");
             }
 
             arg = ((arg_t*)array_item(*args, 0))->expr;
@@ -1000,8 +1040,18 @@ static void check_param(check_context_t cxt, ast_param_t *param) {
 }
 
 static void check_int(check_context_t cxt, ast_int_t *integer) {
-    ASTP(integer)->type    = TY_S64;
-    ASTP(integer)->value.i = strtoll(get_string(integer->str_rep), NULL, 10);
+    const char *s;
+
+    s = get_string(integer->str_rep);
+
+    if (s[0] == '0' && s[1] == 'x') {
+        ASTP(integer)->flags   |= AST_FLAG_HEX_INT;
+        ASTP(integer)->type     = TY_U64;
+        ASTP(integer)->value.u  = strtoll(get_string(integer->str_rep), NULL, 16);
+    } else {
+        ASTP(integer)->type    = TY_S64;
+        ASTP(integer)->value.i = strtoll(get_string(integer->str_rep), NULL, 10);
+    }
 }
 
 static void check_float(check_context_t cxt, ast_int_t *integer) {
@@ -1425,6 +1475,8 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
     polymorphed_t        *polymorphed_p;
     poly_backlog_entry_t  backlog_entry;
 
+    ASSERT(!(node->flags & AST_FLAG_IS_COPY), "polymorph should not be a copy");
+
     params_loc       = node->kind == AST_PROC ? ((ast_proc_t*)node)->params_loc : ((ast_struct_t*)node)->params_loc;
     constants        = get_polymorph_constants(params, args, n_args, params_loc, args_loc);
     polymorphed.type = get_already_polymorphed_type(polymorphs, &constants, idx_out);
@@ -1456,7 +1508,11 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
             polymorphed.type = polymorphed_p->type = polymorphed.node->value.t;
         }
 
-        cxt.flags &= ~CHECK_FLAG_POLY_TYPE_ONLY;
+        cxt.flags &= ~(CHECK_FLAG_POLY_TYPE_ONLY |
+                       CHECK_FLAG_IN_DEFER       |
+                       CHECK_FLAG_IN_LOOP        |
+                       CHECK_FLAG_IN_PARAM       |
+                       CHECK_FLAG_IN_VARGS);
 
         backlog_entry.node       = polymorphed.node;
         backlog_entry.polymorphs = polymorphs;
@@ -1503,10 +1559,11 @@ static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
 
     proc_ty  = expr->left->type;
     arg_list = (ast_arg_list_t*)expr->right;
-    n_args   = array_len(arg_list->args);
 
     cxt.autocast_ty = proc_ty;
     check_node(cxt, expr->right);
+
+    n_args = array_len(arg_list->args);
 
     if (proc_ty == TY_BUILTIN_SPECIAL) {
         check_builtin_special_call(cxt, expr);
@@ -1887,6 +1944,7 @@ static void check_ident(check_context_t cxt, ast_ident_t *ident) {
     if (cxt.poly_constants != NULL) {
         array_traverse(*(cxt.poly_constants), it) {
             if (it->name == ident->str_rep) {
+                ASSERT(ASTP(ident)->flags & AST_FLAG_IS_COPY, "must be a copy");
                 ASTP(ident)->type  = it->type;
                 ASTP(ident)->value = it->value;
                 return;
@@ -1901,7 +1959,8 @@ static void check_ident(check_context_t cxt, ast_ident_t *ident) {
         if (ident->resolved_node->type == TY_UNKNOWN) {
             if (ident->resolved_node == ASTP(cxt.parent_decl)) { return; }
 
-            cxt.scope = resolved_node_scope;
+            cxt.scope          = resolved_node_scope;
+            cxt.poly_constants = NULL;
             check_node(cxt, ident->resolved_node);
         }
 
@@ -1976,7 +2035,8 @@ static void check_module_dot(check_context_t cxt, ast_bin_expr_t *expr) {
 
     array_free(path);
 
-    cxt.scope = module_scope;
+    cxt.scope          = module_scope;
+    cxt.poly_constants = NULL;
     check_node(cxt, found_node);
 
     /* @note !!!
@@ -2005,11 +2065,14 @@ static void check_module_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     new_ident->str_rep       = get_string_id_n(new_name_buff, new_name_len);
     new_ident->resolved_node = found_node;
     new_ident->poly_idx      = -1;
+    new_ident->varg_idx      = -1;
 }
 
 static void check_dot(check_context_t cxt, ast_bin_expr_t *expr) {
-    u32 field_ty;
-    u32 st_ty;
+    u32           st_ty;
+    u32           field_ty;
+    ast_decl_t   *st_decl;
+    ast_struct_t *st;
 
     if (expr->right->kind != AST_IDENT) {
         report_range_err(&expr->right->loc,
@@ -2031,6 +2094,14 @@ static void check_dot(check_context_t cxt, ast_bin_expr_t *expr) {
                                  get_string(((ast_ident_t*)expr->right)->str_rep));
             }
             ASTP(expr)->type = field_ty;
+
+            st_decl = struct_type_to_decl(st_ty);
+            ASSERT(st_decl != NULL, "did not get struct decl");
+
+            st = (ast_struct_t*)st_decl->val_expr;
+
+            if (st->bitfield_struct_bits) { ASTP(expr)->flags |= AST_FLAG_BITFIELD_DOT; }
+
             break;
         case TY_PTR:
             st_ty = get_under_type(expr->left->type);
@@ -2118,20 +2189,44 @@ static void check_sub(check_context_t cxt, ast_bin_expr_t *expr) {
     u32 t2;
     u32 tk1;
     u32 tk2;
+    u64 tk_both;
 
     t1  = expr->left->type;
     t2  = expr->right->type;
     tk1 = type_kind(t1);
     tk2 = type_kind(t2);
 
+    /*
+    ** tk_both is the combo of tk1 and tk2 in sorted order so that we can do the
+    ** below checks without considering right/left.
+    */
+    tk_both = tk1 < tk2
+                ? (((u64)tk1) << 32ULL) + tk2
+                : (((u64)tk2) << 32ULL) + tk1;
+
+    switch (tk_both) {
+        case TKINDPAIR_INT_INT:
+            /* @todo check for width incompat */
+            /* @todo How to handle this case? Do we promote the type? */
+            ASTP(expr)->type = t1;
+            break;
+        case TKINDPAIR_PTR_PTR:
+            ASTP(expr)->type = TY_INT_PTR;
+            break;
+        case TKINDPAIR_PTR_INT:
+            if (tk1 != TY_PTR) { goto bad; }
+            ASTP(expr)->type = t1;
+            break;
+        bad:;
+        default:
+            binop_bad_type_error(expr);
+            break;
+    }
+
     if (tk1 == TY_GENERIC_INT && tk2 == TY_GENERIC_INT) {
-        /* @todo check for width incompat */
-        /* @todo How to handle this case? Do we promote the type? */
-        ASTP(expr)->type = t1;
     } else if (tk1 == TY_PTR && tk2 == TY_GENERIC_INT) {
         ASTP(expr)->type = t1;
     } else {
-        binop_bad_type_error(expr);
         return;
     }
 }
@@ -2150,6 +2245,52 @@ static void check_mul(check_context_t cxt, ast_bin_expr_t *expr) {
     if (!(
            (tk1 == TY_GENERIC_INT   && tk2 == TY_GENERIC_INT)
         || (tk1 == TY_GENERIC_FLOAT && tk2 == TY_GENERIC_FLOAT))) {
+
+        binop_bad_type_error(expr);
+        return;
+    }
+
+    /* @todo check for width incompat */
+    /* @todo How to handle this case? Do we promote the type? */
+    ASTP(expr)->type = t1;
+}
+
+static void check_div(check_context_t cxt, ast_bin_expr_t *expr) {
+    u32 t1;
+    u32 t2;
+    u32 tk1;
+    u32 tk2;
+
+    t1  = expr->left->type;
+    t2  = expr->right->type;
+    tk1 = type_kind(t1);
+    tk2 = type_kind(t2);
+
+    if (!(
+           (tk1 == TY_GENERIC_INT   && tk2 == TY_GENERIC_INT)
+        || (tk1 == TY_GENERIC_FLOAT && tk2 == TY_GENERIC_FLOAT))) {
+
+        binop_bad_type_error(expr);
+        return;
+    }
+
+    /* @todo check for width incompat */
+    /* @todo How to handle this case? Do we promote the type? */
+    ASTP(expr)->type = t1;
+}
+
+static void check_mod(check_context_t cxt, ast_bin_expr_t *expr) {
+    u32 t1;
+    u32 t2;
+    u32 tk1;
+    u32 tk2;
+
+    t1  = expr->left->type;
+    t2  = expr->right->type;
+    tk1 = type_kind(t1);
+    tk2 = type_kind(t2);
+
+    if (!((tk1 == TY_GENERIC_INT   && tk2 == TY_GENERIC_INT))) {
 
         binop_bad_type_error(expr);
         return;
@@ -2215,6 +2356,8 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
     ** if checked alone.
     */
 
+    cxt.autocast_ty = TY_UNKNOWN;
+
     check_node(cxt, expr->left);
 
     if (expr->left->type == TY_NOT_TYPED) {
@@ -2228,6 +2371,7 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
     }
 
     if (expr->op != OP_CALL) {
+        cxt.autocast_ty = expr->left->type;
         check_node(cxt, expr->right);
     }
 
@@ -2279,6 +2423,12 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
         case OP_MULT:
             check_mul(cxt, expr);
             break;
+        case OP_DIV:
+            check_div(cxt, expr);
+            break;
+        case OP_MOD:
+            check_mod(cxt, expr);
+            break;
 
         case OP_EQU:
         case OP_NEQ:
@@ -2297,6 +2447,18 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
             check_sub(cxt, expr);
             ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
             break;
+        case OP_MULT_ASSIGN:
+            check_mul(cxt, expr);
+            ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
+            break;
+        case OP_DIV_ASSIGN:
+            check_div(cxt, expr);
+            ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
+            break;
+        case OP_MOD_ASSIGN:
+            check_mod(cxt, expr);
+            ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
+            break;
         case OP_ASSIGN:
             if (expr->left->type != expr->right->type) {
                 report_range_err(&ASTP(expr)->loc,
@@ -2312,6 +2474,19 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
         case OP_AND:
         case OP_OR:
             check_logical(cxt, expr);
+            break;
+
+        case OP_BSHL:
+        case OP_BSHR:
+        case OP_BAND:
+        case OP_BXOR:
+        case OP_BOR:
+            if (type_kind(expr->left->type)  != TY_GENERIC_INT
+            ||  type_kind(expr->right->type) != TY_GENERIC_INT) {
+
+                binop_bad_type_error(expr);
+            }
+            ASTP(expr)->type = expr->left->type;
             break;
 
         default:
@@ -2386,7 +2561,8 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
             ASTP(expr)->type = expr->child->type;
             break;
         case OP_AUTOCAST:
-            if (cxt.autocast_ty == TY_UNKNOWN) {
+            if (cxt.autocast_ty == TY_UNKNOWN
+            ||  type_is_poly(cxt.autocast_ty)) {
                 report_range_err(&ASTP(expr)->loc, "could not determine type for autocast");
             }
             /* @todo -- check that the types can actually cast */
@@ -2416,7 +2592,19 @@ static void check_expr(check_context_t cxt, ast_t *expr) {
 }
 
 static void check_struct_field(check_context_t cxt, ast_struct_field_t *field) {
+    ast_struct_t *st;
+
     check_tags(cxt, ASTP(field), &field->tags);
+
+    st = (ast_struct_t*)cxt.parent_decl->val_expr;
+
+    if (st->bitfield_struct_bits && !field->bitfield_mask) {
+        report_range_err_no_exit(&ASTP(field)->loc,
+                                 "parent struct '%s' is a bitfield_struct, but field '%s' is not tagged with 'bitfield'",
+                                 get_string(cxt.parent_decl->name),
+                                 get_string(field->name));
+        report_fixit(ASTP(field)->loc.beg, "add the 'bitfield' tag\a[[ bitfield(start_bit, end_bit) ]]");
+    }
 
     check_node(cxt, field->type_expr);
 
@@ -2470,9 +2658,12 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
 }
 
 static void check_arg_list(check_context_t cxt, ast_arg_list_t *arg_list) {
-    u32    autocast_ty;
-    int    i;
-    arg_t *arg;
+    u32     autocast_ty;
+    int     i;
+    arg_t  *arg;
+    type_t  list_type;
+    int     j;
+    arg_t   new_arg;
 
     ASTP(arg_list)->type = TY_NOT_TYPED;
 
@@ -2486,6 +2677,34 @@ static void check_arg_list(check_context_t cxt, ast_arg_list_t *arg_list) {
 
         check_node(cxt, arg->expr);
 
+        i += 1;
+    }
+
+again:;
+    i = 0;
+    array_traverse(arg_list->args, arg) {
+        if (type_kind(arg->expr->type) == _TY_TYPE_LIST) {
+            array_delete(arg_list->args, i);
+
+            list_type = get_type_t(arg->expr->type);
+
+            for (j = 0; j < list_type.list_len; j += 1) {
+                new_arg.name = arg->name;
+                new_arg.expr = copy_tree(arg->expr);
+
+                check_node(cxt, new_arg.expr);
+
+                new_arg.expr->type = list_type.id_list[j];
+
+                if (new_arg.expr->kind == AST_IDENT) {
+                    ((ast_ident_t*)new_arg.expr)->varg_idx = j;
+                }
+
+                array_insert(arg_list->args, i + j, new_arg);
+            }
+
+            goto again;
+        }
         i += 1;
     }
 }
@@ -2570,6 +2789,11 @@ static void check_return(check_context_t cxt, ast_return_t *ret) {
         return;
     }
 
+/*     if (cxt.flags & CHECK_FLAG_IN_DEFER) { */
+/*         report_range_err(&ASTP(ret)->loc, "return statements are not valid in a defer block"); */
+/*         return; */
+/*     } */
+
     if (ret->expr != NULL) {
         if (cxt.proc->ret_type_expr->value.t != TY_POLY) {
             cxt.autocast_ty = cxt.proc->ret_type_expr->value.t;
@@ -2603,6 +2827,8 @@ static void check_return(check_context_t cxt, ast_return_t *ret) {
 
 static void check_defer(check_context_t cxt, ast_defer_t *defer) {
     ASTP(defer)->type = TY_NOT_TYPED;
+
+    cxt.flags |= CHECK_FLAG_IN_DEFER;
 
     check_node(cxt, defer->block);
 }
@@ -2720,6 +2946,7 @@ static void check_node(check_context_t cxt, ast_t *node) {
         case AST_SD_BLOCK:
             node->type      = TY_NOT_TYPED;
             cxt.parent_decl = NULL;
+            cxt.scope       = ((ast_block_t*)node)->scope;
             array_traverse(((ast_block_t*)node)->stmts, it) {
                 check_node(cxt, *it);
             }

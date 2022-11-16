@@ -67,14 +67,19 @@ X_AST
 #undef X
 };
 
-/* #define AST_FLAG_CHECKED              (1 << 0) */
-#define AST_FLAG_POLYMORPH            (1 << 1)
-#define AST_FLAG_VARARGS              (1 << 2)
-#define AST_FLAG_POLY_VARARGS         (1 << 3)
-#define AST_FLAG_CALL_IS_CAST         (1 << 4)
-#define AST_FLAG_CALL_IS_BUILTIN_VARG (1 << 5)
-#define AST_FLAG_IS_EXTERN            (1 << 6)
-#define AST_FLAG_EXPR_TOP             (1 << 7)
+enum {
+    AST_FLAG_POLYMORPH            = (1 << 1),
+    AST_FLAG_VARARGS              = (1 << 2),
+    AST_FLAG_POLY_VARARGS         = (1 << 3),
+    AST_FLAG_CALL_IS_CAST         = (1 << 4),
+    AST_FLAG_CALL_IS_BUILTIN_VARG = (1 << 5),
+    AST_FLAG_IS_EXTERN            = (1 << 6),
+    AST_FLAG_EXPR_TOP             = (1 << 7),
+    AST_FLAG_IS_COPY              = (1 << 8),
+    AST_FLAG_PAREN_EXPR           = (1 << 9),
+    AST_FLAG_BITFIELD_DOT         = (1 << 10),
+    AST_FLAG_HEX_INT              = (1 << 11),
+};
 
 struct ast;
 
@@ -187,6 +192,8 @@ AST_DEFINE(struct_field,
     string_id  name;
     ast_t     *type_expr;
     array_t    tags;
+    u64        bitfield_mask;
+    u32        bitfield_shift;
 );
 
 AST_DEFINE(struct,
@@ -230,6 +237,7 @@ AST_DEFINE(ident,
     string_id  str_rep;
     ast_t     *resolved_node;
     int        poly_idx;
+    int        varg_idx;
 );
 
 AST_DEFINE(unary_expr,
@@ -292,11 +300,14 @@ typedef struct {
     u32         autocast_ty;
 } check_context_t;
 
-#define CHECK_FLAG_DESCENDING     (1 << 0)
-#define CHECK_FLAG_IN_LOOP        (1 << 1)
-#define CHECK_FLAG_IN_PARAM       (1 << 2)
-#define CHECK_FLAG_IN_VARGS       (1 << 3)
-#define CHECK_FLAG_POLY_TYPE_ONLY (1 << 4)
+enum {
+    CHECK_FLAG_DESCENDING     = (1 << 0),
+    CHECK_FLAG_IN_LOOP        = (1 << 1),
+    CHECK_FLAG_IN_PARAM       = (1 << 2),
+    CHECK_FLAG_IN_VARGS       = (1 << 3),
+    CHECK_FLAG_IN_DEFER       = (1 << 4),
+    CHECK_FLAG_POLY_TYPE_ONLY = (1 << 5),
+};
 
 void check_all(void);
 

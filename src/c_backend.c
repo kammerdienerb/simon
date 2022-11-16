@@ -16,6 +16,13 @@ static ast_proc_t    *proc;
 static u32            proc_ty;
 static u32            varg_ty;
 static u32            which_varg;
+static array_t        defer_stack;
+static u64            defer_label_counter;
+static array_t        defer_label_stack;
+static u64            loop_label_counter;
+static array_t        loop_label_stack;
+
+
 
 #define EMIT_C(c)                                \
 do {                                             \
@@ -94,6 +101,46 @@ static void emit_prelude(void) {
     EMIT_STRING(prelude);
 }
 
+
+
+#define PUSH_DEFER_SCOPE(bk)                              \
+do {                                                      \
+    array_t defers = array_make(ast_t*);                  \
+    array_push(defer_stack, defers);                      \
+    array_push(defer_label_stack, defer_label_counter);   \
+    if ((bk) == BLOCK_LOOP) {                             \
+        array_push(loop_label_stack, loop_label_counter); \
+        loop_label_counter += 1;                          \
+    }                                                     \
+    defer_label_counter += 1;                             \
+} while (0)
+
+#define POP_DEFER_SCOPE(bk)                               \
+do {                                                      \
+    array_t *old_defers = array_last(defer_stack);        \
+    if (old_defers == NULL) { break; }                    \
+    array_free(*old_defers);                              \
+    array_pop(defer_stack);                               \
+    array_pop(defer_label_stack);                         \
+    if ((bk) == BLOCK_LOOP) {                             \
+        array_pop(loop_label_stack);                      \
+    }                                                     \
+} while (0)
+
+#define PUSH_DEFER(_defer)                                \
+do {                                                      \
+    array_t *top = array_last(defer_stack);               \
+    if (top == NULL) { break; }                           \
+    array_push(*top, (_defer));                           \
+} while (0)
+
+
+#define DEFER_STACK_LEN()    (array_len(defer_stack))
+#define HAVE_DEFERS()        (array_len(defer_stack) && array_last(*(array_t*)array_last(defer_stack)))
+#define TOP_DEFER_LABEL()    (*(u64*)array_last(defer_label_stack))
+#define TOP_LOOP_LABEL()     (*(u64*)array_last(loop_label_stack))
+#define BOTTOM_DEFER_LABEL() (*(u64*)array_item(defer_label_stack, 0))
+
 static void emit_type_declarator(u32 t) {
     switch (type_kind(t)) {
         case TY_NOT_TYPED:
@@ -119,22 +166,34 @@ static void emit_type_declarator(u32 t) {
     }
 }
 
+
 static void emit_expr(ast_t *expr) {
-    ast_ident_t          *ident;
-    polymorph_constant_t *it;
-    ast_decl_t           *decl;
-    ast_proc_t           *proc;
-    polymorphed_t        *spec_polymorphed;
-    ast_unary_expr_t     *un_expr;
-    int                   op;
-    ast_bin_expr_t       *bin_expr;
-    ast_arg_list_t       *arg_list;
-    arg_t                *arg;
-    const char           *comma;
+    ast_ident_t           *ident;
+    polymorph_constant_t  *it;
+    ast_decl_t            *decl;
+    ast_proc_t            *proc;
+    polymorphed_t         *spec_polymorphed;
+    ast_unary_expr_t      *un_expr;
+    int                    op;
+    ast_bin_expr_t        *bin_expr;
+    u32                    st_ty;
+    ast_decl_t            *st_decl;
+    ast_struct_t          *st;
+    ast_t                **field_it;
+    ast_struct_field_t    *field;
+    ast_arg_list_t        *arg_list;
+    arg_t                 *arg;
+    const char            *comma;
+
+    if (expr->flags & AST_FLAG_PAREN_EXPR) { EMIT_C('('); }
 
     switch(expr->kind) {
         case AST_INT:
-            EMIT_STRING_F("%"PRIi64"LL", expr->value.i);
+            if (expr->flags & AST_FLAG_HEX_INT) {
+                EMIT_STRING_F("0x%"PRIx64"LL", expr->value.u);
+            } else {
+                EMIT_STRING_F("%"PRIi64"LL", expr->value.i);
+            }
             break;
         case AST_FLOAT:
             EMIT_STRING_F("%f", expr->value.f);
@@ -182,6 +241,10 @@ static void emit_expr(ast_t *expr) {
                 EMIT_STRING_F("__p%d", ident->poly_idx);
 
                 goto renamed;
+            } else if (ident->varg_idx != -1) {
+                EMIT_STRING_F("__varg%d", ident->varg_idx);
+
+                goto renamed;
             }
 
             if (ident->resolved_node->flags & AST_FLAG_IS_EXTERN) {
@@ -203,11 +266,17 @@ renamed:;
             un_expr = (ast_unary_expr_t*)expr;
             op      = un_expr->op;
 
-            if (op == OP_ADDR && type_kind(un_expr->child->type) == TY_TYPE) {
+            if (op == OP_ADDR &&
+                (type_kind(un_expr->child->type) == TY_TYPE
+                || type_is_poly(un_expr->child->type))) {
+
                 emit_expr(un_expr->child);
                 EMIT_STRING("*");
             } else {
                 switch (op) {
+                    case OP_NOT:
+                        EMIT_STRING("!");
+                        break;
                     case OP_ADDR:
                         EMIT_STRING("&");
                         break;
@@ -232,42 +301,195 @@ renamed:;
             bin_expr = (ast_bin_expr_t*)expr;
             op       = bin_expr->op;
 
-            if (op == OP_CALL) {
-                if (ASTP(bin_expr)->flags & AST_FLAG_CALL_IS_CAST) {
-                    EMIT_STRING("(");
-                    arg_list = (ast_arg_list_t*)bin_expr->right;
-                    arg      = array_item(arg_list->args, 0);
-                    emit_type_declarator(arg->expr->value.t);
-                    EMIT_STRING(")(");
-                    arg = array_item(arg_list->args, 1);
-                    emit_expr(arg->expr);
-                    EMIT_STRING(")");
-                } else if (ASTP(bin_expr)->flags & AST_FLAG_CALL_IS_BUILTIN_VARG) {
-                    EMIT_STRING_F("__varg%d", which_varg);
-                } else {
+            switch (op) {
+                case OP_CALL:
+                    break;
+                case OP_DOT:
+                    if (!(expr->flags & AST_FLAG_BITFIELD_DOT)) {
+                        goto do_left;
+                    }
+                    break;
+                case OP_PLUS_ASSIGN:
+                case OP_MINUS_ASSIGN:
+                case OP_MULT_ASSIGN:
+                case OP_DIV_ASSIGN:
+                case OP_MOD_ASSIGN:
+                case OP_ASSIGN:
+                    if (bin_expr->left->flags & AST_FLAG_BITFIELD_DOT) {
+                        emit_expr(((ast_bin_expr_t*)bin_expr->left)->left);
+                    } else {
+                        goto do_left;
+                    }
+                    break;
+                do_left:;
+                default:
                     emit_expr(bin_expr->left);
-                    EMIT_STRING("(");
-                    emit_expr(bin_expr->right);
-                    EMIT_STRING(")");
-                }
-            } else {
-                emit_expr(bin_expr->left);
+            }
 
-                switch (bin_expr->op) {
-                    case OP_AND:
-                        EMIT_STRING(" && ");
+            switch (op) {
+                case OP_CALL:
+                    if (ASTP(bin_expr)->flags & AST_FLAG_CALL_IS_CAST) {
+                        EMIT_STRING("(");
+                        arg_list = (ast_arg_list_t*)bin_expr->right;
+                        arg      = array_item(arg_list->args, 0);
+                        emit_type_declarator(arg->expr->value.t);
+                        EMIT_STRING(")(");
+                        arg = array_item(arg_list->args, 1);
+                        emit_expr(arg->expr);
+                        EMIT_STRING(")");
+                    } else if (ASTP(bin_expr)->flags & AST_FLAG_CALL_IS_BUILTIN_VARG) {
+                        EMIT_STRING_F("__varg%d", which_varg);
+                    } else {
+                        emit_expr(bin_expr->left);
+                        EMIT_STRING("(");
                         emit_expr(bin_expr->right);
-                        break;
-                    case OP_OR:
-                        EMIT_STRING(" || ");
-                        emit_expr(bin_expr->right);
-                        break;
-                    case OP_SUBSCRIPT:
-                        EMIT_C('[');
-                        emit_expr(bin_expr->right);
-                        EMIT_C(']');
-                        break;
-                    case OP_DOT:
+                        EMIT_STRING(")");
+                    }
+                    break;
+                case OP_PLUS_ASSIGN:
+                case OP_MINUS_ASSIGN:
+                case OP_MULT_ASSIGN:
+                case OP_DIV_ASSIGN:
+                case OP_MOD_ASSIGN:
+                case OP_ASSIGN:
+                    if (bin_expr->left->flags & AST_FLAG_BITFIELD_DOT) {
+                        st_ty   = ((ast_bin_expr_t*)bin_expr->left)->left->type;
+                        st_decl = struct_type_to_decl(st_ty);
+                        ASSERT(st_decl != NULL, "did not get struct decl");
+
+                        st = (ast_struct_t*)st_decl->val_expr;
+
+                        field = NULL;
+                        array_traverse(st->fields, field_it) {
+                            field = (ast_struct_field_t*)*field_it;
+                            if (((ast_ident_t*)((ast_bin_expr_t*)(bin_expr->left))->right)->str_rep == field->name) {
+                                break;
+                            }
+                            field = NULL;
+                        }
+
+                        ASSERT(field != NULL, "did not get field");
+
+                        EMIT_STRING(" = (");
+                        emit_expr(((ast_bin_expr_t*)bin_expr->left)->left);
+                        EMIT_STRING_F(" & ~0x%llX) | (", field->bitfield_mask);
+
+                        switch (op) {
+                            case OP_PLUS_ASSIGN:
+                                EMIT_C('(');
+                                EMIT_C('(');
+                                emit_expr(bin_expr->left);
+                                EMIT_STRING(" + ((u64)");
+                                emit_expr(bin_expr->right);
+                                EMIT_C(')');
+                                EMIT_C(')');
+                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                break;
+                            case OP_MINUS_ASSIGN:
+                                EMIT_C('(');
+                                EMIT_C('(');
+                                emit_expr(bin_expr->left);
+                                EMIT_STRING(" - ((u64)");
+                                emit_expr(bin_expr->right);
+                                EMIT_C(')');
+                                EMIT_C(')');
+                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                break;
+                            case OP_MULT_ASSIGN:
+                                EMIT_C('(');
+                                EMIT_C('(');
+                                emit_expr(bin_expr->left);
+                                EMIT_STRING(" * ((u64)");
+                                emit_expr(bin_expr->right);
+                                EMIT_C(')');
+                                EMIT_C(')');
+                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                break;
+                            case OP_DIV_ASSIGN:
+                                EMIT_C('(');
+                                EMIT_C('(');
+                                emit_expr(bin_expr->left);
+                                EMIT_STRING(" / ((u64)");
+                                emit_expr(bin_expr->right);
+                                EMIT_C(')');
+                                EMIT_C(')');
+                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                break;
+                            case OP_MOD_ASSIGN:
+                                EMIT_C('(');
+                                EMIT_C('(');
+                                emit_expr(bin_expr->left);
+                                EMIT_STRING(" % ((u64)");
+                                emit_expr(bin_expr->right);
+                                EMIT_C(')');
+                                EMIT_C(')');
+                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                break;
+                            case OP_ASSIGN:
+                                EMIT_STRING("(((u64)");
+                                emit_expr(bin_expr->right);
+                                EMIT_C(')');
+                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                break;
+                        }
+                    } else {
+                        goto basic;
+                    }
+                    break;
+                case OP_AND:
+                    EMIT_STRING(" && ");
+                    emit_expr(bin_expr->right);
+                    break;
+                case OP_OR:
+                    EMIT_STRING(" || ");
+                    emit_expr(bin_expr->right);
+                    break;
+                case OP_SUBSCRIPT:
+                    EMIT_C('[');
+                    emit_expr(bin_expr->right);
+                    EMIT_C(']');
+                    break;
+                case OP_DOT:
+                    if (expr->flags & AST_FLAG_BITFIELD_DOT) {
+                        EMIT_C('(');
+                        EMIT_C('(');
+                        if (type_kind(bin_expr->left->type) == TY_PTR) {
+                            EMIT_C('(');
+                            EMIT_C('*');
+                            emit_expr(bin_expr->left);
+                            EMIT_C(')');
+                        } else {
+                            emit_expr(bin_expr->left);
+                        }
+
+                        st_ty   = bin_expr->left->type;
+                        st_decl = struct_type_to_decl(st_ty);
+                        ASSERT(st_decl != NULL, "did not get struct decl");
+
+                        st = (ast_struct_t*)st_decl->val_expr;
+
+                        field = NULL;
+                        array_traverse(st->fields, field_it) {
+                            field = (ast_struct_field_t*)*field_it;
+                            if (((ast_ident_t*)bin_expr->right)->str_rep == field->name) {
+                                break;
+                            }
+                            field = NULL;
+                        }
+
+                        ASSERT(field != NULL, "did not get field");
+
+                        EMIT_STRING_F(" & 0x%llX", field->bitfield_mask);
+
+
+                        EMIT_C(')');
+
+                        if (field->bitfield_shift) {
+                            EMIT_STRING_F(" >> %d", field->bitfield_shift);
+                        }
+
+                        EMIT_C(')');
+                    } else {
                         if (type_kind(bin_expr->left->type) == TY_PTR) {
                             EMIT_C('-');
                             EMIT_C('>');
@@ -276,11 +498,12 @@ renamed:;
                         }
                         ASSERT(bin_expr->right->kind == AST_IDENT, "right of dot not an ident");
                         EMIT_STRING_ID(((ast_ident_t*)bin_expr->right)->str_rep);
-                        break;
-                    default:
-                        EMIT_STRING_F(" %s ", OP_STR(op));
-                        emit_expr(bin_expr->right);
-                }
+                    }
+                    break;
+                basic:;
+                default:
+                    EMIT_STRING_F(" %s ", OP_STR(op));
+                    emit_expr(bin_expr->right);
             }
 
             break;
@@ -300,12 +523,13 @@ renamed:;
             report_simple_err("encountered AST kind %s in emit_expr()",
                               ast_get_kind_str(expr->kind));
     }
+
+    if (expr->flags & AST_FLAG_PAREN_EXPR) { EMIT_C(')'); }
 }
 
-static void emit_param(ast_param_t *param) {
+static void emit_param(ast_param_t *param, const char *lazy_comma) {
     polymorph_constant_t *it;
     type_t                list_type;
-    const char           *lazy_comma;
     int                   i;
 
     if (ASTP(param)->flags & AST_FLAG_VARARGS) {
@@ -317,8 +541,6 @@ static void emit_param(ast_param_t *param) {
             ASSERT(it->name == ELLIPSIS_ID, "not dots");
 
             list_type  = get_type_t(it->value.t);
-            lazy_comma = "";
-
             for (i = 0; i < list_type.list_len; i += 1) {
                 EMIT_STRING(lazy_comma);
                 emit_type_declarator(list_type.id_list[i]);
@@ -327,12 +549,14 @@ static void emit_param(ast_param_t *param) {
                 lazy_comma = ", ";
             }
         } else {
+            EMIT_STRING(lazy_comma);
             emit_expr(param->type_expr);
             EMIT_C('*');
             EMIT_C(' ');
             EMIT_STRING_ID(param->name);
         }
     } else {
+        EMIT_STRING(lazy_comma);
         emit_expr(param->type_expr);
         EMIT_C(' ');
         EMIT_STRING_ID(param->name);
@@ -403,8 +627,7 @@ static void emit_proc_pre_decl(ast_decl_t *parent_decl) {
 
                 continue;
             }
-            EMIT_STRING(lazy_comma);
-            emit_param((ast_param_t*)*it);
+            emit_param((ast_param_t*)*it, lazy_comma);
             lazy_comma = ", ";
         }
         EMIT_C(')');
@@ -572,25 +795,136 @@ static void emit_var_decl(ast_decl_t *decl) {
     }
 }
 
+enum {
+    BLOCK_NORMAL,
+    BLOCK_PROC_BODY,
+    BLOCK_LOOP,
+};
+
 static void emit_stmt(ast_t *stmt, int indent_level);
 
+static void _emit_block(ast_block_t *block, int indent_level, int block_kind, ast_t *proc_ret_type_expr);
+
 static void emit_block(ast_block_t *block, int indent_level) {
+    _emit_block(block, indent_level, BLOCK_NORMAL, NULL);
+}
+
+static void emit_proc_block(ast_block_t *block, int indent_level, ast_t *proc_ret_type_expr) {
+    _emit_block(block, indent_level, BLOCK_PROC_BODY, proc_ret_type_expr);
+}
+
+static void emit_loop_block(ast_block_t *block, int indent_level) {
+    _emit_block(block, indent_level, BLOCK_LOOP, NULL);
+}
+
+static void emit_defers(int indent_level) {
+    array_t  *scope;
+    ast_t   **stmt_it;
+
+    scope = array_last(defer_stack);
+    if (scope == NULL) { return; }
+
+    if (array_len(*scope) == 0) { return; }
+
+    INDENT(indent_level); EMIT_STRING_F("{ /* DEFER SCOPE %"PRIu64" */\n", TOP_DEFER_LABEL());
+    array_rtraverse(*scope, stmt_it) {
+        emit_stmt(*stmt_it, indent_level + 1);
+    }
+    INDENT(indent_level); EMIT_STRING("}\n");
+}
+
+static void emit_all_defers_except_return(int indent_level) {
+    array_t  *scope;
+    ast_t   **stmt_it;
+
+    array_rtraverse(defer_stack, scope) {
+        if (scope == array_item(defer_stack, 0)) { break; }
+
+        if (array_len(*scope) == 0) { continue; }
+
+        INDENT(indent_level); EMIT_STRING_F("{ /* DEFER SCOPE %"PRIu64" */\n", TOP_DEFER_LABEL());
+        array_rtraverse(*scope, stmt_it) {
+            emit_stmt(*stmt_it, indent_level + 1);
+        }
+        INDENT(indent_level); EMIT_STRING("}\n");
+    }
+}
+
+static void emit_all_defers_for_loop(int indent_level) {
+    int       i;
+    array_t  *scope;
+    ast_t   **stmt_it;
+
+    i = array_len(defer_stack) - 1;
+    array_rtraverse(defer_stack, scope) {
+        if (*(u64*)array_item(defer_label_stack, i) == TOP_LOOP_LABEL()) { break; }
+
+        if (array_len(*scope) == 0) { goto next; }
+
+        INDENT(indent_level); EMIT_STRING_F("{ /* DEFER SCOPE %"PRIu64" */\n", TOP_DEFER_LABEL());
+        array_rtraverse(*scope, stmt_it) {
+            emit_stmt(*stmt_it, indent_level + 1);
+        }
+        INDENT(indent_level); EMIT_STRING("}\n");
+
+next:;
+        i -= 1;
+    }
+}
+
+static void _emit_block(ast_block_t *block, int indent_level, int block_kind, ast_t *proc_ret_type_expr) {
     ast_t **stmt;
 
     INDENT(indent_level); EMIT_STRING("{\n");
 
+    if (ASTP(block)->kind == AST_BLOCK) { PUSH_DEFER_SCOPE(block_kind); }
+
+    if (block_kind == BLOCK_PROC_BODY && proc_ret_type_expr != NULL) {
+        INDENT(indent_level + 1);
+        emit_expr(proc_ret_type_expr);
+        EMIT_STRING(" _simon_proc_ret;\n\n");
+    }
+
     array_traverse(block->stmts, stmt) { emit_stmt(*stmt, indent_level + 1); }
+
+/*     if (block_kind == BLOCK_LOOP) { */
+/*         ASSERT(ASTP(block)->kind == AST_BLOCK, "loop block should not be SD"); */
+/*  */
+/*         EMIT_STRING_F("\n_simon_loop_%"PRIu64"_continue:;\n", loop_label_counter); */
+/*         emit_defers(indent_level + 1); */
+/*         INDENT(indent_level + 1); EMIT_STRING("continue;\n"); */
+/*         EMIT_STRING_F("\n_simon_loop_%"PRIu64"_break:;\n", loop_label_counter); */
+/*     } */
+
+    if (ASTP(block)->kind == AST_BLOCK) {
+        if (block_kind == BLOCK_PROC_BODY || HAVE_DEFERS()) {
+            EMIT_STRING_F("\n_simon_scope_%"PRIu64"_exit:;\n", TOP_DEFER_LABEL());
+            emit_defers(indent_level + 1);
+        }
+        POP_DEFER_SCOPE(block_kind);
+/*         if (block_kind == BLOCK_LOOP) { */
+/*             INDENT(indent_level + 1); EMIT_STRING("break;\n"); */
+/*       continue} */
+    }
+
+    if (block_kind == BLOCK_PROC_BODY && proc_ret_type_expr != NULL) {
+        INDENT(indent_level + 1);
+        EMIT_STRING("return _simon_proc_ret;\n");
+    }
+
+    defer_label_counter += 1;
 
     INDENT(indent_level); EMIT_STRING("}\n");
 }
 
 static void emit_stmt(ast_t *stmt, int indent_level) {
-    u32                   vargs_ty;
-    polymorph_constant_t *it;
-    type_t                list_type;
-    ast_block_t          *block;
-    int                   i;
-    ast_t                *subblock;
+    u32                    vargs_ty;
+    polymorph_constant_t  *it;
+    type_t                 list_type;
+    ast_block_t           *block;
+    int                    i;
+    ast_t                 *subblock;
+    ast_t                **stmt_it;
 
     switch (stmt->kind) {
         case AST_BLOCK:
@@ -645,23 +979,35 @@ static void emit_stmt(ast_t *stmt, int indent_level) {
                 emit_expr(((ast_loop_t*)stmt)->post);
             }
             EMIT_STRING(")\n");
-            emit_block((ast_block_t*)((ast_loop_t*)stmt)->block, indent_level);
+            emit_loop_block((ast_block_t*)((ast_loop_t*)stmt)->block, indent_level);
+
+            loop_label_counter += 1;
             break;
         case AST_RETURN:
-            EMIT_STRING("return ");
             if (((ast_return_t*)stmt)->expr != NULL) {
+                EMIT_STRING("_simon_proc_ret = ");
                 emit_expr(((ast_return_t*)stmt)->expr);
+                EMIT_STRING(";\n");
+                INDENT(indent_level);
             }
-            EMIT_STRING(";\n");
+            emit_all_defers_except_return(indent_level);
+            EMIT_STRING_F("goto _simon_scope_%"PRIu64"_exit;\n", BOTTOM_DEFER_LABEL());
             break;
-        case AST_DEFER:      break;
+        case AST_DEFER:
+            (void)stmt_it;
+            PUSH_DEFER(((ast_defer_t*)stmt)->block);
+/*             block = (ast_block_t*)((ast_defer_t*)stmt)->block; */
+/*             array_traverse(block->stmts, stmt_it) { */
+/*                 PUSH_DEFER(*stmt_it); */
+/*             } */
+            break;
         case AST_BREAK:
-            EMIT_STRING("break\n");
-            EMIT_STRING(";\n");
+            emit_all_defers_for_loop(indent_level);
+            EMIT_STRING("break;\n");
             break;
         case AST_CONTINUE:
-            EMIT_STRING("continue\n");
-            EMIT_STRING(";\n");
+            emit_all_defers_for_loop(indent_level);
+            EMIT_STRING("continue;\n");
             break;
         case AST_STATIC_VARGS:
             if (stmt->type == TY_POLY) {
@@ -936,15 +1282,14 @@ static void emit_proc(ast_decl_t *parent_decl, ast_proc_t *p) {
 
                 continue;
             }
-            EMIT_STRING(lazy_comma);
-            emit_param((ast_param_t*)*it);
+            emit_param((ast_param_t*)*it, lazy_comma);
             lazy_comma = ", ";
         }
         EMIT_C(')');
     }
 
     EMIT_STRING("\n");
-    emit_block((ast_block_t*)proc->block, 0);
+    emit_proc_block((ast_block_t*)proc->block, 0, proc->ret_type_expr);
     EMIT_STRING("\n");
 
     proc = NULL;
@@ -1031,7 +1376,10 @@ void do_c_backend(void) {
 
     start_us = measure_time_now_us();
 
-    mod_stack = array_make(ast_decl_t*);
+    mod_stack         = array_make(ast_decl_t*);
+    defer_stack       = array_make(array_t);
+    defer_label_stack = array_make(u64);
+    loop_label_stack  = array_make(u64);
 
     emit_prelude();
     EMIT_STRING("\n");
@@ -1048,6 +1396,8 @@ void do_c_backend(void) {
     fflush(output_file);
 
     verb_message("C generation took %lu us\n", measure_time_now_us() - start_us);
+
+    if (options.c_source) { return; }
 
     strcpy(exe_name, options.output_name);
     if (exe_name[strlen(exe_name) - 1] == 'c'

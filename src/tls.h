@@ -7,6 +7,9 @@
 typedef struct {
     int          is_initialized;
     bump_alloc_t bump_alloc;
+
+    /* pad to cache line to try and avoid some false sharing */
+    u8            _pad[48];
 } tls_t;
 
 #define TLS_PER_HW_THREAD (1)
@@ -29,6 +32,9 @@ typedef struct {
     pthread_key_t key;
 
     tls_t         tls;
+
+    /* pad to cache line to try and avoid some false sharing */
+    u8            _pad[16];
 } tls_entry_t;
 
 #endif /* TLS_METHOD == TLS_PER_HW_THREAD */

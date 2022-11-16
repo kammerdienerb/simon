@@ -1,7 +1,48 @@
 [[ program_entry ]]
 main := proc() {
-    N: u64 = ~~1024;
+    defer { Sys.exit(0); }
+
+
+    N: u64 = ~~4096;
     block_alloc := Fixed_Allocator.new(_builtin_stack_alloc(N), N);
 
-    Allocator.alloc(*block_alloc, ~~64);
+    defer {
+        aprintf(*block_alloc, "zap\n");
+    }
+    defer {
+        defer {
+            aprintf(*block_alloc, "bar\n");
+        }
+        aprintf(*block_alloc, "foo\n");
+    }
+
+    aprintf(*block_alloc, "hello! {}\n", 1);
+
+    defer { aprintf(*block_alloc, "bye!\n"); }
+
+    ptr := Allocator.alloc(*block_alloc, ~~64);
+
+    aprintf(*block_alloc, "allocated {} bytes at {}\n", N, ptr);
+
+    loop i := 0; i < 10; i += 1 {
+        defer { aprintf(*block_alloc, "<- {}\n", i); }
+        if i > 4 {
+            defer { aprintf(*block_alloc, "INNER IF\n"); }
+            break;
+        }
+        aprintf(*block_alloc, "{} ->\n", i);
+    }
+
+    if 1 {
+        defer {
+            aprintf(*block_alloc, "A\n");
+            aprintf(*block_alloc, "B\n");
+            aprintf(*block_alloc, "C\n");
+        }
+        defer {
+            aprintf(*block_alloc, "D\n");
+            aprintf(*block_alloc, "E\n");
+            aprintf(*block_alloc, "F\n");
+        }
+    }
 }

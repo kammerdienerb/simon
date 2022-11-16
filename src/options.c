@@ -61,6 +61,8 @@ int parse_options(int argc, char **argv) {
             i += 1;
             if (i == argc) { return 1; }
             options.backend = strdup(argv[i]);
+        } else if (strncmp(argv[i], "--c-source", 10) == 0) {
+            options.c_source = 1;
         } else if (strncmp(argv[i], "--output=", 9) == 0) {
             options.output_name = strdup(argv[i] + 9);
         } else if (strcmp(argv[i], "-o") == 0) {

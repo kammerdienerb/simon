@@ -11,6 +11,7 @@ typedef struct {
     int         n_threads;
     const char *backend;
     const char *output_name;
+    int         c_source;
 } options_t;
 
 extern options_t options;

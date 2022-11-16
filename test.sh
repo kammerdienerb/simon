@@ -5,3 +5,4 @@
 
 # build/bin/simon -v poly.si
 build/bin/simon -v test.si basic.si
+# build/bin/simon -v x.si

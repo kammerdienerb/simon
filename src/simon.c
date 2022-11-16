@@ -12,6 +12,7 @@
 #include "scope.h"
 #include "type.h"
 #include "c_backend.h"
+#include "tls.h"
 
 void do_sanity_checks(void);
 int  do_options(int argc, char **argv);
