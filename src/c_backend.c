@@ -372,7 +372,7 @@ renamed:;
 
                         EMIT_STRING(" = (");
                         emit_expr(((ast_bin_expr_t*)bin_expr->left)->left);
-                        EMIT_STRING_F(" & ~0x%llX) | (", field->bitfield_mask);
+                        EMIT_STRING_F(" & ~0x%"PRIx64") | (", field->bitfield_mask);
 
                         switch (op) {
                             case OP_PLUS_ASSIGN:
@@ -383,7 +383,7 @@ renamed:;
                                 emit_expr(bin_expr->right);
                                 EMIT_C(')');
                                 EMIT_C(')');
-                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                EMIT_STRING_F(" << %dULL) & 0x%"PRIx64")", field->bitfield_shift, field->bitfield_mask);
                                 break;
                             case OP_MINUS_ASSIGN:
                                 EMIT_C('(');
@@ -393,7 +393,7 @@ renamed:;
                                 emit_expr(bin_expr->right);
                                 EMIT_C(')');
                                 EMIT_C(')');
-                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                EMIT_STRING_F(" << %dULL) & 0x%"PRIx64")", field->bitfield_shift, field->bitfield_mask);
                                 break;
                             case OP_MULT_ASSIGN:
                                 EMIT_C('(');
@@ -403,7 +403,7 @@ renamed:;
                                 emit_expr(bin_expr->right);
                                 EMIT_C(')');
                                 EMIT_C(')');
-                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                EMIT_STRING_F(" << %dULL) & 0x%"PRIx64")", field->bitfield_shift, field->bitfield_mask);
                                 break;
                             case OP_DIV_ASSIGN:
                                 EMIT_C('(');
@@ -413,7 +413,7 @@ renamed:;
                                 emit_expr(bin_expr->right);
                                 EMIT_C(')');
                                 EMIT_C(')');
-                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                EMIT_STRING_F(" << %dULL) & 0x%"PRIx64")", field->bitfield_shift, field->bitfield_mask);
                                 break;
                             case OP_MOD_ASSIGN:
                                 EMIT_C('(');
@@ -423,13 +423,13 @@ renamed:;
                                 emit_expr(bin_expr->right);
                                 EMIT_C(')');
                                 EMIT_C(')');
-                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                EMIT_STRING_F(" << %dULL) & 0x%"PRIx64")", field->bitfield_shift, field->bitfield_mask);
                                 break;
                             case OP_ASSIGN:
                                 EMIT_STRING("(((u64)");
                                 emit_expr(bin_expr->right);
                                 EMIT_C(')');
-                                EMIT_STRING_F(" << %dULL) & 0x%llX)", field->bitfield_shift, field->bitfield_mask);
+                                EMIT_STRING_F(" << %dULL) & 0x%"PRIx64")", field->bitfield_shift, field->bitfield_mask);
                                 break;
                         }
                     } else {
@@ -479,7 +479,7 @@ renamed:;
 
                         ASSERT(field != NULL, "did not get field");
 
-                        EMIT_STRING_F(" & 0x%llX", field->bitfield_mask);
+                        EMIT_STRING_F(" & 0x%"PRIx64, field->bitfield_mask);
 
 
                         EMIT_C(')');
