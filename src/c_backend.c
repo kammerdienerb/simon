@@ -1169,6 +1169,8 @@ static void emit_types_global(void) {
 static void emit_var(ast_decl_t *parent_decl) {
     ast_decl_t **mod_it;
 
+    if (ASTP(parent_decl)->flags & AST_FLAG_CONSTANT) { return; }
+
     emit_type_declarator(ASTP(parent_decl)->type);
     EMIT_C(' ');
     array_traverse(mod_stack, mod_it) {

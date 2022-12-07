@@ -839,6 +839,25 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
                              get_string(decl->name));
         }
 
+        if (ASTP(decl)->flags & AST_FLAG_CONSTANT
+        &&  !(decl->val_expr->flags & AST_FLAG_CONSTANT)) {
+
+            if (ASTP(decl)->kind == AST_DECL_VAR) {
+                report_range_err_no_exit(&decl->val_expr->loc,
+                                         "'%s' is declared as a constant, but has a non-constant initialization",
+                                         get_string(decl->name));
+                report_fixit(ASTP(decl)->loc.beg,
+                             "if you meant for '%s' to be a variable, use this syntax:\a%s :=    OR    %s: <type> =",
+                             get_string(decl->name),
+                             get_string(decl->name),
+                             get_string(decl->name));
+            } else {
+                report_range_err(&decl->val_expr->loc,
+                                 "'%s' is declared as a constant, but has a non-constant initialization",
+                                 get_string(decl->name));
+            }
+        }
+
         ASTP(decl)->value = decl->val_expr->value;
     }
 
@@ -1054,9 +1073,9 @@ static void check_int(check_context_t cxt, ast_int_t *integer) {
     }
 }
 
-static void check_float(check_context_t cxt, ast_int_t *integer) {
-    ASTP(integer)->type    = TY_F64;
-    ASTP(integer)->value.f = strtod(get_string(integer->str_rep), NULL);
+static void check_float(check_context_t cxt, ast_int_t *f) {
+    ASTP(f)->type     = TY_F64;
+    ASTP(f)->value.f  = strtod(get_string(f->str_rep), NULL);
 }
 
 static void check_string(check_context_t cxt, ast_string_t *string) {
@@ -1111,8 +1130,8 @@ add_char:;
         new_len += 1;
     }
 
-    ASTP(string)->value.s = get_string_id_n(buff, new_len);
-    ASTP(string)->type    = TY_STR;
+    ASTP(string)->value.s  = get_string_id_n(buff, new_len);
+    ASTP(string)->type     = TY_STR;
 }
 
 static void check_char(check_context_t cxt, ast_char_t *ch) {
@@ -1147,8 +1166,8 @@ static void check_char(check_context_t cxt, ast_char_t *ch) {
         }
     }
 
-    ASTP(ch)->value.u = c;
-    ASTP(ch)->type    = TY_U8;
+    ASTP(ch)->value.u  = c;
+    ASTP(ch)->type     = TY_U8;
 }
 
 static ast_t * try_get_decl_and_path(ast_ident_t *ident, array_t *path) {
@@ -1933,12 +1952,16 @@ static void check_ident(check_context_t cxt, ast_ident_t *ident) {
 
     if (ident->resolved_node == NULL) {
         ident->resolved_node = search_up_scopes_return_scope(cxt.scope, ident->str_rep, &resolved_node_scope);
-    }
 
-    if (ident->resolved_node == NULL) {
-        report_range_err(&ASTP(ident)->loc,
-                         "use of undeclared identifier '%s'", get_string(ident->str_rep));
-        return;
+        if (ident->resolved_node == NULL) {
+            report_range_err(&ASTP(ident)->loc,
+                            "use of undeclared identifier '%s'", get_string(ident->str_rep));
+            return;
+        }
+
+        if (ident->resolved_node->flags & AST_FLAG_CONSTANT) {
+            ASTP(ident)->flags |= AST_FLAG_CONSTANT;
+        }
     }
 
     if (cxt.poly_constants != NULL) {
@@ -2138,6 +2161,9 @@ static void binop_bad_type_error(ast_bin_expr_t *expr) {
                      get_string(get_type_string_id(lt)),
                      get_string(get_type_string_id(rt)));
 }
+
+#define BIN_EXPR_CONST(l, r) \
+    (((l)->flags & AST_FLAG_CONSTANT) & ((r)->flags & AST_FLAG_CONSTANT))
 
 static void check_add(check_context_t cxt, ast_bin_expr_t *expr) {
     u32 t1;
@@ -2416,18 +2442,23 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
 
         case OP_PLUS:
             check_add(cxt, expr);
+            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
         case OP_MINUS:
             check_sub(cxt, expr);
+            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
         case OP_MULT:
             check_mul(cxt, expr);
+            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
         case OP_DIV:
             check_div(cxt, expr);
+            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
         case OP_MOD:
             check_mod(cxt, expr);
+            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
 
         case OP_EQU:
@@ -2436,7 +2467,8 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
         case OP_LEQ:
         case OP_GTR:
         case OP_GEQ:
-            ASTP(expr)->type = TY_S64;
+            ASTP(expr)->type   = TY_S64;
+            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
 
         case OP_PLUS_ASSIGN:
@@ -2474,6 +2506,7 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
         case OP_AND:
         case OP_OR:
             check_logical(cxt, expr);
+            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
 
         case OP_BSHL:
@@ -2486,7 +2519,8 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
 
                 binop_bad_type_error(expr);
             }
-            ASTP(expr)->type = expr->left->type;
+            ASTP(expr)->type   = expr->left->type;
+            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
 
         default:
@@ -2514,7 +2548,11 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
             if (expr->child->type == TY_TYPE || expr->child->type == TY_POLY) {
                 ASTP(expr)->type    = TY_TYPE;
                 ASTP(expr)->value.t = get_ptr_type(expr->child->value.t);
+
+                ASSERT(expr->child->flags & AST_FLAG_CONSTANT, "type not constant");
+                ASTP(expr)->flags |= AST_FLAG_CONSTANT;
             } else {
+                /* @todo -- check if rhs is addressable */
                 ASTP(expr)->type = get_ptr_type(expr->child->type);
             }
             break;
@@ -2548,7 +2586,8 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
                                              "operand has type %s",
                                              get_string(get_type_string_id(expr->child->type)));
             }
-            ASTP(expr)->type = expr->child->type;
+            ASTP(expr)->type   = expr->child->type;
+            ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
             break;
         case OP_NEG:
             if (!type_kind_is_numeric(type_kind(expr->child->type))) {
@@ -2558,7 +2597,8 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
                                              "operand has type %s",
                                              get_string(get_type_string_id(expr->child->type)));
             }
-            ASTP(expr)->type = expr->child->type;
+            ASTP(expr)->type   = expr->child->type;
+            ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
             break;
         case OP_AUTOCAST:
             if (cxt.autocast_ty == TY_UNKNOWN
@@ -2566,7 +2606,8 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
                 report_range_err(&ASTP(expr)->loc, "could not determine type for autocast");
             }
             /* @todo -- check that the types can actually cast */
-            ASTP(expr)->type = cxt.autocast_ty;
+            ASTP(expr)->type   = cxt.autocast_ty;
+            ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
             break;
         default:
             report_loc_err_no_exit(ASTP(expr)->loc.beg, "UNHANDLED OPERATOR: %s", OP_STR(expr->op));

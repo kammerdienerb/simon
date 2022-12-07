@@ -79,6 +79,7 @@ enum {
     AST_FLAG_PAREN_EXPR           = (1 << 9),
     AST_FLAG_BITFIELD_DOT         = (1 << 10),
     AST_FLAG_HEX_INT              = (1 << 11),
+    AST_FLAG_CONSTANT             = (1 << 12),
 };
 
 struct ast;

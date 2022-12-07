@@ -15,6 +15,8 @@ static void insert_builtin_type(const char *name, u32 type_value) {
     ASTP(b)->value.t = type_value;
     b->name          = name_id;
 
+    ASTP(b)->flags |= AST_FLAG_CONSTANT;
+
     add_symbol(global_scope, name_id, ASTP(b));
 }
 
@@ -36,6 +38,8 @@ static void _insert_builtin_proc_like(const char *name, u32 ret_type_or_special,
 
     ASTP(b)->type    = proc_type;
     ASTP(b)->value.a = ASTP(b);
+
+    ASTP(b)->flags |= AST_FLAG_CONSTANT;
 
     add_symbol(global_scope, name_id, ASTP(b));
 }
