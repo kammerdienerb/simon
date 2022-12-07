@@ -63,23 +63,23 @@ static void emit_underscore_name(string_id name) {
     }
 }
 
-static void emit_base_name(string_id name) {
-    const char *s;
-    int         len;
-    const char *t;
-
-    s = get_string(name);
-    len = strlen(s);
-
-    if (len <= 0) { return; }
-
-    for (t = s + len - 1; t >= s; t -= 1) {
-        if (*t == '.') {
-            EMIT_STRING(t + 1);
-            break;
-        }
-    }
-}
+/* static void emit_base_name(string_id name) { */
+/*     const char *s; */
+/*     int         len; */
+/*     const char *t; */
+/*  */
+/*     s = get_string(name); */
+/*     len = strlen(s); */
+/*  */
+/*     if (len <= 0) { return; } */
+/*  */
+/*     for (t = s + len - 1; t >= s; t -= 1) { */
+/*         if (*t == '.') { */
+/*             EMIT_STRING(t + 1); */
+/*             break; */
+/*         } */
+/*     } */
+/* } */
 
 static void emit_prelude(void) {
     const char *prelude =
@@ -96,6 +96,12 @@ static void emit_prelude(void) {
 "typedef char*              str;\n"
 "\n"
 "#define _builtin_stack_alloc(_n) (__builtin_alloca((_n)))\n"
+#ifdef __x86_64__
+"__attribute__((used, always_inline))\n"
+"static inline void _builtin_outb(u8* addr, u8 b) { asm volatile ( \"outb %0, %1\" : : \"a\"(b), \"Nd\"((u16)(u64)addr) );                      }\n"
+"__attribute__((used, always_inline))\n"
+"static inline u8   _builtin_inb(u8* addr)        { u8 ret; asm volatile ( \"inb %1, %0\" : \"=a\"(ret) : \"Nd\"((u16)(u64)addr) ); return ret; }\n"
+#endif
 "\n";
 
     EMIT_STRING(prelude);
@@ -247,10 +253,10 @@ static void emit_expr(ast_t *expr) {
                 goto renamed;
             }
 
-            if (ident->resolved_node->flags & AST_FLAG_IS_EXTERN) {
-                emit_base_name(ident->str_rep);
-                goto renamed;
-            }
+/*             if (ident->resolved_node->flags & AST_FLAG_IS_EXTERN) { */
+/*                 emit_base_name(ident->str_rep); */
+/*                 goto renamed; */
+/*             } */
 
             if (ast_kind_is_decl(ident->resolved_node->kind)) {
                 decl = (ast_decl_t*)ident->resolved_node;
@@ -329,14 +335,14 @@ renamed:;
             switch (op) {
                 case OP_CALL:
                     if (ASTP(bin_expr)->flags & AST_FLAG_CALL_IS_CAST) {
-                        EMIT_STRING("(");
+                        EMIT_STRING("((");
                         arg_list = (ast_arg_list_t*)bin_expr->right;
                         arg      = array_item(arg_list->args, 0);
                         emit_type_declarator(arg->expr->value.t);
                         EMIT_STRING(")(");
                         arg = array_item(arg_list->args, 1);
                         emit_expr(arg->expr);
-                        EMIT_STRING(")");
+                        EMIT_STRING("))");
                     } else if (ASTP(bin_expr)->flags & AST_FLAG_CALL_IS_BUILTIN_VARG) {
                         EMIT_STRING_F("__varg%d", which_varg);
                     } else {
@@ -1181,7 +1187,11 @@ static void emit_var(ast_decl_t *parent_decl) {
     EMIT_STRING_ID(parent_decl->name);
 
     EMIT_STRING(" asm (\"");
-    EMIT_STRING_ID(parent_decl->full_name);
+    if (ASTP(parent_decl)->flags & AST_FLAG_IS_EXTERN) {
+        EMIT_STRING_ID(parent_decl->name);
+    } else {
+        EMIT_STRING_ID(parent_decl->full_name);
+    }
     if (polymorphed != NULL) {
         EMIT_STRING_F(".p%d", poly_version);
     }

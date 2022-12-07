@@ -80,6 +80,8 @@ void init_scopes(void) {
     INSERT_BUILTIN_PROC_LIKE("_builtin_putc",   TY_NOT_TYPED, TY_U8);
     INSERT_BUILTIN_PROC_LIKE("_builtin_stack_alloc", get_ptr_type(TY_U8), TY_U64);
     INSERT_BUILTIN_PROC_LIKE("_builtin_varg", TY_BUILTIN_SPECIAL);
+    INSERT_BUILTIN_PROC_LIKE("_builtin_outb", TY_NOT_TYPED, get_ptr_type(TY_U8), TY_U8);
+    INSERT_BUILTIN_PROC_LIKE("_builtin_inb", TY_U8, get_ptr_type(TY_U8));
 }
 
 scope_t *create_scope(scope_t *parent, int kind, ast_t *node) {

@@ -658,11 +658,12 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
 
             program_entry = decl;
         } else if (ident->str_rep == EXTERN_ID) {
-            if (proc == NULL) {
-                report_range_err(&node->loc, "'%s' is tagged 'extern', but is not a procedure", get_string(decl->name));
+            if (node->kind != AST_DECL_VAR
+            &&  proc == NULL) {
+                report_range_err(&node->loc, "'%s' is tagged 'extern', but is not a procedure or a variable", get_string(decl->name));
             }
 
-            ASSERT(node->flags & AST_FLAG_IS_EXTERN, "not flagged extern");
+            node->flags |= AST_FLAG_IS_EXTERN;
         } else {
             report_range_err(&tag->loc, "unknown tag '%s'", get_string(ident->str_rep));
         }
@@ -812,6 +813,7 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
 
     if (ASTP(decl)->kind == AST_DECL_VAR) {
         cxt.flags |= CHECK_FLAG_DESCENDING;
+        check_tags(cxt, ASTP(decl), &decl->tags);
     }
 
     if (decl->type_expr != NULL) {
@@ -2316,7 +2318,7 @@ static void check_mod(check_context_t cxt, ast_bin_expr_t *expr) {
     tk1 = type_kind(t1);
     tk2 = type_kind(t2);
 
-    if (!((tk1 == TY_GENERIC_INT   && tk2 == TY_GENERIC_INT))) {
+    if (!((tk1 == TY_GENERIC_INT && tk2 == TY_GENERIC_INT))) {
 
         binop_bad_type_error(expr);
         return;
@@ -2325,6 +2327,27 @@ static void check_mod(check_context_t cxt, ast_bin_expr_t *expr) {
     /* @todo check for width incompat */
     /* @todo How to handle this case? Do we promote the type? */
     ASTP(expr)->type = t1;
+}
+
+static void check_cmp(check_context_t cxt, ast_bin_expr_t *expr) {
+    u32 t1;
+    u32 t2;
+    u32 tk1;
+    u32 tk2;
+
+    t1  = expr->left->type;
+    t2  = expr->right->type;
+    tk1 = type_kind(t1);
+    tk2 = type_kind(t2);
+
+    if (!((tk1 == TY_GENERIC_INT && tk2 == TY_GENERIC_INT) || (tk1 == TY_PTR && tk2 == TY_PTR))
+    ||  t1 != t2) {
+
+        binop_bad_type_error(expr);
+        return;
+    }
+
+    ASTP(expr)->type = TY_S64;
 }
 
 static void check_logical(check_context_t cxt, ast_bin_expr_t *expr) {
@@ -2467,8 +2490,7 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
         case OP_LEQ:
         case OP_GTR:
         case OP_GEQ:
-            ASTP(expr)->type   = TY_S64;
-            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
+            check_cmp(cxt, expr);
             break;
 
         case OP_PLUS_ASSIGN:

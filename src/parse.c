@@ -1760,10 +1760,6 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
         switch (kind) {
             case AST_DECL_PROC:
                 result->val_expr = parse_proc_body(cxt, name, !is_extern);
-                if (is_extern) {
-                    result->val_expr->flags |= AST_FLAG_IS_EXTERN;
-                    result->ast.flags       |= AST_FLAG_IS_EXTERN;
-                }
                 OPTIONAL_CHAR(cxt, ';');
                 break;
             case AST_DECL_STRUCT:
