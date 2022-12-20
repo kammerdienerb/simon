@@ -63,23 +63,23 @@ static void emit_underscore_name(string_id name) {
     }
 }
 
-/* static void emit_base_name(string_id name) { */
-/*     const char *s; */
-/*     int         len; */
-/*     const char *t; */
-/*  */
-/*     s = get_string(name); */
-/*     len = strlen(s); */
-/*  */
-/*     if (len <= 0) { return; } */
-/*  */
-/*     for (t = s + len - 1; t >= s; t -= 1) { */
-/*         if (*t == '.') { */
-/*             EMIT_STRING(t + 1); */
-/*             break; */
-/*         } */
-/*     } */
-/* } */
+static void emit_base_name(string_id name) {
+    const char *s;
+    int         len;
+    const char *t;
+
+    s = get_string(name);
+    len = strlen(s);
+
+    if (len <= 0) { return; }
+
+    for (t = s + len - 1; t >= s; t -= 1) {
+        if (*t == '.') {
+            EMIT_STRING(t + 1);
+            break;
+        }
+    }
+}
 
 static void emit_prelude(void) {
     const char *prelude =
@@ -253,10 +253,10 @@ static void emit_expr(ast_t *expr) {
                 goto renamed;
             }
 
-/*             if (ident->resolved_node->flags & AST_FLAG_IS_EXTERN) { */
-/*                 emit_base_name(ident->str_rep); */
-/*                 goto renamed; */
-/*             } */
+            if (ident->resolved_node->flags & AST_FLAG_IS_EXTERN) {
+                emit_base_name(ident->str_rep);
+                goto renamed;
+            }
 
             if (ast_kind_is_decl(ident->resolved_node->kind)) {
                 decl = (ast_decl_t*)ident->resolved_node;
@@ -289,18 +289,10 @@ renamed:;
                     case OP_DEREF:
                         EMIT_STRING("*");
                         break;
-                    case OP_AUTOCAST:
-                        EMIT_STRING("((");
-                        emit_type_declarator(expr->type);
-                        EMIT_C(')');
-                        break;
                     default:
                         EMIT_STRING(OP_STR(op));
                 }
                 emit_expr(un_expr->child);
-                if (op == OP_AUTOCAST) {
-                    EMIT_C(')');
-                }
             }
             break;
         case AST_BIN_EXPR:
@@ -1175,34 +1167,49 @@ static void emit_types_global(void) {
 static void emit_var(ast_decl_t *parent_decl) {
     ast_decl_t **mod_it;
 
-    if (ASTP(parent_decl)->flags & AST_FLAG_CONSTANT) { return; }
-
-    emit_type_declarator(ASTP(parent_decl)->type);
-    EMIT_C(' ');
-    array_traverse(mod_stack, mod_it) {
-        EMIT_STRING("__");
-        EMIT_STRING_ID((*mod_it)->name);
-    }
-    if (array_len(mod_stack) > 0) { EMIT_STRING("_"); }
-    EMIT_STRING_ID(parent_decl->name);
-
-    EMIT_STRING(" asm (\"");
-    if (ASTP(parent_decl)->flags & AST_FLAG_IS_EXTERN) {
+    if (ASTP(parent_decl)->flags & AST_FLAG_CONSTANT) {
+        EMIT_STRING("#define ");
+        EMIT_C(' ');
+        array_traverse(mod_stack, mod_it) {
+            EMIT_STRING("__");
+            EMIT_STRING_ID((*mod_it)->name);
+        }
+        if (array_len(mod_stack) > 0) { EMIT_STRING("_"); }
         EMIT_STRING_ID(parent_decl->name);
-    } else {
-        EMIT_STRING_ID(parent_decl->full_name);
-    }
-    if (polymorphed != NULL) {
-        EMIT_STRING_F(".p%d", poly_version);
-    }
-    EMIT_STRING("\")");
 
-    if (parent_decl->val_expr != NULL) {
-        EMIT_STRING(" = ");
+        EMIT_C(' ');
+        EMIT_C('(');
         emit_expr(parent_decl->val_expr);
+        EMIT_C(')');
+    } else {
+        emit_type_declarator(ASTP(parent_decl)->type);
+        EMIT_C(' ');
+        array_traverse(mod_stack, mod_it) {
+            EMIT_STRING("__");
+            EMIT_STRING_ID((*mod_it)->name);
+        }
+        if (array_len(mod_stack) > 0) { EMIT_STRING("_"); }
+        EMIT_STRING_ID(parent_decl->name);
+
+        EMIT_STRING(" asm (\"");
+        if (ASTP(parent_decl)->flags & AST_FLAG_IS_EXTERN) {
+            EMIT_STRING_ID(parent_decl->name);
+        } else {
+            EMIT_STRING_ID(parent_decl->full_name);
+        }
+        if (polymorphed != NULL) {
+            EMIT_STRING_F(".p%d", poly_version);
+        }
+        EMIT_STRING("\")");
+
+        if (parent_decl->val_expr != NULL) {
+            EMIT_STRING(" = ");
+            emit_expr(parent_decl->val_expr);
+        }
+
+        EMIT_C(';');
     }
 
-    EMIT_C(';');
     EMIT_C('\n');
 }
 

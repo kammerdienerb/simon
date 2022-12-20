@@ -1,9 +1,9 @@
 [[ program_entry ]]
-main := proc() {
+main :: proc() {
     defer { Sys.exit(0); }
 
 
-    N: u64 = ~~4096;
+    N: u64 = 4096;
     block_alloc := Fixed_Allocator.new(_builtin_stack_alloc(N), N);
 
     defer {
@@ -20,7 +20,7 @@ main := proc() {
 
     defer { aprintf(*block_alloc, "bye!\n"); }
 
-    ptr := Allocator.alloc(*block_alloc, ~~64);
+    ptr := Allocator.alloc(*block_alloc, 64);
 
     aprintf(*block_alloc, "allocated {} bytes at {}\n", N, ptr);
 

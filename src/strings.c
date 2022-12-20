@@ -200,6 +200,7 @@ const char *get_string(string_id id) {
 
     string = ID_TO_S(id);
 
+    /* Is this actually in the table? */
 #ifdef SIMON_DO_ASSERTIONS
     RLOCK(); {
 #if STRING_INTERN_STRUCTURE == STRING_HASH_TABLE

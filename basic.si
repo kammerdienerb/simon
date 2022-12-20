@@ -1,40 +1,40 @@
 # basic.si
 
 
-NULL : *u8 = ~~0;
+NULL :: cast(*u8, 0);
 
 
-SUCCESS       := 0;
-ERR_TOO_SMALL := -1;
-ERR_BAD_ALLOC := -2;
+SUCCESS       :: 0;
+ERR_TOO_SMALL :: -1;
+ERR_BAD_ALLOC :: -2;
 
 DEFAULT_HEAP_ALLOCATOR: Heap_Allocator.T;
 
-heap_alloc := proc(n_bytes: u64): *u8 { return Allocator.alloc(*DEFAULT_HEAP_ALLOCATOR, n_bytes); }
-heap_free  := proc(ptr: *u8)          { Allocator.free(*DEFAULT_HEAP_ALLOCATOR, ptr);             }
+heap_alloc :: proc(n_bytes: u64): *u8 { return Allocator.alloc(*DEFAULT_HEAP_ALLOCATOR, n_bytes); }
+heap_free  :: proc(ptr: *u8)          { Allocator.free(*DEFAULT_HEAP_ALLOCATOR, ptr);             }
 
-Allocator := module {
-    alloc := proc(allocator: *%allocator_type, n_bytes: u64): *u8 { \ERROR "allocator does not implement alloc()" }
-    free  := proc(allocator: *%allocator_type, ptr: *u8)          { \ERROR "allocator does not implement free()"  }
+Allocator :: module {
+    alloc :: proc(allocator: *%allocator_type, n_bytes: u64): *u8 { \ERROR "allocator does not implement alloc()" }
+    free  :: proc(allocator: *%allocator_type, ptr: *u8)          { \ERROR "allocator does not implement free()"  }
 }
 
-Heap_Allocator := module {
-    T := struct {}
+Heap_Allocator :: module {
+    T :: struct {}
 
     [[ specialization(Allocator.alloc) ]]
-    alloc := proc(allocator: *T, n_bytes: u64): *u8 { return NULL; }
+    alloc :: proc(allocator: *T, n_bytes: u64): *u8 { return NULL; }
 
     [[ specialization(Allocator.free) ]]
-    free := proc(allocator: *T, ptr: *u8) {  }
+    free :: proc(allocator: *T, ptr: *u8) {  }
 }
 
-Fixed_Allocator := module {
-    T := struct {
+Fixed_Allocator :: module {
+    T :: struct {
         ptr: *u8,
         end: *u8,
     }
 
-    new := proc(buff: *u8, size: u64): T {
+    new :: proc(buff: *u8, size: u64): T {
         ret: T;
 
         ret.ptr = buff;
@@ -44,7 +44,7 @@ Fixed_Allocator := module {
     }
 
     [[ specialization(Allocator.alloc) ]]
-    alloc := proc(allocator: *T, n_bytes: u64): *u8 {
+    alloc :: proc(allocator: *T, n_bytes: u64): *u8 {
         # @todo: alignment
 
         if (allocator.ptr + n_bytes > allocator.end) { return NULL; }
@@ -57,41 +57,41 @@ Fixed_Allocator := module {
     }
 
     [[ specialization(Allocator.free) ]]
-    free := proc(allocator: *T, ptr: *u8) {  }
+    free :: proc(allocator: *T, ptr: *u8) {  }
 }
 
-Sys := module {
-    [[ extern ]] open  := proc(path: str, oflag: s32): s32;
-    [[ extern ]] read  := proc(fd: s32, bytes: str, len: u64): s32;
-    [[ extern ]] write := proc(fd: s32, bytes: str, len: u64): s32;
-    [[ extern ]] exit  := proc(code: s64);
+Sys :: module {
+    [[ extern ]] open  :: proc(path: str, oflag: s32): s32;
+    [[ extern ]] read  :: proc(fd: s32, bytes: str, len: u64): s32;
+    [[ extern ]] write :: proc(fd: s32, bytes: str, len: u64): s32;
+    [[ extern ]] exit  :: proc(code: s64);
 }
 
-Util := module {
-    slen := proc(s: str) : u64 {
+Util :: module {
+    slen :: proc(s: str) : u64 {
         len := cast(u64, 0);
 
-        loop i := 0; s[i] != ~~0; i += 1 { len += 1; }
+        loop i := 0; s[i] != 0; i += 1 { len += 1; }
 
         return len;
     }
 
-    putc  := proc(c: u8)          { Sys.write(~~1, ~~*c, ~~1);  }
-    puts  := proc(s: str)         { Sys.write(~~1, s, slen(s)); }
-    putsn := proc(s: str, n: u64) { Sys.write(~~1, s, n);       }
+    putc  :: proc(c: u8)          { Sys.write(1, cast(str, *c), 1); }
+    puts  :: proc(s: str)         { Sys.write(1, s, slen(s));       }
+    putsn :: proc(s: str, n: u64) { Sys.write(1, s, n);             }
 }
 
-Format := module {
-    JUST_LEFT   : u8 = ~~0;
-    JUST_RIGHT  : u8 = ~~1;
-    JUST_CENTER : u8 = ~~2;
+Format :: module {
+    JUST_LEFT   :: 0;
+    JUST_RIGHT  :: 1;
+    JUST_CENTER :: 2;
 
-    HEX_LOWER   : u8 = ~~1;
-    HEX_UPPER   : u8 = ~~2;
+    HEX_LOWER   :: 1;
+    HEX_UPPER   :: 2;
 
 
     [[ bitfield_struct(u64) ]]
-    Format_Info := struct {
+    Format_Info :: struct {
         [[ bitfield( 0, 31) ]] width:     u32,
         [[ bitfield(32, 33) ]] just:      u8,
         [[ bitfield(34, 35) ]] hex:       u8,
@@ -100,21 +100,21 @@ Format := module {
     }
 
 
-    to_formatted_str := proc(buff: *u8, len: *u64, arg: %T, f: Format_Info): s64 {
+    to_formatted_str :: proc(buff: *u8, len: *u64, arg: %T, f: Format_Info): s64 {
         \ERROR "no specialization provided for type T"
     }
 
 
 
     [[ specialization(to_formatted_str) ]]
-    u64_to_formatted_str := proc(buff: *u8, len: *u64, arg: u64, f: Format.Format_Info): s64 {
+    u64_to_formatted_str :: proc(buff: *u8, len: *u64, arg: u64, f: Format.Format_Info): s64 {
         if f.hex {
-            if @len < ~~16 {
-                @len = ~~16;
+            if @len < 16 {
+                @len = 16;
                 return ERR_TOO_SMALL;
             }
 
-            @len = ~~0;
+            @len = 0;
 
             save_arg := arg;
 
@@ -136,12 +136,12 @@ Format := module {
             @ptr  = digits[arg & 0xF];
             ptr  -= 1;
         } else {
-            if @len < ~~20 {
-                @len = ~~20;
+            if @len < 20 {
+                @len = 20;
                 return ERR_TOO_SMALL;
             }
 
-            @len = ~~0;
+            @len = 0;
 
             save_arg := arg;
 
@@ -152,10 +152,10 @@ Format := module {
             arg  = save_arg;
 
             loop ; arg >= 10; arg /= 10 {
-                @ptr  = '0' + ~~(arg % 10);
+                @ptr  = '0' + (arg % 10);
                 ptr  -= 1;
             }
-            @ptr  = '0' + ~~(arg % 10);
+            @ptr  = '0' + (arg % 10);
             ptr  -= 1;
         }
 
@@ -163,28 +163,28 @@ Format := module {
     }
 
     [[ specialization(to_formatted_str) ]]
-    u32_to_formatted_str := proc(buff: *u8, len: *u64, arg: u32, f: Format.Format_Info): s64 {
-        return u64_to_formatted_str(buff, len, ~~arg, f);
+    u32_to_formatted_str :: proc(buff: *u8, len: *u64, arg: u32, f: Format.Format_Info): s64 {
+        return u64_to_formatted_str(buff, len, cast(u64, arg), f);
     }
     [[ specialization(to_formatted_str) ]]
-    u16_to_formatted_str := proc(buff: *u8, len: *u64, arg: u16, f: Format.Format_Info): s64 {
-        return u64_to_formatted_str(buff, len, ~~arg, f);
+    u16_to_formatted_str :: proc(buff: *u8, len: *u64, arg: u16, f: Format.Format_Info): s64 {
+        return u64_to_formatted_str(buff, len, cast(u64, arg), f);
     }
     [[ specialization(to_formatted_str) ]]
-    u8_to_formatted_str := proc(buff: *u8, len: *u64, arg: u8, f: Format.Format_Info): s64 {
-        return u64_to_formatted_str(buff, len, ~~arg, f);
+    u8_to_formatted_str :: proc(buff: *u8, len: *u64, arg: u8, f: Format.Format_Info): s64 {
+        return u64_to_formatted_str(buff, len, cast(u64, arg), f);
     }
 
     [[ specialization(to_formatted_str) ]]
-    s64_to_formatted_str := proc(buff: *u8, len: *u64, arg: s64, f: Format.Format_Info): s64 {
-        if f.hex { return u64_to_formatted_str(buff, len, ~~arg, f); }
+    s64_to_formatted_str :: proc(buff: *u8, len: *u64, arg: s64, f: Format.Format_Info): s64 {
+        if f.hex { return u64_to_formatted_str(buff, len, cast(u64, arg), f); }
 
-        if @len < ~~21 {
-            @len = ~~21;
+        if @len < 21 {
+            @len = 21;
             return ERR_TOO_SMALL;
         }
 
-        @len  = ~~0;
+        @len  = 0;
         neg  := 0;
         if arg < 0 {
             @len += 1;
@@ -201,10 +201,10 @@ Format := module {
         arg  = save_arg;
 
         loop ; arg >= 10; arg /= 10 {
-            @ptr  = '0' + ~~(arg % 10);
+            @ptr  = '0' + (arg % 10);
             ptr  -= 1;
         }
-        @ptr  = '0' + ~~(arg % 10);
+        @ptr  = '0' + (arg % 10);
         ptr  -= 1;
 
         if neg {
@@ -215,20 +215,20 @@ Format := module {
     }
 
     [[ specialization(to_formatted_str) ]]
-    s32_to_formatted_str := proc(buff: *u8, len: *u64, arg: s32, f: Format.Format_Info): s64 {
-        return s64_to_formatted_str(buff, len, ~~arg, f);
+    s32_to_formatted_str :: proc(buff: *u8, len: *u64, arg: s32, f: Format.Format_Info): s64 {
+        return s64_to_formatted_str(buff, len, cast(s64, arg), f);
     }
     [[ specialization(to_formatted_str) ]]
-    s16_to_formatted_str := proc(buff: *u8, len: *u64, arg: s16, f: Format.Format_Info): s64 {
-        return s64_to_formatted_str(buff, len, ~~arg, f);
+    s16_to_formatted_str :: proc(buff: *u8, len: *u64, arg: s16, f: Format.Format_Info): s64 {
+        return s64_to_formatted_str(buff, len, cast(s64, arg), f);
     }
     [[ specialization(to_formatted_str) ]]
-    s8_to_formatted_str := proc(buff: *u8, len: *u64, arg: s8, f: Format.Format_Info): s64 {
-        return s64_to_formatted_str(buff, len, ~~arg, f);
+    s8_to_formatted_str :: proc(buff: *u8, len: *u64, arg: s8, f: Format.Format_Info): s64 {
+        return s64_to_formatted_str(buff, len, cast(s64, arg), f);
     }
 
     [[ specialization(to_formatted_str) ]]
-    ptr_to_formatted_str := proc(buff: *u8, len: *u64, arg: *u8, f: Format.Format_Info): s64 {
+    ptr_to_formatted_str :: proc(buff: *u8, len: *u64, arg: *u8, f: Format.Format_Info): s64 {
         if not f.hex {
             f.hex = HEX_UPPER;
         }
@@ -237,7 +237,7 @@ Format := module {
         @len     -= 2;
 
 
-        err := u64_to_formatted_str(buff + 2, len, ~~arg, f);
+        err := u64_to_formatted_str(buff + 2, len, cast(u64, arg), f);
 
         if err == SUCCESS {
             buff[0] = '0';
@@ -250,7 +250,7 @@ Format := module {
     }
 
     [[ specialization(to_formatted_str) ]]
-    str_to_formatted_str := proc(buff: *u8, len: *u64, arg: str, f: Format.Format_Info): s64 {
+    str_to_formatted_str :: proc(buff: *u8, len: *u64, arg: str, f: Format.Format_Info): s64 {
         arg_len := Util.slen(arg);
 
         if @len < arg_len {
@@ -260,27 +260,27 @@ Format := module {
 
         @len = arg_len;
 
-        loop i := 0; i < arg_len; i += 1 { buff[i] = arg[i]; }
+        loop i: u64 = 0; i < arg_len; i += 1 { buff[i] = arg[i]; }
 
         return SUCCESS;
     }
 
     # [[ specialization(to_formatted_str) ]]
-    # f64_to_formatted_str := proc(buff: *u8, len: *u64, arg: f64, f: Format.Format_Info): s64 {
+    # f64_to_formatted_str :: proc(buff: *u8, len: *u64, arg: f64, f: Format.Format_Info): s64 {
     #     return ERR_TOO_SMALL;
     # }
 
-    _fmt := proc(allocator: *%allocator_type, fmt: str, args: %...): s64 {
+    _fmt :: proc(allocator: *%allocator_type, fmt: str, args: %...): s64 {
         buff      :=      NULL;
-        buff_len  : u64 = ~~0;
+        buff_len  : u64 = 0;
         fmt_len   :=      Util.slen(fmt);
         which_arg :=      0;
 
         defer { Allocator.free(allocator, buff); }
 
-        loop i := 0; i < fmt_len; i += 1 {
+        loop i: u64 = 0; i < fmt_len; i += 1 {
             if fmt[i] == '{' {
-                info: Format_Info = ~~0;
+                info: Format_Info = 0;
 
                 loop ; i < fmt_len and fmt[i] != '}'; i += 1 {
                     if      fmt[i] == 'x' { info.hex = HEX_LOWER; }
@@ -308,7 +308,7 @@ Format := module {
                             return err;
                         }
 
-                        Util.putsn(~~buff, len);
+                        Util.putsn(cast(str, buff), len);
                     }
                     a += 1;
                 ]
@@ -323,10 +323,10 @@ Format := module {
     }
 }
 
-printf := proc(fmt: str, args: %...): s64 {
+printf :: proc(fmt: str, args: %...): s64 {
     return Format._fmt(*DEFAULT_HEAP_ALLOCATOR, fmt, args);
 }
 
-aprintf := proc(allocator: *%allocator_type, fmt: str, args: %...): s64 {
+aprintf :: proc(allocator: *%allocator_type, fmt: str, args: %...): s64 {
     return Format._fmt(allocator, fmt, args);
 }

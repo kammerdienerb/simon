@@ -41,8 +41,7 @@
     X(OP_ADDR,         11,      OP_ASSOC_RIGHT,   1,          "*")      \
     X(OP_DEREF,        11,      OP_ASSOC_RIGHT,   1,          "@")      \
     X(OP_NEG,          11,      OP_ASSOC_RIGHT,   1,          "-")      \
-    X(OP_BNEG,         11,      OP_ASSOC_RIGHT,   1,          "~")      \
-    X(OP_AUTOCAST,     11,      OP_ASSOC_RIGHT,   1,          "~~")
+    X(OP_BNEG,         11,      OP_ASSOC_RIGHT,   1,          "~")
 
 enum {
 #define X(_op, _prec, _assoc, _arity, _str) _op,

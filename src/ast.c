@@ -663,7 +663,8 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
                 report_range_err(&node->loc, "'%s' is tagged 'extern', but is not a procedure or a variable", get_string(decl->name));
             }
 
-            node->flags |= AST_FLAG_IS_EXTERN;
+            node->flags       |= AST_FLAG_IS_EXTERN;
+            ASTP(proc)->flags |= AST_FLAG_IS_EXTERN;
         } else {
             report_range_err(&tag->loc, "unknown tag '%s'", get_string(ident->str_rep));
         }
@@ -827,8 +828,6 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
         }
 
         decl_t = decl->type_expr->value.t;
-
-        cxt.autocast_ty = decl_t;
     }
 
     if (decl->val_expr != NULL) {
@@ -843,20 +842,19 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
 
         if (ASTP(decl)->flags & AST_FLAG_CONSTANT
         &&  !(decl->val_expr->flags & AST_FLAG_CONSTANT)) {
-
             if (ASTP(decl)->kind == AST_DECL_VAR) {
                 report_range_err_no_exit(&decl->val_expr->loc,
-                                         "'%s' is declared as a constant, but has a non-constant initialization",
-                                         get_string(decl->name));
+                                        "'%s' is declared as a constant, but has a non-constant initialization",
+                                        get_string(decl->name));
                 report_fixit(ASTP(decl)->loc.beg,
-                             "if you meant for '%s' to be a variable, use this syntax:\a%s :=    OR    %s: <type> =",
-                             get_string(decl->name),
-                             get_string(decl->name),
-                             get_string(decl->name));
+                            "if you meant for '%s' to be a variable, use this syntax:\a%s :=    OR    %s: <type> =",
+                            get_string(decl->name),
+                            get_string(decl->name),
+                            get_string(decl->name));
             } else {
                 report_range_err(&decl->val_expr->loc,
-                                 "'%s' is declared as a constant, but has a non-constant initialization",
-                                 get_string(decl->name));
+                                "'%s' is declared as a constant, but has a non-constant initialization",
+                                get_string(decl->name));
             }
         }
 
@@ -873,17 +871,35 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
     }
 
     if (decl->type_expr != NULL
-    &&  decl->val_expr  != NULL
-    &&  decl_t          != val_t) {
+    &&  decl->val_expr  != NULL) {
 
-        report_range_err_no_exit(&decl->val_expr->loc,
-                                 "initialization of '%s' does not match declared type of %s",
-                                 get_string(decl->name),
-                                 get_string(get_type_string_id(decl_t)));
-        report_range_info_no_context(&decl->type_expr->loc,
-                                     "expected %s, but got %s",
-                                     get_string(get_type_string_id(decl_t)),
-                                     get_string(get_type_string_id(val_t)));
+        if (!types_are_compatible(decl_t, val_t)) {
+            report_range_err_no_exit(&decl->val_expr->loc,
+                                     "initialization of '%s' does not match declared type of %s",
+                                     get_string(decl->name),
+                                     get_string(get_type_string_id(decl_t)));
+            report_range_info_no_context(&decl->type_expr->loc,
+                                         "expected %s, but got %s",
+                                         get_string(get_type_string_id(decl_t)),
+                                         get_string(get_type_string_id(val_t)));
+        }
+
+        if (TYPE_IS_GENERIC(val_t)) {
+            realize_generic(decl_t, decl->val_expr);
+            val_t = decl->val_expr->type;
+        }
+    }
+
+    if (ASTP(decl)->kind == AST_DECL_VAR
+    &&  !(ASTP(decl)->flags & AST_FLAG_CONSTANT)
+    &&  decl->val_expr != NULL) {
+
+        if (TYPE_IS_GENERIC(val_t)) {
+            if (TYPE_IS_GENERIC(decl_t)) {
+                decl_t = TY_S64;
+            }
+            realize_generic(decl_t, decl->val_expr);
+        }
     }
 
     ASTP(decl)->type = decl_t;
@@ -1067,17 +1083,20 @@ static void check_int(check_context_t cxt, ast_int_t *integer) {
 
     if (s[0] == '0' && s[1] == 'x') {
         ASTP(integer)->flags   |= AST_FLAG_HEX_INT;
-        ASTP(integer)->type     = TY_U64;
-        ASTP(integer)->value.u  = strtoll(get_string(integer->str_rep), NULL, 16);
+        ASTP(integer)->value.u  = strtoll(s, NULL, 16);
+        ASTP(integer)->type     = TY_GENERIC_POSITIVE_INT;
+    } else if (s[0] == '-') {
+        ASTP(integer)->value.u = strtoll(s + 1, NULL, 10);
+        ASTP(integer)->type     = TY_GENERIC_NEGATIVE_INT;
     } else {
-        ASTP(integer)->type    = TY_S64;
-        ASTP(integer)->value.i = strtoll(get_string(integer->str_rep), NULL, 10);
+        ASTP(integer)->value.u = strtoll(s, NULL, 10);
+        ASTP(integer)->type     = TY_GENERIC_POSITIVE_INT;
     }
 }
 
 static void check_float(check_context_t cxt, ast_int_t *f) {
-    ASTP(f)->type     = TY_F64;
-    ASTP(f)->value.f  = strtod(get_string(f->str_rep), NULL);
+    ASTP(f)->type    = TY_GENERIC_FLOAT;
+    ASTP(f)->value.f = strtod(get_string(f->str_rep), NULL);
 }
 
 static void check_string(check_context_t cxt, ast_string_t *string) {
@@ -1238,6 +1257,10 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
         arg_p = array_item(arg_list->args, 1);
         ASTP(expr)->value = arg_p->expr->value;
 
+        if (arg_p->expr->flags & AST_FLAG_CONSTANT) {
+            ASTP(expr)->flags |= AST_FLAG_CONSTANT;
+        }
+
         /* @todo -- check that the types can actually cast */
 
     } else if (builtin->name == _BUILTIN_VARG_ID) {
@@ -1376,7 +1399,7 @@ static void verify_polymorphic_args(array_t *params, poly_arg_t *args, u32 n_arg
                 report_range_info_no_context(&ASTP(param)->loc, "polymorph-by-value parameter declared here:");
             }
         } else if (!(param->type_expr->flags & AST_FLAG_POLYMORPH)) {
-            if (arg->type != ASTP(param)->type) {
+            if (!types_are_compatible(ASTP(param)->type, arg->type)) {
                 report_range_err_no_exit(arg->node->kind == AST_PARAM ? &(((ast_param_t*)arg->node)->type_expr->loc) : &arg->node->loc,
                                          "argument type does not match non-polymorphic argument type");
                 report_range_info_no_context(&param->type_expr->loc,
@@ -1422,7 +1445,13 @@ static array_t get_polymorph_constants(array_t *params, poly_arg_t *args, u32 n_
             varg_types = alloca(sizeof(u32) * n_vargs);
 
             for (j = 0; j < n_vargs; j += 1) {
-                arg           = args + i + j;
+                arg = args + i + j;
+
+                if (TYPE_IS_GENERIC(arg->type)) {
+                    force_generic_realization(arg->node);
+                    arg->type = arg->node->type;
+                }
+
                 varg_types[j] = arg->type;
             }
 
@@ -1439,7 +1468,13 @@ static array_t get_polymorph_constants(array_t *params, poly_arg_t *args, u32 n_
 /*                 get_string(value_to_string_id(constant.value, constant.type))); */
         } else if (ASTP(param)->flags & AST_FLAG_POLYMORPH) {
 
-            arg            = args + i;
+            arg = args + i;
+
+            if (TYPE_IS_GENERIC(arg->type)) {
+                force_generic_realization(arg->node);
+                arg->type = arg->node->type;
+            }
+
             constant.name  = param->name;
             constant.value = arg->value;
             constant.type  = arg->type;
@@ -1581,7 +1616,6 @@ static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
     proc_ty  = expr->left->type;
     arg_list = (ast_arg_list_t*)expr->right;
 
-    cxt.autocast_ty = proc_ty;
     check_node(cxt, expr->right);
 
     n_args = array_len(arg_list->args);
@@ -1771,7 +1805,7 @@ too_few:
         arg_p      = array_item(arg_list->args, i);
         arg_type   = arg_p->expr->type;
 
-        if (arg_type != param_type) {
+        if (!types_are_compatible(param_type, arg_type)) {
             if (left_ident == NULL) {
                 report_range_err_no_exit(&arg_p->expr->loc,
                                          "incorrect argument type: expected %s, but got %s",
@@ -1805,6 +1839,10 @@ too_few:
             }
 
             return;
+        }
+
+        if (TYPE_IS_GENERIC(arg_type)) {
+            realize_generic(param_type, arg_p->expr);
         }
 
         if (arg_p->name != STRING_ID_NULL) {
@@ -1850,7 +1888,7 @@ too_few:
             arg_p    = array_item(arg_list->args, i);
             arg_type = arg_p->expr->type;
 
-            if (arg_type != varg_ty && !type_is_poly(varg_ty)) {
+            if (!types_are_compatible(varg_ty, arg_type) && !type_is_poly(varg_ty)) {
                 report_range_err_no_exit(&arg_p->expr->loc,
                                          "incorrect argument type: expected %s, but got %s",
                                          get_string(get_type_string_id(varg_ty)),
@@ -1970,16 +2008,18 @@ static void check_ident(check_context_t cxt, ast_ident_t *ident) {
         array_traverse(*(cxt.poly_constants), it) {
             if (it->name == ident->str_rep) {
                 ASSERT(ASTP(ident)->flags & AST_FLAG_IS_COPY, "must be a copy");
-                ASTP(ident)->type  = it->type;
-                ASTP(ident)->value = it->value;
+                ASTP(ident)->type   = it->type;
+                ASTP(ident)->value  = it->value;
+                ASTP(ident)->flags |= AST_FLAG_CONSTANT;
                 return;
             }
         }
     }
 
     if (ASTP(ident)->flags & AST_FLAG_POLYMORPH) {
-        ASTP(ident)->type    = TY_POLY;
-        ASTP(ident)->value.t = TY_POLY;
+        ASTP(ident)->type     = TY_POLY;
+        ASTP(ident)->value.t  = TY_POLY;
+        ASTP(ident)->flags   |= AST_FLAG_CONSTANT;
     } else {
         if (ident->resolved_node->type == TY_UNKNOWN) {
             if (ident->resolved_node == ASTP(cxt.parent_decl)) { return; }
@@ -2405,8 +2445,6 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
     ** if checked alone.
     */
 
-    cxt.autocast_ty = TY_UNKNOWN;
-
     check_node(cxt, expr->left);
 
     if (expr->left->type == TY_NOT_TYPED) {
@@ -2420,13 +2458,22 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
     }
 
     if (expr->op != OP_CALL) {
-        cxt.autocast_ty = expr->left->type;
         check_node(cxt, expr->right);
     }
 
     if (expr->left->type == TY_NOT_TYPED) {
         operand_not_typed_error(ASTP(expr), expr->right);
         return;
+    }
+
+    if (!TYPE_IS_GENERIC(expr->left->type)
+    &&  TYPE_IS_GENERIC(expr->right->type)) {
+
+        realize_generic(expr->left->type, expr->right);
+    } else if (TYPE_IS_GENERIC(expr->left->type)
+           &&  !TYPE_IS_GENERIC(expr->right->type)) {
+
+        realize_generic(expr->right->type, expr->left);
     }
 
     tkl = type_kind(expr->left->type);
@@ -2622,15 +2669,6 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
             ASTP(expr)->type   = expr->child->type;
             ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
             break;
-        case OP_AUTOCAST:
-            if (cxt.autocast_ty == TY_UNKNOWN
-            ||  type_is_poly(cxt.autocast_ty)) {
-                report_range_err(&ASTP(expr)->loc, "could not determine type for autocast");
-            }
-            /* @todo -- check that the types can actually cast */
-            ASTP(expr)->type   = cxt.autocast_ty;
-            ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
-            break;
         default:
             report_loc_err_no_exit(ASTP(expr)->loc.beg, "UNHANDLED OPERATOR: %s", OP_STR(expr->op));
             ASSERT(0, "unhandled unary operator");
@@ -2721,7 +2759,6 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
 }
 
 static void check_arg_list(check_context_t cxt, ast_arg_list_t *arg_list) {
-    u32     autocast_ty;
     int     i;
     arg_t  *arg;
     type_t  list_type;
@@ -2730,17 +2767,8 @@ static void check_arg_list(check_context_t cxt, ast_arg_list_t *arg_list) {
 
     ASTP(arg_list)->type = TY_NOT_TYPED;
 
-    autocast_ty = cxt.autocast_ty;
-
-    i = 0;
     array_traverse(arg_list->args, arg) {
-        if (type_kind(autocast_ty) == TY_PROC) {
-            cxt.autocast_ty = get_param_type(autocast_ty, i);
-        }
-
         check_node(cxt, arg->expr);
-
-        i += 1;
     }
 
 again:;
@@ -2858,10 +2886,6 @@ static void check_return(check_context_t cxt, ast_return_t *ret) {
 /*     } */
 
     if (ret->expr != NULL) {
-        if (cxt.proc->ret_type_expr->value.t != TY_POLY) {
-            cxt.autocast_ty = cxt.proc->ret_type_expr->value.t;
-        }
-
         check_node(cxt, ret->expr);
 
         if (cxt.proc->ret_type_expr == NULL) {
@@ -2871,7 +2895,7 @@ static void check_return(check_context_t cxt, ast_return_t *ret) {
             return;
         }
 
-        if (ret->expr->type != cxt.proc->ret_type_expr->value.t
+        if (!types_are_compatible(cxt.proc->ret_type_expr->value.t, ret->expr->type)
         &&  cxt.proc->ret_type_expr->value.t != TY_POLY) {
             report_range_err(&ret->expr->loc,
                              "incorrect type of returned expression: expected %s, but got %s",

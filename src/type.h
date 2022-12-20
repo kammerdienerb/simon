@@ -5,33 +5,53 @@
 #include "strings.h"
 #include "ast.h"
 
-#define X_TYPES           \
-    X(TY_UNKNOWN)         \
-    X(TY_NOT_TYPED)       \
-    X(TY_BUILTIN_SPECIAL) \
-    X(TY_MODULE)          \
-    X(TY_MACRO)           \
-    X(TY_TYPE)            \
-    X(TY_U8)              \
-    X(TY_U16)             \
-    X(TY_U32)             \
-    X(TY_U64)             \
-    X(TY_S8)              \
-    X(TY_S16)             \
-    X(TY_S32)             \
-    X(TY_S64)             \
-    X(TY_F32)             \
-    X(TY_F64)             \
-    X(TY_PTR)             \
-    X(TY_STR)             \
-    X(TY_GENERIC_INT)     \
-    X(TY_GENERIC_FLOAT)   \
-    X(TY_VARGS)           \
-    X(_TY_TYPE_LIST)      \
-    X(TY_STRUCT)          \
-    X(TY_STRUCT_MONO)     \
-    X(TY_PROC)            \
+/*
+ * TY_GENERIC_POSITIVE_INT and TY_GENERIC_NEGATIVE_INT are type values.
+ * TY_GENERIC_INT is a type kind.
+ * TY_GENERIC_FLOAT can be either.
+ */
+
+#define X_TYPES                \
+    X(TY_UNKNOWN)              \
+    X(TY_NOT_TYPED)            \
+    X(TY_BUILTIN_SPECIAL)      \
+    X(TY_MODULE)               \
+    X(TY_MACRO)                \
+    X(TY_TYPE)                 \
+    X(TY_U8)                   \
+    X(TY_U16)                  \
+    X(TY_U32)                  \
+    X(TY_U64)                  \
+    X(TY_S8)                   \
+    X(TY_S16)                  \
+    X(TY_S32)                  \
+    X(TY_S64)                  \
+    X(TY_F32)                  \
+    X(TY_F64)                  \
+    X(TY_PTR)                  \
+    X(TY_STR)                  \
+    X(TY_GENERIC_POSITIVE_INT) \
+    X(TY_GENERIC_NEGATIVE_INT) \
+    X(TY_GENERIC_INT)          \
+    X(TY_GENERIC_FLOAT)        \
+    X(TY_VARGS)                \
+    X(_TY_TYPE_LIST)           \
+    X(TY_STRUCT)               \
+    X(TY_STRUCT_MONO)          \
+    X(TY_PROC)                 \
     X(TY_POLY)
+
+#define TYPE_IS_GENERIC(_t)            \
+      ((_t) == TY_GENERIC_INT          \
+    || (_t) == TY_GENERIC_POSITIVE_INT \
+    || (_t) == TY_GENERIC_NEGATIVE_INT \
+    || (_t) == TY_GENERIC_FLOAT)
+
+#define INT_TYPE_IS_SIGNED(_t)         \
+       ((_t) == TY_S64                 \
+    ||  (_t) == TY_S32                 \
+    ||  (_t) == TY_S16                 \
+    ||  (_t) == TY_S8)
 
 #define TKINDPAIR_INT_INT ((((u64)TY_GENERIC_INT)   << 32ULL) + TY_GENERIC_INT)
 #define TKINDPAIR_PTR_PTR ((((u64)TY_PTR)           << 32ULL) + TY_PTR)
@@ -49,40 +69,45 @@ enum {
 
 #define TY_NONE (TY_UNKNOWN)
 
-#define X_CT_TYPES \
-    X(TY_MODULE)   \
-    X(TY_MACRO)    \
-    X(TY_TYPE)     \
+#define X_CT_TYPES             \
+    X(TY_MODULE)               \
+    X(TY_MACRO)                \
+    X(TY_TYPE)                 \
     X(TY_PROC)
 
-#define X_HAVE_UNDER_TYPES \
-    X(TY_PTR)              \
+#define X_HAVE_UNDER_TYPES     \
+    X(TY_PTR)                  \
     X(TY_VARGS)
 
-#define X_INT_TYPES \
-    X(TY_U8)        \
-    X(TY_U16)       \
-    X(TY_U32)       \
-    X(TY_U64)       \
-    X(TY_S8)        \
-    X(TY_S16)       \
-    X(TY_S32)       \
+#define X_INT_TYPES            \
+    X(TY_GENERIC_POSITIVE_INT) \
+    X(TY_GENERIC_NEGATIVE_INT) \
+    X(TY_U8)                   \
+    X(TY_U16)                  \
+    X(TY_U32)                  \
+    X(TY_U64)                  \
+    X(TY_S8)                   \
+    X(TY_S16)                  \
+    X(TY_S32)                  \
     X(TY_S64)
 
-#define X_FLOAT_TYPES \
-    X(TY_F32)         \
+#define X_FLOAT_TYPES          \
+    X(TY_GENERIC_FLOAT)        \
+    X(TY_F32)                  \
     X(TY_F64)
 
-#define X_NUM_TYPES \
-    X(TY_U8)        \
-    X(TY_U16)       \
-    X(TY_U32)       \
-    X(TY_U64)       \
-    X(TY_S8)        \
-    X(TY_S16)       \
-    X(TY_S32)       \
-    X(TY_S64)       \
-    X(TY_F32)       \
+#define X_NUM_TYPES            \
+    X(TY_GENERIC_POSITIVE_INT) \
+    X(TY_GENERIC_NEGATIVE_INT) \
+    X(TY_U8)                   \
+    X(TY_U16)                  \
+    X(TY_U32)                  \
+    X(TY_U64)                  \
+    X(TY_S8)                   \
+    X(TY_S16)                  \
+    X(TY_S32)                  \
+    X(TY_S64)                  \
+    X(TY_F32)                  \
     X(TY_F64)
 
 enum {
@@ -141,5 +166,9 @@ u32 get_ret_type(u32 proc_ty);
 string_id get_type_string_id(u32 ty);
 ast_decl_t *struct_type_to_decl(u32 ty);
 type_t get_type_t(u32 ty);
+
+int  types_are_compatible(u32 ta, u32 tb);
+void realize_generic(u32 real, ast_t *expr);
+void force_generic_realization(ast_t *expr);
 
 #endif

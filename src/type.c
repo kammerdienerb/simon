@@ -348,26 +348,30 @@ static void build_type_string(u32 ty, char *buff) {
     t = *tp;
 
     switch (t.kind) {
-        case TY_UNKNOWN:     strncat(buff, "<unknown type>",              TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_NOT_TYPED:   strncat(buff, "<not typed>",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_MODULE:      strncat(buff, "module",                      TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_MACRO:       strncat(buff, "macro",                       TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_TYPE:        strncat(buff, "type",                        TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_PROC:        strncat(buff, "procedure",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_PTR:         strncat(buff, "*",                           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_STR:         strncat(buff, "str",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_VARGS:       strncat(buff, "...",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U8:          strncat(buff, "u8",                          TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U16:         strncat(buff, "u16",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U32:         strncat(buff, "u32",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_U64:         strncat(buff, "u64",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S8:          strncat(buff, "s8",                          TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S16:         strncat(buff, "s16",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S32:         strncat(buff, "s32",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_S64:         strncat(buff, "s64",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_F32:         strncat(buff, "f32",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_F64:         strncat(buff, "f64",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_STRUCT:      strncat(buff, get_string(t.decl->full_name), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_UNKNOWN:              strncat(buff, "<unknown type>",              TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_NOT_TYPED:            strncat(buff, "<not typed>",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_MODULE:               strncat(buff, "module",                      TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_MACRO:                strncat(buff, "macro",                       TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_TYPE:                 strncat(buff, "type",                        TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_PROC:                 strncat(buff, "procedure",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_PTR:                  strncat(buff, "*",                           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_STR:                  strncat(buff, "str",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_VARGS:                strncat(buff, "...",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_GENERIC_POSITIVE_INT:
+        case TY_GENERIC_NEGATIVE_INT:
+        case TY_GENERIC_INT:          strncat(buff, "<generic integer>",           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U8:                   strncat(buff, "u8",                          TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U16:                  strncat(buff, "u16",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U32:                  strncat(buff, "u32",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_U64:                  strncat(buff, "u64",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S8:                   strncat(buff, "s8",                          TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S16:                  strncat(buff, "s16",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S32:                  strncat(buff, "s32",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_S64:                  strncat(buff, "s64",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_GENERIC_FLOAT:        strncat(buff, "<generic float>",             TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_F32:                  strncat(buff, "f32",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_F64:                  strncat(buff, "f64",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_STRUCT:               strncat(buff, get_string(t.decl->full_name), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_STRUCT_MONO: {
             strncat(buff, get_string(t.decl->full_name), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
             strncat(buff, "(", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
@@ -437,4 +441,139 @@ type_t get_type_t(u32 ty) {
     ASSERT(t != NULL, "did not find type");
 
     return *t;
+}
+
+static u8 type_bitfield_struct_bits(u32 t) {
+    u32           tk;
+    ast_decl_t   *decl;
+    ast_struct_t *st;
+
+    tk = type_kind(t);
+
+    if (tk == TY_STRUCT || tk == TY_STRUCT_MONO) {
+
+        decl = struct_type_to_decl(t);
+        st   = (ast_struct_t*)decl->val_expr;
+
+        return st->bitfield_struct_bits;
+    }
+
+    return 0;
+}
+
+int types_are_compatible(u32 ta, u32 tb) {
+    u32 tka;
+
+    tka = type_kind(ta);
+
+    if (tka == TY_GENERIC_INT
+    &&  (tb == TY_GENERIC_POSITIVE_INT || tb == TY_GENERIC_NEGATIVE_INT)) {
+
+        return 1;
+    }
+
+    if (tka == TY_GENERIC_FLOAT
+    &&  tb == TY_GENERIC_FLOAT) {
+
+        return 1;
+    }
+
+    if (type_bitfield_struct_bits(ta)
+    &&  (tb == TY_GENERIC_POSITIVE_INT || tb == TY_GENERIC_NEGATIVE_INT)) {
+
+        return 1;
+    }
+
+
+    return ta == tb;
+}
+
+void realize_generic(u32 real, ast_t *expr) {
+    u32 tkreal;
+    u8  bits;
+    u64 max_mag;
+    u64 min_mag;
+
+    tkreal = type_kind(real);
+
+
+    if (tkreal == TY_PTR) {
+        /* If an expression is using a generic integer in pointer arithmetic,
+         * we don't want to turn then integer into a pointer type.
+         * Just use u64.
+         */
+        real   = TY_U64;
+        tkreal = TY_GENERIC_INT;
+    } else if ((bits = type_bitfield_struct_bits(real))) {
+        /* If we have a bitfield struct, just use its underlying integer type. */
+        switch (bits) {
+            case 8:  real = TY_U8;  break;
+            case 16: real = TY_U16; break;
+            case 32: real = TY_U32; break;
+            case 64: real = TY_U64; break;
+            default:
+                ASSERT(0, "bad bitfield_struct_bits");
+                return;
+        }
+
+        tkreal = TY_GENERIC_INT;
+    }
+
+    ASSERT(types_are_compatible(real, expr->type), "can't realize into an incompatible type");
+
+    if (tkreal == TY_GENERIC_INT) {
+        if (INT_TYPE_IS_SIGNED(real)) {
+            switch (real) {
+                case TY_S8:  min_mag = 1 + (max_mag = 0x7f);               break;
+                case TY_S16: min_mag = 1 + (max_mag = 0x7fff);             break;
+                case TY_S32: min_mag = 1 + (max_mag = 0x7fffffff);         break;
+                case TY_S64: min_mag = 1 + (max_mag = 0x7fffffffffffffff); break;
+                default:
+                    ASSERT(0, "bad type");
+                    return;
+            }
+        } else {
+            switch (real) {
+                case TY_U8:  min_mag = 0; max_mag = 0xff;               break;
+                case TY_U16: min_mag = 0; max_mag = 0xffff;             break;
+                case TY_U32: min_mag = 0; max_mag = 0xffffffff;         break;
+                case TY_U64: min_mag = 0; max_mag = 0xffffffffffffffff; break;
+                default:
+                    ASSERT(0, "bad type");
+                    return;
+            }
+        }
+
+        if (expr->value.u > max_mag
+        ||  (expr->type == TY_GENERIC_NEGATIVE_INT && expr->value.u > min_mag)) {
+
+            report_range_err(&expr->loc,
+                             "integer literal is being used as type %s, but is not in the range [%s%"PRIu64",%"PRIu64"]",
+                             INT_TYPE_IS_SIGNED(real) ? "-" : "", min_mag, max_mag);
+            return;
+        }
+    } else if (tkreal == TY_GENERIC_FLOAT) {
+        ASSERT(0, "todo");
+    } else {
+        ASSERT(0, "only generic ints and floats can be realized");
+    }
+
+    expr->type = real;
+}
+
+void force_generic_realization(ast_t *expr) {
+    u32 real;
+
+    real = TY_NONE;
+
+    switch (expr->type) {
+        case TY_GENERIC_POSITIVE_INT: real = expr->value.u > 0x7fffffffffffffff ? TY_U64 : TY_S64; break;
+        case TY_GENERIC_NEGATIVE_INT: real = TY_S64;                                               break;
+        case TY_GENERIC_FLOAT:        real = TY_F64;
+        default:
+            ASSERT(0, "bad type");
+            return;
+    }
+
+    realize_generic(real, expr);
 }

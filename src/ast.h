@@ -298,7 +298,6 @@ typedef struct {
     u32         poly_constants_idx;
     u32         flags;
     u32         varg_ty;
-    u32         autocast_ty;
 } check_context_t;
 
 enum {

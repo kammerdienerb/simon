@@ -802,7 +802,6 @@ static int lookahead_unary_prefix_op(parse_context_t *cxt) {
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_ADDR)))     { op = OP_ADDR;     }
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_DEREF)))    { op = OP_DEREF;    }
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_NEG)))      { op = OP_NEG;      }
-    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_AUTOCAST))) { op = OP_AUTOCAST; }
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_STR(OP_BNEG)))     { op = OP_BNEG;     }
 
     return op;
@@ -1674,6 +1673,8 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
     int          kind;
     ast_decl_t  *result;
     int          value;
+    int          must_be_const;
+    const char  *s;
 
     tags             = array_make(ast_t*);
     has_tags         = parse_tags(cxt, &tags);
@@ -1757,6 +1758,36 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
     INSTALL(cxt, name, ASTP(result));
 
     if (value) {
+        if (!(ASTP(result)->flags & AST_FLAG_CONSTANT)) {
+            must_be_const = 0;
+            switch (kind) {
+                case AST_DECL_PROC:
+                    must_be_const = 1;
+                    s             = "procedures";
+                    break;
+                case AST_DECL_STRUCT:
+                    must_be_const = 1;
+                    s             = "structs";
+                    break;
+                case AST_DECL_MACRO:
+                    must_be_const = 1;
+                    s             = "macros";
+                    break;
+                case AST_DECL_MODULE:
+                    must_be_const = 1;
+                    s             = "modules";
+                    break;
+            }
+            if (must_be_const) {
+                report_range_err_no_exit(&ASTP(result)->loc,
+                                         "%s must be declared as constants", s);
+                report_fixit(ASTP(result)->loc.beg,
+                             "declare '%s' as a constant\a%s ::",
+                             get_string(result->name),
+                             get_string(result->name));
+            }
+        }
+
         switch (kind) {
             case AST_DECL_PROC:
                 result->val_expr = parse_proc_body(cxt, name, !is_extern);
