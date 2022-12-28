@@ -443,6 +443,12 @@ type_t get_type_t(u32 ty) {
     return *t;
 }
 
+u32 struct_mono_type_to_poly(u32 ty) {
+    ASSERT(type_kind(ty) == TY_STRUCT_MONO, "not a struct monomorph type");
+
+    return get_struct_type(struct_type_to_decl(ty));
+}
+
 static u8 type_bitfield_struct_bits(u32 t) {
     u32           tk;
     ast_decl_t   *decl;

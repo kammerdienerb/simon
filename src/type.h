@@ -166,6 +166,7 @@ u32 get_ret_type(u32 proc_ty);
 string_id get_type_string_id(u32 ty);
 ast_decl_t *struct_type_to_decl(u32 ty);
 type_t get_type_t(u32 ty);
+u32 struct_mono_type_to_poly(u32 ty);
 
 int  types_are_compatible(u32 ta, u32 tb);
 void realize_generic(u32 real, ast_t *expr);

@@ -1,0 +1,4 @@
+[[ program_entry ]]
+main :: proc() { }
+sun  :: struct { }
+moon :: *sun;

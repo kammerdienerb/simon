@@ -96,12 +96,12 @@ static void emit_prelude(void) {
 "typedef char*              str;\n"
 "\n"
 "#define _builtin_stack_alloc(_n) (__builtin_alloca((_n)))\n"
-#ifdef __x86_64__
+"#ifdef __x86_64__\n"
 "__attribute__((used, always_inline))\n"
 "static inline void _builtin_outb(u8* addr, u8 b) { asm volatile ( \"outb %0, %1\" : : \"a\"(b), \"Nd\"((u16)(u64)addr) );                      }\n"
 "__attribute__((used, always_inline))\n"
 "static inline u8   _builtin_inb(u8* addr)        { u8 ret; asm volatile ( \"inb %1, %0\" : \"=a\"(ret) : \"Nd\"((u16)(u64)addr) ); return ret; }\n"
-#endif
+"#endif\n"
 "\n";
 
     EMIT_STRING(prelude);
@@ -253,7 +253,8 @@ static void emit_expr(ast_t *expr) {
                 goto renamed;
             }
 
-            if (ident->resolved_node->flags & AST_FLAG_IS_EXTERN) {
+            if (ident->resolved_node->flags & AST_FLAG_IS_EXTERN
+            &&  ident->resolved_node->kind != AST_DECL_VAR) {
                 emit_base_name(ident->str_rep);
                 goto renamed;
             }

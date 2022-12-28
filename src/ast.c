@@ -663,8 +663,11 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
                 report_range_err(&node->loc, "'%s' is tagged 'extern', but is not a procedure or a variable", get_string(decl->name));
             }
 
-            node->flags       |= AST_FLAG_IS_EXTERN;
-            ASTP(proc)->flags |= AST_FLAG_IS_EXTERN;
+            node->flags |= AST_FLAG_IS_EXTERN;
+
+            if (proc != NULL) {
+                ASTP(proc)->flags |= AST_FLAG_IS_EXTERN;
+            }
         } else {
             report_range_err(&tag->loc, "unknown tag '%s'", get_string(ident->str_rep));
         }
@@ -1290,11 +1293,15 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
 static void solve_poly_type_expr(array_t *constants, ast_t *type_expr, poly_arg_t *arg) {
     ast_t                *texpr;
     u32                   at;
+    value_t               av;
     u32                   pt;
     polymorph_constant_t  constant;
+    ast_arg_list_t       *arg_list;
+    poly_arg_t            new_arg;
 
     texpr = type_expr;
     at    = arg->type;
+    av    = arg->value;
 
     for (;;) {
         pt = texpr->value.t;
@@ -1319,11 +1326,34 @@ static void solve_poly_type_expr(array_t *constants, ast_t *type_expr, poly_arg_
             break;
         }
 
-        if (type_kind(at) != type_kind(pt)) { goto err; }
 
         if (texpr->kind == AST_BIN_EXPR && ((ast_bin_expr_t*)texpr)->op == OP_CALL) {
-            report_simple_info_no_exit("fdsa");
+            /* The parameter itself describes a polymorphic thing. We must recurse. */
+
+            if (at != TY_TYPE || type_kind(av.t) != TY_STRUCT_MONO) { goto err; }
+
+            /* @bad @todo what about procedures? Is that even legal?  */
+
+            if (((ast_bin_expr_t*)texpr)->left->flags & AST_FLAG_POLYMORPH) {
+                I("HELLO?\n");
+                new_arg.node      = arg->node;
+                new_arg.value.t   = struct_mono_type_to_poly(av.t);
+                new_arg.has_value = 0;
+                new_arg.type      = TY_TYPE;
+                solve_poly_type_expr(constants, ((ast_bin_expr_t*)texpr)->left, &new_arg);
+            }
+
+/*             I("%s, %s\n", T(pt), T(at)); */
+/*             I("%s\n", V(av, at)); */
+/*             arg_list = (ast_arg_list_t*)((ast_bin_expr_t*)texpr)->right; */
+            (void)arg_list;
+/*             report_simple_err("this part of the solver is not implemented yet :("); */
+
+            /* There should be no more work to do. */
+            return;
         } else {
+            if (type_kind(at) != type_kind(pt)) { goto err; }
+
             switch (type_kind(pt)) {
                 case TY_PTR:
                     texpr = ((ast_unary_expr_t*)texpr)->child;
@@ -2609,6 +2639,10 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
     if (expr->child->type == TY_NOT_TYPED) {
         operand_not_typed_error(ASTP(expr), expr->child);
         return;
+    }
+
+    if (TYPE_IS_GENERIC(expr->child->type)) {
+        force_generic_realization(expr->child);
     }
 
     switch (expr->op) {

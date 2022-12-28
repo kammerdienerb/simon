@@ -58,8 +58,9 @@ void pop_breadcrumb(void);
 #define report_fixit_no_exit(...)                  (_report_fixit(0, __VA_ARGS__))
 
 
-#define I(...) (report_simple_info_no_exit(__VA_ARGS__))
-#define S(id)  (get_string(id))
-#define T(ty)  (S(get_type_string_id(ty)))
+#define I(...)     (report_simple_info_no_exit(__VA_ARGS__))
+#define S(id)      (get_string(id))
+#define T(ty)      (S(get_type_string_id(ty)))
+#define V(val, ty) (S(value_to_string_id(val, ty)))
 
 #endif

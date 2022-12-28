@@ -1,11 +1,11 @@
-S := struct(%T: type) {
+S :: struct(%T: type) {
     x: T
 }
 
-foo := proc(a: %T(u32)) {
+foo :: proc(a: %T(u32)) {
 }
 
 [[ program_entry ]]
-main := proc() {
+main :: proc() {
     foo(S(u32));
 }
