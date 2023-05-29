@@ -1,0 +1,89 @@
+# Need to propagate constants and compute as much as possible.
+
+# Want to be able to solve:
+
+
+            insert :: proc(map: *Map(%K, %V), key: K, val: V) { ... }
+
+
+# OR
+
+# Maybe instead, we allow full compile-time type procedures that can be specialized:
+
+            [[ specialization(key_type)   ]] map_key_type   :: proc(%T: type): type { ... }
+            [[ specialization(value_type) ]] map_value_type :: proc(%T: type): type { ... }
+
+            insert :: proc(map: *%T, key: key_type(T), val: value_type(T)) { ... }
+
+
+# Could that even work since specializations can't be polymorphic?
+
+# Another option is allowing constants to be defined in structs:
+
+
+            Map_Type :: struct(%K, %V) {
+                key_type :: K;
+                val_type :: V;
+                ...
+            }
+
+            insert :: proc(map: *%T, key: T.key_type, val: T.val_type) { ... }
+
+
+# At that point, I feel like there isn't much difference between structs and modules...
+
+# The second two options provide more utility as far as allowing types to "relay" other types
+# without the need for them to appear in a parameter list. Example:
+
+
+            Range_Iter :: struct {
+                value_type :: s64;
+
+                start: value_type,
+                end:   value_type,
+                step:  value_type,
+            }
+
+            proc iter_value :: proc(iter: *T): T.value_type { ... }
+
+# Passing a module to a polymorphic type param doesn't throw any meaningful error?
+
+
+            Foo :: struct(%bar: type) {
+            }
+
+            ...
+
+            foo: Foo(Some_Module);
+
+
+# We still haven't tackled the issue where certain situations really should have
+# declaration order dependency. For "global" (i.e. outside of a procedure) declarations,
+# order shouldn't really matter as long as we make sure there aren't missing symbols or
+# dependency cycles, but procedure-local variables and all parameters (?) should be ordered.
+# For example, the following currently passes analysis:
+
+            foo :: proc() {
+                x := y;
+                y := 0;
+            }
+
+# While you could argue that this is valid in a way, it's better to think about code in a
+# procedure as having some sort of flow (i.e. linear execution plus well-defined control
+# flow structures). So this should be caught as an error. I think we had to do the same sort
+# of look-behind thing in the bJou compiler...
+
+# As for parameters, I initially thought that they should be ordered as well, but I'm not so
+# sure. There isn't really any understood "execution" w.r.t. argument/parameter binding.
+# In a lot of ways, it's not too dissimilar to a handful of global declarations in a scope.
+# Their "initialization" just happens to come from somewhere else.
+# So, I'm not sure why the following should be disallowed (except maybe just for the sake of
+# simplicity, which is certainly a valid concern):
+
+            casting_identity :: proc(%T: type = typeof(arg), arg: %arg_type): T { return cast(T, arg); }
+
+# I'm not sure what the use cases for allowing this would be...
+# Plus this all hinges on two things:
+#   1. We actually implement default param values, which remains to be seen...
+#   2. Default param values can be positioned before non-default. That wasn't really the plan anyways, so
+#      This may all be a non-issue.

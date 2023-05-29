@@ -1,10 +1,76 @@
+Point :: struct {
+    x: u32;
+    y: u32;
+}
+
+[[ specialization(Format.to_formatted_str) ]]
+Point_to_formatted_str :: proc(buff: *u8, len: *u64, arg: Point, f: Format.Format_Info): s64 {
+    num_len := cast(u64, 0);
+    Format.u32_to_formatted_str(NULL, *num_len, 0, f);
+
+    needed_len := 4 + (2 * num_len);
+
+    if @len < needed_len {
+        @len = needed_len;
+        return ERR_TOO_SMALL;
+    }
+
+    i := cast(u64, 0);
+
+    buff[i] = '(';
+    i += 1;
+
+    tmp := @len - i;
+
+    err := Format.u32_to_formatted_str(buff + i, *tmp, arg.x, f);
+    if err != SUCCESS {
+        return err;
+    }
+
+    i += tmp;
+    buff[i] = ',';
+    i += 1;
+    buff[i] = ' ';
+    i += 1;
+
+    tmp = @len - i;
+
+    err = Format.u32_to_formatted_str(buff + i, *tmp, arg.y, f);
+    if err != SUCCESS {
+        return err;
+    }
+
+    i += tmp;
+
+    buff[i] = ')';
+    i += 1;
+
+    @len = i;
+
+    return SUCCESS;
+}
+
+# String_Builder :: struct(%allocator_type: type) {
+#     allocator: allocator_type,
+# }
+
+P :: macro {
+    aprintf(*block_alloc, "MACRO TEST\n");
+}
+
 [[ program_entry ]]
 main :: proc() {
     defer { Sys.exit(0); }
 
-
     N: u64 = 4096;
     block_alloc := Fixed_Allocator.new(_builtin_stack_alloc(N), N);
+
+#     sb: String_Builder(Fixed_Allocator.T);
+
+    p: Point;
+    p.x = 0xFFFFFFFF;
+    p.y = 0x76767676;
+    aprintf(*block_alloc, "my point: {x}\n", p);
 
     defer {
         aprintf(*block_alloc, "zap\n");
@@ -16,7 +82,7 @@ main :: proc() {
         aprintf(*block_alloc, "foo\n");
     }
 
-    aprintf(*block_alloc, "hello! {}\n", 1);
+    aprintf(*block_alloc, "hello! {}\n", 123);
 
     defer { aprintf(*block_alloc, "bye!\n"); }
 

@@ -3,6 +3,7 @@
 #include "src_range.h"
 #include "options.h"
 #include "array.h"
+#include "type.h"
 #include "globals.h"
 
 static int output_is_tty;
@@ -19,6 +20,7 @@ static array_t breadcrumbs;
 #define TERM_BLUE    "\e[34m"
 #define TERM_MAGENTA "\e[35m"
 #define TERM_CYAN    "\e[36m"
+#define TERM_WHITE   "\e[37m"
 #define TERM_BOLD    "\e[1m"
 
 #define ERR_ATTR   TERM_BOLD
@@ -31,7 +33,7 @@ static array_t breadcrumbs;
 #define INFO_COLOR  TERM_YELLOW
 #define FIXIT_COLOR TERM_CYAN
 #define LOC_COLOR   TERM_BLUE
-#define RANGE_COLOR TERM_RESET
+#define RANGE_COLOR TERM_CYAN
 
 #define ERR_STYLE   ERR_ATTR ERR_COLOR
 #define INFO_STYLE  INFO_ATTR INFO_COLOR
@@ -660,4 +662,24 @@ void pop_breadcrumb(void) {
     if (array_len(breadcrumbs) > 0) {
         array_pop(breadcrumbs);
     }
+}
+
+void print_node(ast_t *node) {
+    if (node->kind != AST_BUILTIN) {
+        C(LOC_STYLE);
+        printf("%s:%d:%d", get_string(node->loc.beg.path_id), node->loc.beg.line, node->loc.beg.col);
+        C(TERM_RESET);
+        printf(":");
+    }
+    printf("%s @ %p\n", ast_get_kind_str(node->kind), node);
+    if (node->kind != AST_BUILTIN) {
+        print_range(&node->loc, RANGE_STYLE, INFO_STYLE, LOC_STYLE, 0, 1, 1);
+        C(TERM_RESET);
+    }
+    printf("type  = %s\n", get_string(get_type_string_id(node->type)));
+    printf("value = %s\n", get_string(value_to_string_id(node->value, node->type)));
+}
+
+void print_type(u32 ty) {
+    printf("%s\n", get_string(get_type_string_id(ty)));
 }

@@ -242,19 +242,19 @@ u32 get_struct_mono_type(ast_decl_t *st, u32 constants_idx) {
 }
 
 u32 get_struct_field_type(u32 ty, string_id field_name) {
-    type_t              *t;
-    ast_struct_t        *st;
-    ast_t              **it;
-    ast_struct_field_t  *field;
+    type_t        *t;
+    ast_struct_t  *st;
+    ast_t        **it;
+    ast_decl_t    *field;
 
     t = get_type_structure(ty);
-    ASSERT(t != NULL,            "did not find type");
-    ASSERT(t->kind == TY_STRUCT, "type is not a struct");
+    ASSERT(t != NULL,                                         "did not find type");
+    ASSERT(t->kind == TY_STRUCT || t->kind == TY_STRUCT_MONO, "type is not a struct");
 
     st = (ast_struct_t*)t->decl->val_expr;
 
     array_traverse(st->fields, it) {
-        field = (ast_struct_field_t*)*it;
+        field = (ast_decl_t*)*it;
         if (field->name == field_name) {
             return ASTP(field)->type;
         }
@@ -342,6 +342,12 @@ static void build_type_string(u32 ty, char *buff) {
 
     if (tp == NULL) {
         strncat(buff, "<invalid type>", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+        return;
+    } else if (ty == TY_STRUCT) {
+        strncat(buff, "<unknown struct>", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+        return;
+    } else if (ty == TY_STRUCT_MONO) {
+        strncat(buff, "<unknown monomorphed struct>", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
         return;
     }
 
@@ -505,7 +511,7 @@ void realize_generic(u32 real, ast_t *expr) {
 
     if (tkreal == TY_PTR) {
         /* If an expression is using a generic integer in pointer arithmetic,
-         * we don't want to turn then integer into a pointer type.
+         * we don't want to turn the integer into a pointer type.
          * Just use u64.
          */
         real   = TY_U64;
@@ -559,7 +565,10 @@ void realize_generic(u32 real, ast_t *expr) {
             return;
         }
     } else if (tkreal == TY_GENERIC_FLOAT) {
-        ASSERT(0, "todo");
+        /* @bad @todo
+         * What's the smart thing to do here?
+         */
+         real = TY_F64;
     } else {
         ASSERT(0, "only generic ints and floats can be realized");
     }
@@ -575,7 +584,7 @@ void force_generic_realization(ast_t *expr) {
     switch (expr->type) {
         case TY_GENERIC_POSITIVE_INT: real = expr->value.u > 0x7fffffffffffffff ? TY_U64 : TY_S64; break;
         case TY_GENERIC_NEGATIVE_INT: real = TY_S64;                                               break;
-        case TY_GENERIC_FLOAT:        real = TY_F64;
+        case TY_GENERIC_FLOAT:        real = TY_F64;                                               break;
         default:
             ASSERT(0, "bad type");
             return;

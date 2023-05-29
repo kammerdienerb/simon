@@ -1,0 +1,32 @@
+# Map :: struct(%_key_type: type, %_value_type: type) {
+#     key_type   :: _key_type;
+#     value_type :: _value_type;
+
+#     key: key_type;
+# }
+
+Moo :: module {
+    COW :: "milk";
+}
+
+Pig :: struct {
+    YUM :: "bacon";
+}
+
+Chicken :: struct(%num_eggs: s64 = foo, %foo: u32) {
+    EGG :: num_eggs;
+    COUNT :: EGG;
+
+    lay :: proc(): s64 { return COUNT; }
+}
+
+[[ program_entry ]]
+main :: proc() {
+#     Moo.COW;
+#     Pig.YUM;
+    Chicken.EGG;
+    Chicken.lay();
+
+    x := y;
+    y := 0;
+}

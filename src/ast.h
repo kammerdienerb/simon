@@ -27,10 +27,10 @@
     X(AST_DECL_VAR)            \
     X(AST_DECL_PROC)           \
     X(AST_DECL_STRUCT)         \
+    X(AST_DECL_STRUCT_FIELD)   \
     X(AST_DECL_MACRO)          \
     X(AST_DECL_MODULE)         \
     X(AST_PARAM)               \
-    X(AST_STRUCT_FIELD)        \
     X(AST_INT)                 \
     X(AST_FLOAT)               \
     X(AST_STRING)              \
@@ -52,6 +52,7 @@
     X(AST_DECL_VAR)            \
     X(AST_DECL_PROC)           \
     X(AST_DECL_STRUCT)         \
+    X(AST_DECL_STRUCT_FIELD)   \
     X(AST_DECL_MACRO)          \
     X(AST_DECL_MODULE)
 
@@ -189,24 +190,18 @@ AST_DEFINE(proc,
     array_t      polymorphs;
 );
 
-AST_DEFINE(struct_field,
-    string_id  name;
-    ast_t     *type_expr;
-    array_t    tags;
-    u64        bitfield_mask;
-    u32        bitfield_shift;
-);
-
 AST_DEFINE(struct,
     scope_t     *scope;
     src_range_t  params_loc;
     array_t      params;
     array_t      fields;
+    array_t      children;
     array_t      polymorphs;
     u8           bitfield_struct_bits;
 );
 
 AST_DEFINE(macro,
+    ast_t *block;
 );
 
 AST_DEFINE(decl,
@@ -216,6 +211,9 @@ AST_DEFINE(decl,
     ast_t     *type_expr;
     ast_t     *val_expr;
     array_t    tags;
+    /* For bitfield struct field. */
+    u64        bitfield_mask;
+    u32        bitfield_shift;
 );
 
 AST_DEFINE(int,
@@ -293,6 +291,7 @@ typedef struct {
     scope_t    *scope;
     ast_decl_t *parent_decl;
     ast_decl_t *unit_decl;
+    ast_decl_t *decl_path_tail;
     ast_proc_t *proc;
     array_t    *poly_constants;
     u32         poly_constants_idx;
@@ -301,12 +300,12 @@ typedef struct {
 } check_context_t;
 
 enum {
-    CHECK_FLAG_DESCENDING     = (1 << 0),
-    CHECK_FLAG_IN_LOOP        = (1 << 1),
-    CHECK_FLAG_IN_PARAM       = (1 << 2),
-    CHECK_FLAG_IN_VARGS       = (1 << 3),
-    CHECK_FLAG_IN_DEFER       = (1 << 4),
-    CHECK_FLAG_POLY_TYPE_ONLY = (1 << 5),
+    CHECK_FLAG_DESCENDING           = (1 << 0),
+    CHECK_FLAG_IN_LOOP              = (1 << 1),
+    CHECK_FLAG_IN_PARAM             = (1 << 2),
+    CHECK_FLAG_IN_VARGS             = (1 << 3),
+    CHECK_FLAG_IN_DEFER             = (1 << 4),
+    CHECK_FLAG_POLY_TYPE_ONLY       = (1 << 5),
 };
 
 void check_all(void);

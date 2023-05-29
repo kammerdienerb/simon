@@ -25,6 +25,7 @@ typedef struct {
     array_t       scope_stack;
     int           allow_poly_idents;
     int           poly_expr_pattern;
+    int           in_struct;
 } parse_context_t;
 
 
@@ -1089,10 +1090,9 @@ static int parse_tags(parse_context_t *cxt, array_t *tags) {
 static ast_t * parse_declaration(parse_context_t *cxt);
 
 static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
-    ast_struct_t       *result;
-    ast_param_t        *param;
-    array_t             tags;
-    ast_struct_field_t *field;
+    ast_struct_t *result;
+    ast_param_t  *param;
+    ast_t        *decl;
 
     result                = AST_ALLOC(cxt, ast_struct_t);
     ASTP(result)->kind    = AST_STRUCT;
@@ -1106,6 +1106,7 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
     SCOPE_PUSH_NAMED(cxt, AST_STRUCT, ASTP(result), name);
     result->scope = SCOPE(cxt);
 
+    cxt->in_struct         = 1;
     cxt->allow_poly_idents = 1;
 
     if (OPTIONAL_NO_EAT_CHAR(cxt, '(')) {
@@ -1179,11 +1180,28 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
     EXPECT_CHAR(cxt, '{', "expected '{' to open struct '%s'", get_string(name));
 
     while (!OPTIONAL_CHAR(cxt, '}')) {
+        decl = parse_declaration(cxt);
+        if (decl == NULL) {
+            decl = parse_static_directive(cxt);
+            if (decl == NULL) {
+                report_loc_err(GET_BEG_POINT(cxt), "expected valid declaration inside struct '%s'", get_string(name));
+                return NULL;
+            }
+        }
+        if (decl->kind == AST_DECL_STRUCT_FIELD) {
+            array_push(result->fields, decl);
+        } else {
+            array_push(result->children, decl);
+        }
+    }
+
+#if 0
+    while (!OPTIONAL_CHAR(cxt, '}')) {
         tags = array_make(ast_t*);
         parse_tags(cxt, &tags);
 
-        field                = AST_ALLOC(cxt, ast_struct_field_t);
-        ASTP(field)->kind    = AST_STRUCT_FIELD;
+        field                = AST_ALLOC(cxt, ast_decl_t);
+        ASTP(field)->kind    = AST_DECL_STRUCT_FIELD;
         ASTP(field)->loc.beg = GET_BEG_POINT(cxt);
         field->name          = STRING_ID_NULL;
         field->tags          = tags;
@@ -1209,18 +1227,41 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
             break;
         }
     }
+#endif
 
     SCOPE_POP(cxt);
 
     ASTP(result)->loc.end = GET_END_POINT(cxt);
 
+    cxt->in_struct = 0;
+
+    return ASTP(result);
+}
+
+static ast_t * parse_macro_body(parse_context_t *cxt, string_id name) {
+    ast_macro_t *result;
+
+    result                = AST_ALLOC(cxt, ast_macro_t);
+    ASTP(result)->kind    = AST_MACRO;
+    ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
+
+    ASTP(result)->flags |= AST_FLAG_CONSTANT;
+
+    result->block = parse_block(cxt);
+    if (result->block == NULL) {
+        report_loc_err(GET_BEG_POINT(cxt), "expected '{' to open macro '%s'", get_string(name));
+        return NULL;
+    }
+    ASTP(result)->loc.end = result->block->loc.end;
+
+    ASTP(result)->value.a = ASTP(result);
+
     return ASTP(result);
 }
 
 static ast_t * parse_module_body(parse_context_t *cxt, string_id name) {
-    ast_module_t
-    *result;
-    ast_t        *child;
+    ast_module_t *result;
+    ast_t        *decl;
 
     result                = AST_ALLOC(cxt, ast_module_t);
     ASTP(result)->kind    = AST_MODULE;
@@ -1235,15 +1276,15 @@ static ast_t * parse_module_body(parse_context_t *cxt, string_id name) {
     result->scope = SCOPE(cxt);
 
     while (!OPTIONAL_CHAR(cxt, '}')) {
-        child = parse_declaration(cxt);
-        if (child == NULL) {
-            child = parse_static_directive(cxt);
-            if (child == NULL) {
+        decl = parse_declaration(cxt);
+        if (decl == NULL) {
+            decl = parse_static_directive(cxt);
+            if (decl == NULL) {
                 report_loc_err(GET_BEG_POINT(cxt), "expected valid assigment inside module '%s'", get_string(name));
                 return NULL;
             }
         }
-        array_push(result->children, child);
+        array_push(result->children, decl);
     }
 
     SCOPE_POP(cxt);
@@ -1368,7 +1409,7 @@ static ast_t * parse_loop(parse_context_t *cxt) {
     result->init = parse_declaration(cxt);
     if (result->init == NULL) {
         if (OPTIONAL_CHAR(cxt, ';')) { goto cond; }
-        report_loc_err(GET_BEG_POINT(cxt), "expected valid assignment expression for 'loop'");
+        report_loc_err(GET_BEG_POINT(cxt), "expected valid declaration expression for 'loop'");
         return NULL;
     }
     if (result->init->kind != AST_DECL_VAR) {
@@ -1663,6 +1704,7 @@ static string_id get_full_name(string_id name_id, scope_t *scope) {
 }
 
 static ast_t * parse_declaration(parse_context_t *cxt) {
+    int          var_shape_kind;
     array_t      tags;
     ast_t      **tag_it;
     ast_t       *tag_expr;
@@ -1732,12 +1774,33 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
         }
     }
 
+    /*
+     * Declarations of these forms
+     *
+     *   name: type;    name: type = val;    name := val;
+     *
+     * should be considered struct fields when we're parsing a struct.
+     * Notably,
+     *
+     *   name :: val;
+     *
+     * should remain a "variable" and be put in the structs list of other
+     * (non-field) declarations.
+     *
+     * parse_struct_body() checks each declaration to decide if it's stored
+     * as a field or general declaration.
+     */
+    var_shape_kind = cxt->in_struct && !(ASTP(result)->flags & AST_FLAG_CONSTANT)
+                        ? AST_DECL_STRUCT_FIELD
+                        : AST_DECL_VAR;
+
+
     if (value) {
                if (OPTIONAL_LIT(cxt, "proc"))            { kind = AST_DECL_PROC;   loc.end = GET_END_POINT(cxt);
         } else if (OPTIONAL_LIT(cxt, "struct"))          { kind = AST_DECL_STRUCT; loc.end = GET_END_POINT(cxt);
         } else if (OPTIONAL_LIT(cxt, "macro"))           { kind = AST_DECL_MACRO;  loc.end = GET_END_POINT(cxt);
         } else if (OPTIONAL_LIT(cxt, "module"))          { kind = AST_DECL_MODULE; loc.end = GET_END_POINT(cxt);
-        } else if ((result->val_expr = parse_expr(cxt))) { kind = AST_DECL_VAR;    loc.end = result->val_expr->loc.end;
+        } else if ((result->val_expr = parse_expr(cxt))) { kind = var_shape_kind;  loc.end = result->val_expr->loc.end;
         } else {
             report_loc_err(GET_BEG_POINT(cxt),
                         "expected 'module', 'proc', 'type', 'macro', or a valid expression in initialization of '%s'",
@@ -1745,7 +1808,7 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
             return NULL;
         }
     } else {
-        kind    = AST_DECL_VAR;
+        kind    = var_shape_kind;
         loc.end = GET_END_POINT(cxt);
         EXPECT_CHAR(cxt, ';', "expected ';' or '=' followed by an initialization expression");
     }
@@ -1798,6 +1861,7 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
                 OPTIONAL_CHAR(cxt, ';');
                 break;
             case AST_DECL_MACRO:
+                result->val_expr = parse_macro_body(cxt, name);
                 OPTIONAL_CHAR(cxt, ';');
                 break;
             case AST_DECL_MODULE:
@@ -1805,6 +1869,7 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
                 OPTIONAL_CHAR(cxt, ';');
                 break;
             case AST_DECL_VAR:
+            case AST_DECL_STRUCT_FIELD:
                 EXPECT_CHAR(cxt, ';', "expected ';'");
                 break;
             default:

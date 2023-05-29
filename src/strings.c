@@ -198,6 +198,8 @@ const char *get_string(string_id id) {
 #endif
 #endif
 
+    ASSERT(id != 0, "NULL ID!");
+
     string = ID_TO_S(id);
 
     /* Is this actually in the table? */
