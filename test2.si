@@ -20,6 +20,15 @@ Chicken :: struct(%num_eggs: s64 = foo, %foo: u32) {
     lay :: proc(): s64 { return COUNT; }
 }
 
+Hash_Table :: struct(%KEY_TYPE: type, %VALUE_TYPE: type) {
+    key_type   :: KEY_TYPE;
+    value_type :: VALUE_TYPE;
+
+    insert :: proc(table: *%T, key: T.key_type, value: T.value_type) {
+
+    }
+}
+
 [[ program_entry ]]
 main :: proc() {
 #     Moo.COW;
@@ -27,6 +36,15 @@ main :: proc() {
     Chicken.EGG;
     Chicken.lay();
 
-    x := y;
-    y := 0;
+    table: Hash_Table(str, s64);
+
+    Hash_Table.insert(table, "abc", 123);
 }
+
+# @here
+# We're trying to get the dot operator to behave correctly when
+# getting declarations from modules, structs, monomorphed structs, and (possibly)
+# polymorphic structs (not yet monomorphed).
+# It seems like these things need to be handled slightly differently at some level.
+# Right now, our implementation `check_namespace_dot()` expects the LHS to be an
+# identifier, which doesn't work for all cases listed above.

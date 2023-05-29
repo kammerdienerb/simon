@@ -81,9 +81,29 @@
 # simplicity, which is certainly a valid concern):
 
             casting_identity :: proc(%T: type = typeof(arg), arg: %arg_type): T { return cast(T, arg); }
+            casting_identity(123);      # does nothing
+            casting_identity(u64, 123); # actually casts to a different type
 
 # I'm not sure what the use cases for allowing this would be...
 # Plus this all hinges on two things:
+#
 #   1. We actually implement default param values, which remains to be seen...
 #   2. Default param values can be positioned before non-default. That wasn't really the plan anyways, so
-#      This may all be a non-issue.
+#      this may all be a non-issue.
+
+
+# Another TODO: We need to check types for dependency cycles differently than the way we check declarations.
+# For example, the following should not compile, because it is recursive without any indirection and
+# thus has infinite size:
+
+            List :: struct(%value_type: type) {
+                value: value_type;
+                next:  List(value_type);
+            }
+
+# This should compile (note the addition of pointer indirection on `next`):
+
+            List :: struct(%value_type: type) {
+                value:  value_type;
+                next:  *List(value_type);
+            }
