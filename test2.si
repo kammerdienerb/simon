@@ -29,8 +29,14 @@ Hash_Table :: struct(%KEY_TYPE: type, %VALUE_TYPE: type) {
     }
 }
 
+asdf :: proc(%thing: type) {}
+hjkl :: struct(%thing: type) {}
+
 [[ program_entry ]]
 main :: proc() {
+#     asdf(Moo);
+    hjkl(Moo); # wut?
+
 #     Moo.COW;
 #     Pig.YUM;
     Chicken.EGG;

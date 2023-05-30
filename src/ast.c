@@ -1490,28 +1490,49 @@ static void verify_polymorphic_args(array_t *params, poly_arg_t *args, u32 n_arg
 
         if (ASTP(param)->flags & AST_FLAG_POLY_VARARGS) {
             break;
-        } else if (ASTP(param)->flags & AST_FLAG_POLYMORPH) {
-            if (!arg->has_value) {
-                if (arg->node->kind == AST_PARAM) {
-                    loc.beg = arg->node->loc.beg;
-                    loc.end = ((ast_param_t*)arg->node)->type_expr->loc.end;
-                    report_range_err_no_exit(&loc, "missing value for polymorph-by-value parameter");
-                    report_fixit_no_exit(loc.end, "add a value to satisfy the parameter\a = <value>");
-                } else {
-                    report_range_err_no_exit(&arg->node->loc, "missing value for polymorph-by-value parameter");
-                }
-                report_range_info_no_context(&ASTP(param)->loc, "polymorph-by-value parameter declared here:");
-            }
-        } else if (!(param->type_expr->flags & AST_FLAG_POLYMORPH)) {
-            if (!types_are_compatible(ASTP(param)->type, arg->type)) {
-                report_range_err_no_exit(arg->node->kind == AST_PARAM ? &(((ast_param_t*)arg->node)->type_expr->loc) : &arg->node->loc,
-                                         "argument type does not match non-polymorphic argument type");
-                report_range_info_no_context(&param->type_expr->loc,
-                                        	 "expected %s, but got %s",
-                                             get_string(get_type_string_id(ASTP(param)->type)),
-                                             get_string(get_type_string_id(arg->type)));
-            }
         }
+
+        /*
+         * All parameters of a struct must be polymorphic, so this
+         * should not be hit if we're solving a struct. For procedures,
+         * there is extra extensive arg/param type checking in
+         * check_call() that will take care of these. By skipping them
+         * here, we give procedure calls the opportunity to provide
+         * better error messages for non-polymorphic parameters, even
+         * if the procedure itself is polymorphic. We need to handle
+         * all params of a struct though.
+         */
+        if (!(ASTP(param)->flags & AST_FLAG_POLYMORPH)) {
+            continue;
+        }
+
+        if (!(param->type_expr->flags & AST_FLAG_POLYMORPH)
+        &&  !types_are_compatible(ASTP(param)->type, arg->type)) {
+
+            report_range_err_no_exit(arg->node->kind == AST_PARAM ? &(((ast_param_t*)arg->node)->type_expr->loc) : &arg->node->loc,
+                                     "incorrect argument type: expected %s, but got %s",
+                                     get_string(get_type_string_id(ASTP(param)->type)),
+                                     get_string(get_type_string_id(arg->type)));
+            report_range_info_no_context(&param->type_expr->loc,
+                                    	 "polymorphic parameter '%s' delcared as type %s here:",
+                                         get_string(param->name),
+                                         get_string(get_type_string_id(ASTP(param)->type)));
+
+        }
+
+#if 0 /* I don't remember why we had this code... */
+        if (is_poly_by_value_param && !arg->has_value) {
+            if (arg->node->kind == AST_PARAM) {
+                loc.beg = arg->node->loc.beg;
+                loc.end = ((ast_param_t*)arg->node)->type_expr->loc.end;
+                report_range_err_no_exit(&loc, "missing value for polymorph-by-value parameter");
+                report_fixit_no_exit(loc.end, "add a value to satisfy the parameter\a = <value>");
+            } else {
+                report_range_err_no_exit(&arg->node->loc, "missing value for polymorph-by-value parameter");
+            }
+            report_range_info_no_context(&ASTP(param)->loc, "polymorph-by-value parameter declared here:");
+        }
+#endif
 
         i += 1;
     }
@@ -1951,9 +1972,9 @@ too_few:
                     parm_decl = *(ast_t**)array_item(proc->params, i);
 
                     if (left_ident->resolved_node == proc_origin) {
-                        report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
+                        report_range_info_no_context(&parm_decl->loc, "parameter declared here:");
                     } else {
-                        report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declaration here:");
+                        report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declared here:");
                         report_declaration_path(path);
                     }
                 }
@@ -1994,9 +2015,9 @@ too_few:
                                                 get_string(arg_p->name),
                                                 get_string(((ast_param_t*)parm_decl)->name));
                     if (left_ident->resolved_node == proc_origin) {
-                        report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
+                        report_range_info_no_context(&parm_decl->loc, "parameter declared here:");
                     } else {
-                        report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declaration here:");
+                        report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declared here:");
                         report_declaration_path(path);
                     }
                 }
@@ -2067,9 +2088,9 @@ too_few:
                                                         get_string(arg_p->name),
                                                         get_string(((ast_param_t*)parm_decl)->name));
                             if (left_ident->resolved_node == proc_origin) {
-                                report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
+                                report_range_info_no_context(&parm_decl->loc, "parameter declared here:");
                             } else {
-                                report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declaration here:");
+                                report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declared here:");
                                 report_declaration_path(path);
                             }
                         }
@@ -2077,9 +2098,9 @@ too_few:
                 } else {
                     report_range_err_no_exit(&arg_p->expr->loc, "only the first argument for a variadic parameter list may be named");
                     if (left_ident->resolved_node == proc_origin) {
-                        report_range_info_no_context(&parm_decl->loc, "parameter declaration here:");
+                        report_range_info_no_context(&parm_decl->loc, "parameter declared here:");
                     } else {
-                        report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declaration here:");
+                        report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declared here:");
                         report_declaration_path(path);
                     }
                     return;
