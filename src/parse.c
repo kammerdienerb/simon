@@ -1100,6 +1100,7 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
     result->params        = array_make(ast_t*);
     result->polymorphs    = array_make(polymorphed_t);
     result->fields        = array_make(ast_t*);
+    result->children      = array_make(ast_t*);
 
     ASTP(result)->flags |= AST_FLAG_CONSTANT;
 
@@ -1867,6 +1868,7 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
             case AST_DECL_MODULE:
                 result->val_expr = parse_module_body(cxt, name);
                 OPTIONAL_CHAR(cxt, ';');
+                ((ast_module_t*)result->val_expr)->parent_decl = result;
                 break;
             case AST_DECL_VAR:
             case AST_DECL_STRUCT_FIELD:

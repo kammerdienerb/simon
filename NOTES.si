@@ -46,6 +46,8 @@
 
             proc iter_value :: proc(iter: *T): T.value_type { ... }
 
+# =============================================================================================
+
 # We still haven't tackled the issue where certain situations really should have
 # declaration order dependency. For "global" (i.e. outside of a procedure) declarations,
 # order shouldn't really matter as long as we make sure there aren't missing symbols or
@@ -80,6 +82,7 @@
 #   2. Default param values can be positioned before non-default. That wasn't really the plan anyways, so
 #      this may all be a non-issue.
 
+# =============================================================================================
 
 # Another TODO: We need to check types for dependency cycles differently than the way we check declarations.
 # For example, the following should not compile, because it is recursive without any indirection and

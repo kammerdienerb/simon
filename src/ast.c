@@ -121,6 +121,11 @@ static ast_t *copy_tree(ast_t *node) {
                 new = copy_tree(*it);
                 array_push(st->fields, new);
             }
+            st->children = array_make(ast_t*);
+            array_traverse(((ast_struct_t*)node)->children, it) {
+                new = copy_tree(*it);
+                array_push(st->children, new);
+            }
             st->polymorphs = array_make(polymorphed_t);
 
             return ASTP(st);
@@ -801,8 +806,12 @@ static void check_for_decl_cycle(ast_t *node) {
 
     ASSERT(ast_kind_is_decl(node->kind) || node->kind == AST_PARAM, "bad node kind");
 
-#define CYCLE_NODE_NAME_ID(_node) \
-    (ast_kind_is_decl((_node)->kind) ? ((ast_decl_t*)(_node))->name : ((ast_param_t*)(_node))->name)
+#define CYCLE_NODE_NAME_ID(_node)                 \
+    (ast_kind_is_decl((_node)->kind)              \
+        ? (((ast_decl_t*)(_node))->scope->in_proc \
+            ? ((ast_decl_t*)(_node))->name        \
+            : ((ast_decl_t*)(_node))->full_name)  \
+        : ((ast_param_t*)(_node))->name)
 
     array_rtraverse(cycle_check_path, it) {
         if (*it == node) {
@@ -813,9 +822,14 @@ static void check_for_decl_cycle(ast_t *node) {
 
             idx = it - (ast_t**)array_data(cycle_check_path);
 
-            it = array_item(cycle_check_path, idx + 1);
+            array_traverse_from(cycle_check_path, it, idx + 1) {
+                if ((*it)->kind == AST_IDENT) { goto found_ident1; }
+            }
+            ASSERT(0, "did not find subsequent ident in path");
 
+found_ident1:;
             ident = (ast_ident_t*)*it;
+            idx   = it - (ast_t**)array_data(cycle_check_path);
             ASSERT(ident->resolved_node != NULL, "should be resolved by now...");
 
             last = it == array_last(cycle_check_path);
@@ -827,22 +841,35 @@ static void check_for_decl_cycle(ast_t *node) {
                 last ? " here, thus creating a loop!" : ":");
             if (last) { return; }
 
-            array_traverse_from(cycle_check_path, it, idx + 2) {
-                if (ast_kind_is_decl((*it)->kind) || (*it)->kind == AST_PARAM) {
-                    node = *it;
-                } else {
-                    ident = (ast_ident_t*)*it;
-                    ASSERT(ident->resolved_node != NULL, "should be resolved by now...");
 
-                    last = it == array_last(cycle_check_path);
-                    _report_range_info_no_context(last,
-                        &(*it)->loc,
-                        "... '%s' itself depends on '%s'%s",
-                        get_string(CYCLE_NODE_NAME_ID(node)),
-                        get_string(CYCLE_NODE_NAME_ID(ident->resolved_node)),
-                        last ? " here, thus creating a loop!" : ":");
+
+
+            for (;;) {
+                it = array_item(cycle_check_path, idx + 1);
+                ASSERT(ast_kind_is_decl((*it)->kind) || (*it)->kind == AST_PARAM,
+                       "something not a decl after ident in path");
+                node = *it;
+
+                array_traverse_from(cycle_check_path, it, idx + 1) {
+                    if ((*it)->kind == AST_IDENT) { goto found_ident2; }
                 }
+                ASSERT(0, "did not find subsequent ident in path");
+
+found_ident2:;
+                ident = (ast_ident_t*)*it;
+                idx   = it - (ast_t**)array_data(cycle_check_path);
+                ASSERT(ident->resolved_node != NULL, "should be resolved by now...");
+
+                last = it == array_last(cycle_check_path);
+                _report_range_info_no_context(last,
+                    &(*it)->loc,
+                    "... '%s' itself depends on '%s'%s",
+                    get_string(CYCLE_NODE_NAME_ID(node)),
+                    get_string(CYCLE_NODE_NAME_ID(ident->resolved_node)),
+                    last ? " here, thus creating a loop!" : ":");
+                if (last) { return; }
             }
+
             return;
         }
     }
@@ -2188,13 +2215,13 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     ** expr->left must have been checked by this point.
     */
 
-    ast_ident_t  *left_ident;
-    ast_t        *resolved_node;
+    ast_module_t *mod;
     ast_decl_t   *resolved_decl;
-    array_t       path;
+    const char   *s_kind;
     scope_t      *containing_scope;
     ast_ident_t  *right_ident;
     ast_t        *found_node;
+    const char   *resolved_name;
     ast_ident_t  *new_ident;
     const char   *lname;
     u32           llen;
@@ -2204,19 +2231,20 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     char         *new_name_buff;
 
 
-    ASSERT(expr->left->kind == AST_IDENT,
-           "expr->left must be an identifier in check_namespace_dot()");
+    if (expr->left->type == TY_MODULE) {
+        mod = (ast_module_t*)expr->left->value.a;
+        ASSERT(mod != NULL, "missing module value");
+        resolved_decl = mod->parent_decl;
+        s_kind        = "module";
+    } else if (expr->left->type == TY_TYPE) {
+        resolved_decl = struct_type_to_decl(expr->left->value.t);
+        s_kind        = "struct";
+    } else {
+        ASSERT(0, "not a type I can handle in check_namespace_dot()");
+        return;
+    }
 
-    left_ident = (ast_ident_t*)expr->left;
-
-    resolved_node = try_get_decl_and_path(left_ident, &path);
-
-    ASSERT(resolved_node != NULL, "did not get resolved node");
-    ASSERT(ast_kind_is_decl(resolved_node->kind),
-           "resolved_node is not a declaration");
-
-    resolved_decl = (ast_decl_t*)resolved_node;
-
+    ASSERT(resolved_decl != NULL, "did not resolve LHS to a decl");
     ASSERT(   resolved_decl->val_expr->kind == AST_MODULE
            || resolved_decl->val_expr->kind == AST_STRUCT,
            "resolved_decl is not a module or struct declaration");
@@ -2224,33 +2252,35 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     containing_scope = get_subscope_from_node(resolved_decl->scope,
                                               resolved_decl->val_expr);
 
-    ASSERT(containing_scope != NULL, "did not find module scope");
+    ASSERT(containing_scope != NULL, "did not find scope");
 
     right_ident = (ast_ident_t*)expr->right;
 
-    found_node = find_in_scope(containing_scope, right_ident->str_rep);
+    found_node    = find_in_scope(containing_scope, right_ident->str_rep);
+    resolved_name = get_string(resolved_decl->full_name);
 
     if (found_node == NULL) {
-        if (left_ident->resolved_node == ASTP(resolved_decl)) {
-            report_range_err(&expr->right->loc,
-                             "nothing named '%s' in module '%s'",
-                             get_string(right_ident->str_rep),
-                             get_string(left_ident->str_rep));
-        } else {
-            report_range_err_no_exit(&expr->right->loc,
-                                     "nothing named '%s' in module '%s'",
-                                     get_string(right_ident->str_rep),
-                                     get_string(left_ident->str_rep));
-            report_declaration_path(path);
-        }
+        report_range_err(&expr->right->loc,
+                         "nothing named '%s' in %s '%s'",
+                         get_string(right_ident->str_rep),
+                         s_kind,
+                         resolved_name);
         return;
     }
 
-    array_free(path);
+    if (found_node->kind == AST_DECL_STRUCT_FIELD) {
+        ASSERT(expr->left->type == TY_TYPE, "found a field in a non-struct???");
+        report_range_err(&ASTP(expr)->loc,
+                         "struct '%s' has a field called '%s', "
+                         "but it must be accessed from an instance of type '%s', rather than the type itself",
+                         resolved_name,
+                         get_string(right_ident->str_rep),
+                         get_string(resolved_decl->name));
+        return;
+    }
 
     cxt.scope          = containing_scope;
     cxt.poly_constants = NULL;
-    check_node(cxt, found_node);
 
     /* @note !!!
     ** We're overwriting the data of expr here..
@@ -2267,20 +2297,24 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     /* @note -- are there any other flags we need to set/clear? */
     ASTP(new_ident)->flags |= AST_FLAG_CONSTANT;
 
-    lname         = get_string(left_ident->str_rep);
+    lname         = resolved_name;
     llen          = strlen(lname);
     rname         = get_string(right_ident->str_rep);
     rlen          = strlen(rname);
     new_name_len  = llen + 1 + rlen;
     new_name_buff = alloca(new_name_len);
-    strcpy(new_name_buff, lname);
+    memcpy(new_name_buff, lname, llen);
     new_name_buff[llen] = '.';
-    strcpy(new_name_buff + llen + 1, rname);
+    memcpy(new_name_buff + llen + 1, rname, rlen);
 
     new_ident->str_rep       = get_string_id_n(new_name_buff, new_name_len);
     new_ident->resolved_node = found_node;
     new_ident->poly_idx      = -1;
     new_ident->varg_idx      = -1;
+
+    CYCLE_PATH_PUSH(ASTP(new_ident));
+    check_node(cxt, found_node);
+    CYCLE_PATH_POP();
 }
 
 static void check_dot(check_context_t cxt, ast_bin_expr_t *expr) {

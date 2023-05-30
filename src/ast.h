@@ -165,9 +165,22 @@ AST_DEFINE(static_vargs,
     ast_t   *block;
 );
 
+AST_DEFINE(decl,
+    scope_t   *scope;
+    string_id  name;
+    string_id  full_name;
+    ast_t     *type_expr;
+    ast_t     *val_expr;
+    array_t    tags;
+    /* For bitfield struct field. */
+    u64        bitfield_mask;
+    u32        bitfield_shift;
+);
+
 AST_DEFINE(module,
-    scope_t *scope;
-    array_t  children;
+    ast_decl_t *parent_decl;
+    scope_t    *scope;
+    array_t     children;
 );
 
 AST_DEFINE(param,
@@ -202,18 +215,6 @@ AST_DEFINE(struct,
 
 AST_DEFINE(macro,
     ast_t *block;
-);
-
-AST_DEFINE(decl,
-    scope_t   *scope;
-    string_id  name;
-    string_id  full_name;
-    ast_t     *type_expr;
-    ast_t     *val_expr;
-    array_t    tags;
-    /* For bitfield struct field. */
-    u64        bitfield_mask;
-    u32        bitfield_shift;
 );
 
 AST_DEFINE(int,
