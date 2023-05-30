@@ -46,17 +46,6 @@
 
             proc iter_value :: proc(iter: *T): T.value_type { ... }
 
-# Passing a module to a polymorphic type param doesn't throw any meaningful error?
-
-
-            Foo :: struct(%bar: type) {
-            }
-
-            ...
-
-            foo: Foo(Some_Module);
-
-
 # We still haven't tackled the issue where certain situations really should have
 # declaration order dependency. For "global" (i.e. outside of a procedure) declarations,
 # order shouldn't really matter as long as we make sure there aren't missing symbols or
