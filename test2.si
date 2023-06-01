@@ -1,27 +1,39 @@
-# Chicken :: struct(%num_eggs: s64) {
-#     EGG :: num_eggs;
-#     COUNT :: EGG;
+# Chicken :: struct(%num_eggs: %T) {
+#     HAS_BEAK :: 1;
+#     EGG      :: num_eggs;
+#     COUNT    :: EGG;
 
+#     roost: s64;
 #     lay :: proc(): s64 { return COUNT; }
 # }
 
-Hash_Table :: struct(%KEY_TYPE: type, %VALUE_TYPE: type) {
-    key_type   :: KEY_TYPE;
-    value_type :: VALUE_TYPE;
+# Hash_Table :: struct(%KEY_TYPE: type, %VALUE_TYPE: type) {
+#     key_type   :: KEY_TYPE;
+#     value_type :: VALUE_TYPE;
 
-    insert :: proc(table: *%T, key: T.key_type, value: T.value_type) {
+#     insert :: proc(table: *%T, key: T.key_type, value: T.value_type) {
 
-    }
-}
+#     }
+# }
+
+# Foo :: struct(%b: %T) {
+#     Bar :: struct {
+#         A :: 1;
+#         B :: b;
+#     }
+# }
+
+foo :: proc(a: %T) {}
 
 [[ program_entry ]]
 main :: proc() {
+    foo(123);
+#    x: str = Foo.Bar.B;
+
+#     Chicken.HAS_BEAK;
 #     Chicken.EGG;
-#     Chicken.COUNT;
 #     Chicken.lay();
 
-    table: Hash_Table(str, s64);
-
+#     table: Hash_Table(str, s64);
 #     Hash_Table.insert(*table, "abc", 123);
-
 }

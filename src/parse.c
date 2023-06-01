@@ -1111,9 +1111,9 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
     cxt->allow_poly_idents = 1;
 
     if (OPTIONAL_NO_EAT_CHAR(cxt, '(')) {
-        result->params_loc.beg = GET_BEG_POINT(cxt);
-
         eat(cxt, 1); /* ) */
+
+        result->params_loc.beg = GET_BEG_POINT(cxt);
 
         while (!OPTIONAL_NO_EAT_CHAR(cxt, ')')
         ||     (((result->params_loc.end = GET_END_POINT(cxt)), 1) && (eat(cxt, 1) /* ) */, 0))) {

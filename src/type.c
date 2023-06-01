@@ -328,13 +328,13 @@ u32 get_ret_type(u32 proc_ty) {
 #define TYPE_STRING_BUFF_SIZE (4096)
 
 static void build_type_string(u32 ty, char *buff) {
-    type_t               *tp;
-    type_t                t;
-    polymorphed_t        *poly;
-    polymorph_constant_t *it;
-    const char           *lazy_comma;
-    char                  under_buff[TYPE_STRING_BUFF_SIZE];
-    int                   i;
+    type_t              *tp;
+    type_t               t;
+    polymorphed_t       *poly;
+    ast_poly_constant_t *it;
+    const char          *lazy_comma;
+    char                 under_buff[TYPE_STRING_BUFF_SIZE];
+    int                  i;
 
     buff[0] = 0;
 
@@ -387,7 +387,7 @@ static void build_type_string(u32 ty, char *buff) {
                 strncat(buff, lazy_comma, TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
                 strncat(buff, get_string(it->name), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
                 strncat(buff, ": ", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
-                strncat(buff, get_string(value_to_string_id(it->value, it->type)), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+                strncat(buff, get_string(value_to_string_id(ASTP(it)->value, ASTP(it)->type)), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
                 lazy_comma = ", ";
 
             }
@@ -576,19 +576,25 @@ void realize_generic(u32 real, ast_t *expr) {
     expr->type = real;
 }
 
-void force_generic_realization(ast_t *expr) {
+u32 get_forced_real_type(u32 ty, value_t value) {
     u32 real;
 
     real = TY_NONE;
 
-    switch (expr->type) {
-        case TY_GENERIC_POSITIVE_INT: real = expr->value.u > 0x7fffffffffffffff ? TY_U64 : TY_S64; break;
-        case TY_GENERIC_NEGATIVE_INT: real = TY_S64;                                               break;
-        case TY_GENERIC_FLOAT:        real = TY_F64;                                               break;
+    switch (ty) {
+        case TY_GENERIC_POSITIVE_INT: real = value.u > 0x7fffffffffffffff ? TY_U64 : TY_S64; break;
+        case TY_GENERIC_NEGATIVE_INT: real = TY_S64;                                         break;
+        case TY_GENERIC_FLOAT:        real = TY_F64;                                         break;
         default:
             ASSERT(0, "bad type");
-            return;
     }
 
+    return real;
+}
+
+void force_generic_realization(ast_t *expr) {
+    u32 real;
+
+    real = get_forced_real_type(expr->type, expr->value);
     realize_generic(real, expr);
 }

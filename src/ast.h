@@ -10,56 +10,58 @@
 
 #define ASTP(_x) (&((_x)->ast))
 
-#define X_AST                  \
-    X(AST_INVALID)             \
-                               \
-    X(AST_BUILTIN)             \
-                               \
-    X(AST_STATIC_IF)           \
-    X(AST_STATIC_ASSERT)       \
-    X(AST_STATIC_COMMENT)      \
-    X(AST_STATIC_ERROR)        \
-    X(AST_STATIC_VARGS)        \
-    X(AST_MODULE)              \
-    X(AST_PROC)                \
-    X(AST_STRUCT)              \
-    X(AST_MACRO)               \
-    X(AST_DECL_VAR)            \
-    X(AST_DECL_PROC)           \
-    X(AST_DECL_STRUCT)         \
-    X(AST_DECL_STRUCT_FIELD)   \
-    X(AST_DECL_MACRO)          \
-    X(AST_DECL_MODULE)         \
-    X(AST_PARAM)               \
-    X(AST_INT)                 \
-    X(AST_FLOAT)               \
-    X(AST_STRING)              \
-    X(AST_CHAR)                \
-    X(AST_IDENT)               \
-    X(AST_UNARY_EXPR)          \
-    X(AST_BIN_EXPR)            \
-    X(AST_BLOCK)               \
-    X(AST_SD_BLOCK)            \
-    X(AST_ARG_LIST)            \
-    X(AST_IF)                  \
-    X(AST_LOOP)                \
-    X(AST_RETURN)              \
-    X(AST_DEFER)               \
-    X(AST_BREAK)               \
-    X(AST_CONTINUE)
+#define X_AST                          \
+    X(AST_INVALID)                     \
+                                       \
+    X(AST_BUILTIN)                     \
+                                       \
+    X(AST_STATIC_IF)                   \
+    X(AST_STATIC_ASSERT)               \
+    X(AST_STATIC_COMMENT)              \
+    X(AST_STATIC_ERROR)                \
+    X(AST_STATIC_VARGS)                \
+    X(AST_MODULE)                      \
+    X(AST_PROC)                        \
+    X(AST_STRUCT)                      \
+    X(AST_MACRO)                       \
+    X(AST_DECL_VAR)                    \
+    X(AST_DECL_PROC)                   \
+    X(AST_DECL_STRUCT)                 \
+    X(AST_DECL_STRUCT_FIELD)           \
+    X(AST_DECL_MACRO)                  \
+    X(AST_DECL_MODULE)                 \
+    X(AST_PARAM)                       \
+    X(AST_INT)                         \
+    X(AST_FLOAT)                       \
+    X(AST_STRING)                      \
+    X(AST_CHAR)                        \
+    X(AST_IDENT)                       \
+    X(AST_UNARY_EXPR)                  \
+    X(AST_BIN_EXPR)                    \
+    X(AST_BLOCK)                       \
+    X(AST_SD_BLOCK)                    \
+    X(AST_ARG_LIST)                    \
+    X(AST_IF)                          \
+    X(AST_LOOP)                        \
+    X(AST_RETURN)                      \
+    X(AST_DEFER)                       \
+    X(AST_BREAK)                       \
+    X(AST_CONTINUE)                    \
+    X(AST_POLYMORPHIC_CONSTANT)        \
+    X(AST_POLYMORPHIC_CONSTANTS_SCOPE) \
 
-#define X_AST_DECLARATIONS     \
-    X(AST_DECL_VAR)            \
-    X(AST_DECL_PROC)           \
-    X(AST_DECL_STRUCT)         \
-    X(AST_DECL_STRUCT_FIELD)   \
-    X(AST_DECL_MACRO)          \
+#define X_AST_DECLARATIONS             \
+    X(AST_DECL_VAR)                    \
+    X(AST_DECL_PROC)                   \
+    X(AST_DECL_STRUCT)                 \
+    X(AST_DECL_STRUCT_FIELD)           \
+    X(AST_DECL_MACRO)                  \
     X(AST_DECL_MODULE)
 
-#define X_AST_LEAF_EXPRS       \
-    X(AST_INT)                 \
-    X(AST_FLOAT)               \
-    X(AST_STRING)              \
+#define X_AST_LEAF_EXPRS               \
+    X(AST_INT)                         \
+    X(AST_FLOAT)                       \
+    X(AST_STRING)                      \
     X(AST_IDENT)
 
 enum {
@@ -69,18 +71,19 @@ X_AST
 };
 
 enum {
-    AST_FLAG_POLYMORPH            = (1 << 1),
-    AST_FLAG_VARARGS              = (1 << 2),
-    AST_FLAG_POLY_VARARGS         = (1 << 3),
-    AST_FLAG_CALL_IS_CAST         = (1 << 4),
-    AST_FLAG_CALL_IS_BUILTIN_VARG = (1 << 5),
-    AST_FLAG_IS_EXTERN            = (1 << 6),
-    AST_FLAG_EXPR_TOP             = (1 << 7),
-    AST_FLAG_IS_COPY              = (1 << 8),
-    AST_FLAG_PAREN_EXPR           = (1 << 9),
-    AST_FLAG_BITFIELD_DOT         = (1 << 10),
-    AST_FLAG_HEX_INT              = (1 << 11),
-    AST_FLAG_CONSTANT             = (1 << 12),
+    AST_FLAG_POLYMORPH                              = (1 << 1),
+    AST_FLAG_VARARGS                                = (1 << 2),
+    AST_FLAG_POLY_VARARGS                           = (1 << 3),
+    AST_FLAG_CALL_IS_CAST                           = (1 << 4),
+    AST_FLAG_CALL_IS_BUILTIN_VARG                   = (1 << 5),
+    AST_FLAG_IS_EXTERN                              = (1 << 6),
+    AST_FLAG_EXPR_TOP                               = (1 << 7),
+    AST_FLAG_IS_COPY                                = (1 << 8),
+    AST_FLAG_PAREN_EXPR                             = (1 << 9),
+    AST_FLAG_BITFIELD_DOT                           = (1 << 10),
+    AST_FLAG_HEX_INT                                = (1 << 11),
+    AST_FLAG_CONSTANT                               = (1 << 12),
+    AST_FLAG_DECL_DEPENDS_ON_PARENTS_POLY_CONSTANTS = (1 << 13),
 };
 
 struct ast;
@@ -98,11 +101,11 @@ typedef union {
 string_id value_to_string_id(value_t val, u32 type);
 
 typedef struct ast {
-    src_range_t loc;   /*        48 bytes                  */
-    u32         type;  /*        +4 bytes                  */
     u16         kind;  /*        +2 bytes                  */
     u16         flags; /*        +2 bytes                  */
+    u32         type;  /*        +4 bytes                  */
     value_t     value; /*        +8 bytes                  */
+    src_range_t loc;   /*        48 bytes                  */
                        /* Total: 64 bytes (one cache line) */
 } ast_t;
 
@@ -110,12 +113,6 @@ typedef struct ast {
 int ast_kind_is_decl(int kind);
 const char *ast_get_kind_str(int kind);
 #define AST_STR(kind) (ast_get_kind_str((kind)))
-
-typedef struct {
-    string_id name;
-    value_t   value;
-    u32       type;
-} polymorph_constant_t;
 
 typedef struct {
     array_t  constants;
@@ -141,6 +138,10 @@ typedef struct {              \
     ast_t ast;                \
     __VA_ARGS__               \
 } ast_##name##_t
+
+AST_DEFINE(poly_constant,
+    string_id name;
+);
 
 AST_DEFINE(builtin,
     string_id name;
@@ -171,6 +172,7 @@ AST_DEFINE(decl,
     string_id  full_name;
     ast_t     *type_expr;
     ast_t     *val_expr;
+    ast_t     *poly_constant_dependant;
     array_t    tags;
     /* For bitfield struct field. */
     u64        bitfield_mask;
@@ -292,7 +294,6 @@ typedef struct {
     scope_t    *scope;
     ast_decl_t *parent_decl;
     ast_decl_t *unit_decl;
-    ast_decl_t *decl_path_tail;
     ast_proc_t *proc;
     array_t    *poly_constants;
     u32         poly_constants_idx;
@@ -306,7 +307,8 @@ enum {
     CHECK_FLAG_IN_PARAM             = (1 << 2),
     CHECK_FLAG_IN_VARGS             = (1 << 3),
     CHECK_FLAG_IN_DEFER             = (1 << 4),
-    CHECK_FLAG_POLY_TYPE_ONLY       = (1 << 5),
+    CHECK_FLAG_POLY_PROC_TYPE_ONLY  = (1 << 5),
+    CHECK_FLAG_FORCE_RECHECK        = (1 << 6),
 };
 
 void check_all(void);
