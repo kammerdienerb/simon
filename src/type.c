@@ -440,6 +440,31 @@ ast_decl_t *struct_type_to_decl(u32 ty) {
     return t->decl;
 }
 
+ast_struct_t *struct_type_to_definition(u32 ty) {
+    type_t        *t;
+    ast_decl_t    *decl;
+    ast_struct_t  *st;
+    polymorphed_t *it;
+
+    t    = get_type_structure(ty);
+    decl = struct_type_to_decl(ty);
+    st   = (ast_struct_t*)decl->val_expr;
+
+    if (t->kind == TY_STRUCT) {
+        return st;
+    }
+
+    ASSERT(t->kind == TY_STRUCT_MONO, "should be a monomorphism");
+
+    array_traverse(st->polymorphs, it) {
+        if (it->type == ty) {
+            return (ast_struct_t*)it->node;
+        }
+    }
+
+    return NULL;
+}
+
 type_t get_type_t(u32 ty) {
     type_t *t;
 

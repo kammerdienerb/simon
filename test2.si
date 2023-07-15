@@ -1,39 +1,46 @@
-# Chicken :: struct(%num_eggs: %T) {
-#     HAS_BEAK :: 1;
-#     EGG      :: num_eggs;
-#     COUNT    :: EGG;
+Hash_Table :: struct(%KEY_T: type, %VAL_T: type) {
+    key_type   :: KEY_T;
+    value_type :: VAL_T;
 
-#     roost: s64;
-#     lay :: proc(): s64 { return COUNT; }
-# }
-
-# Hash_Table :: struct(%KEY_TYPE: type, %VALUE_TYPE: type) {
-#     key_type   :: KEY_TYPE;
-#     value_type :: VALUE_TYPE;
-
-#     insert :: proc(table: *%T, key: T.key_type, value: T.value_type) {
+#     insert :: proc(table: *%TABLE_T, key: TABLE_T.key_type, value: TABLE_T.value_type) {
 
 #     }
-# }
+}
 
-# Foo :: struct(%b: %T) {
-#     Bar :: struct {
-#         A :: 1;
-#         B :: b;
-#     }
-# }
+ht_insert :: proc(table: *%TABLE_T, key: TABLE_T.key_type, value: TABLE_T.value_type) {
 
-foo :: proc(a: %T) {}
+}
 
 [[ program_entry ]]
 main :: proc() {
-    foo(123);
-#    x: str = Foo.Bar.B;
-
-#     Chicken.HAS_BEAK;
-#     Chicken.EGG;
-#     Chicken.lay();
-
-#     table: Hash_Table(str, s64);
-#     Hash_Table.insert(*table, "abc", 123);
+    table: Hash_Table(str, s64);
+    ht_insert(*table, "abc", 123);
+#     Hash_Table(str, s64).insert(*table, "abc", 123);
 }
+
+# @here
+# The key: TABLE_T.key_type param is failing because it is extracting the struct's declaration
+# from the type and using that to try to get the type of the key_type child. This won't work
+# because the properly typed version of that child lives in a polymorphic copy in the polymorphs
+# array. So... what to do? Well,
+#     - We could add a function that gets the struct struct node from a type rather than (or, in
+#       addition to) the declaration and then use that in places where we search for children by
+#       name or whatever.
+#     - Or, not copy polymorphs and do it a different way??? I'm pretty sure I thought about this
+#       and decided it wouldn't work for because of one or more features, but I can't remember at
+#       the moment.
+#
+# I think we need to totally rework the system so that nested polymorphs work and aren't a pain.
+# My first thought is that we create some new outer scopes that have all poly constants (even from
+# parents) around every poly declaration. Not sure though...
+# It would be _really_ nice if we didn't even have cxt.poly_constants and didn't need to check for
+# it.
+#
+# Okay, another thing: I think we need to move the scope creation into the type checking phase. Why?
+# Well, we're already in a situation where we need to copy scope trees when we create monomorphisms.
+# When we typecheck those though, we can end up in situations where compile-time logic (say, static
+# if) determines if a scope is created or what might be installed to a scope. So what might be
+# better is to create those scopes as we try to typecheck scoped nodes and install declarations
+# at the same time. What are the implications of this? Do we end up in sticky situtations where we
+# need to do an identifier lookup, but can't because the scope and installation aren't done yet? I
+# don't think so, but I need to think it through.

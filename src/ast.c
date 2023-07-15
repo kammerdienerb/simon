@@ -269,15 +269,32 @@ static ast_t *copy_tree(ast_t *node) {
     return NULL;
 }
 
-void check_poly_backlog(void) {
-    poly_backlog_entry_t *backlog_entry_p;
-    poly_backlog_entry_t  backlog_entry;
-    polymorphed_t        *polymorphed;
+static void push_breadcrumb_for_poly_constants(src_range_t *range, string_id decl_name_id, array_t *constants) {
     char                  buff[512];
     const char           *lazy_comma;
     ast_poly_constant_t  *it;
 
-/*     I("======================== BEGIN BACKLOGS ==========================="); */
+    buff[0]    = 0;
+    lazy_comma = "";
+    array_traverse(*constants, it) {
+        strncat(buff, lazy_comma, sizeof(buff) - strlen(buff) - 1);
+        strncat(buff, get_string(it->name), sizeof(buff) - strlen(buff) - 1);
+        strncat(buff, " = ", sizeof(buff) - strlen(buff) - 1);
+        strncat(buff, get_string(value_to_string_id(ASTP(it)->value, ASTP(it)->type)), sizeof(buff) - strlen(buff) - 1);
+        lazy_comma = ", ";
+    }
+
+    push_range_breadcrumb(range,
+                          "... in %s (which is polymorphic), where [ %s ] from these arguments:",
+                          get_string(decl_name_id),
+                          buff);
+}
+
+void check_poly_backlog(void) {
+    poly_backlog_entry_t *backlog_entry_p;
+    poly_backlog_entry_t  backlog_entry;
+    polymorphed_t        *polymorphed;
+    ast_poly_constant_t  *it;
 
     while (array_len(poly_backlog) > 0) {
         backlog_entry_p = array_last(poly_backlog);
@@ -290,26 +307,12 @@ void check_poly_backlog(void) {
 
         backlog_entry.cxt.poly_constants = &polymorphed->constants;
 
-        buff[0]    = 0;
-        lazy_comma = "";
-        array_traverse(*backlog_entry.cxt.poly_constants, it) {
-            strncat(buff, lazy_comma, sizeof(buff) - strlen(buff) - 1);
-            strncat(buff, get_string(it->name), sizeof(buff) - strlen(buff) - 1);
-            strncat(buff, " = ", sizeof(buff) - strlen(buff) - 1);
-            strncat(buff, get_string(value_to_string_id(ASTP(it)->value, ASTP(it)->type)), sizeof(buff) - strlen(buff) - 1);
-            lazy_comma = ", ";
-
-
+        array_traverse(polymorphed->constants, it) {
             reinstall(ASTP(it), it->name, backlog_entry.reinstall_scope);
         }
 
-        push_range_breadcrumb(&backlog_entry.range,
-                              "in %s (which is polymorphic), where [ %s ] from these arguments:",
-                              get_string(backlog_entry.cxt.parent_decl->full_name),
-                              buff);
-
+        push_breadcrumb_for_poly_constants(&backlog_entry.range, backlog_entry.cxt.parent_decl->full_name, &polymorphed->constants);
         check_node(backlog_entry.cxt, backlog_entry.node);
-
         pop_breadcrumb();
     }
 }
@@ -401,6 +404,10 @@ string_id value_to_string_id(value_t val, u32 type) {
                     ret = get_string_id(buff);
                     break;
             }
+            break;
+        case TY_STR:
+            snprintf(buff, sizeof(buff), "\"%s\"", get_string(val.s));
+            ret = get_string_id(buff);
             break;
         case TY_PTR:
             snprintf(buff, sizeof(buff), "%p", val.v);
@@ -704,7 +711,14 @@ static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
         ident    = (ast_ident_t*)expr->left;
         arg_list = (ast_arg_list_t*)expr->right;
 
+
+        if (ident->str_rep == SPECIALIZATION_ID) {
+            cxt.flags |= CHECK_FLAG_ALLOW_REF_POLY_PROC;
+        }
+
         check_node(cxt, ASTP(arg_list));
+
+        cxt.flags &= ~CHECK_FLAG_ALLOW_REF_POLY_PROC;
 
         args   = &arg_list->args;
         n_args = array_len(*args);
@@ -819,11 +833,11 @@ static void check_for_decl_cycle(ast_t *node) {
 
     ASSERT(ast_kind_is_decl(node->kind) || node->kind == AST_PARAM, "bad node kind");
 
-#define CYCLE_NODE_NAME_ID(_node)                 \
-    (ast_kind_is_decl((_node)->kind)              \
-        ? (((ast_decl_t*)(_node))->scope->in_proc \
-            ? ((ast_decl_t*)(_node))->name        \
-            : ((ast_decl_t*)(_node))->full_name)  \
+#define CYCLE_NODE_NAME_ID(_node)                            \
+    (ast_kind_is_decl((_node)->kind)                         \
+        ? (((ast_decl_t*)(_node))->containing_scope->in_proc \
+            ? ((ast_decl_t*)(_node))->name                   \
+            : ((ast_decl_t*)(_node))->full_name)             \
         : ((ast_param_t*)(_node))->name)
 
     array_rtraverse(cycle_check_path, it) {
@@ -1134,6 +1148,11 @@ static void check_param(check_context_t cxt, ast_param_t *param) {
     }
 
     check_node(cxt, param->type_expr);
+
+    if (param->type_expr->type == TY_POLY) {
+        param->type_expr->type    = TY_TYPE;
+        param->type_expr->value.t = TY_POLY;
+    }
 
     if (param->val != NULL) {
         check_node(cxt, param->val);
@@ -1683,6 +1702,12 @@ static u32 get_already_polymorphed_type(array_t *polymorphs, array_t *constants,
             c1 = array_item(it->constants, i);
             c2 = array_item(*constants, i);
 
+            /* @performance
+             * Can we assume that names of constants don't need to be compared?
+             * If so, it might be good to remove that check and use a bitwise OR
+             * of the other two (cheap) compares to help the branch predictor out
+             * a bit.
+             */
             if (ASTP(c2)->type    != ASTP(c1)->type
             ||  ASTP(c2)->value.u != ASTP(c1)->value.u
             ||  c2->name          != c1->name) {
@@ -1712,7 +1737,7 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
     ast_poly_constant_t  *it;
     poly_backlog_entry_t  backlog_entry;
 
-    ASSERT(!(node->flags & AST_FLAG_IS_COPY), "polymorph should not be a copy");
+/*     ASSERT(!(node->flags & AST_FLAG_IS_COPY), "polymorph should not be a copy"); */
 
     params_loc       = node->kind == AST_PROC ? ((ast_proc_t*)node)->params_loc : ((ast_struct_t*)node)->params_loc;
     constants        = get_polymorph_constants(params, args, n_args, params_loc, args_loc);
@@ -1724,12 +1749,12 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
         polymorphed.specialization = NULL;
         polymorphed_p              = array_push(*polymorphs, polymorphed);
 
-        cxt.scope = cxt.parent_decl->scope;
+        cxt.scope = cxt.parent_decl->containing_scope;
         ASSERT(cxt.scope != NULL, "did not get scope");
 
 
         /* About the backlog:
-         * Ideally, we'd just type check each polymorph right here and call it a day.
+         * Ideally, we'd just typecheck each polymorph right here and call it a day.
          * This works fine for structs, but there's a problem with procedures: specializations.
          * If a polymorphic procecure is specialized (we may not know at this point), we don't
          * want to typecheck the whole body. The main use case of this is for procedures that
@@ -1744,7 +1769,8 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
          */
 
 
-        backlog_entry.reinstall_scope = get_subscope_from_node(cxt.parent_decl->scope, node);
+        backlog_entry.reinstall_scope = node->kind == AST_PROC ? ((ast_proc_t*)node)->scope : ((ast_struct_t*)node)->scope;
+/*         backlog_entry.reinstall_scope = get_subscope_from_node(cxt.parent_decl->scope, node); */
         ASSERT(backlog_entry.reinstall_scope != NULL, "did not get subscope to reinstall poly constants");
         array_traverse(constants, it) {
             reinstall(ASTP(it), it->name, backlog_entry.reinstall_scope);
@@ -1755,8 +1781,12 @@ static u32 get_polymorph_type(check_context_t cxt, ast_t *node, array_t *polymor
         }
         cxt.poly_constants_idx  = array_len(*polymorphs) - 1;
         cxt.poly_constants      = &constants;
-        cxt.flags              |= CHECK_FLAG_POLY_PROC_TYPE_ONLY | CHECK_FLAG_FORCE_RECHECK;
+        cxt.flags              |= (node->kind == AST_PROC ? CHECK_FLAG_POLY_PROC_TYPE_ONLY : 0) | CHECK_FLAG_FORCE_RECHECK;
+
+
+        push_breadcrumb_for_poly_constants(&args_loc, cxt.parent_decl->full_name, &constants);
         check_node(cxt, polymorphed.node);
+        pop_breadcrumb();
 
         if (idx_out != NULL) {
             *idx_out = cxt.poly_constants_idx;
@@ -2180,6 +2210,63 @@ too_few:
     ASTP(expr)->type = get_ret_type(expr->left->type);
 }
 
+static void check_expr_unsatisfied_poly(check_context_t cxt, ast_t *expr) {
+    ast_t       *resolved;
+    const char  *resolved_name;
+    src_range_t *loc;
+
+    if (expr->kind != AST_IDENT)           { return; }
+    if (expr->flags & AST_FLAG_POLY_IDENT) { return; }
+
+    resolved = ((ast_ident_t*)expr)->resolved_node;
+
+    if (resolved->kind == AST_BUILTIN) { return; }
+
+/*
+ * I'd rather only do all these branches and stuff if we know we're going to produce an
+ * error. This function is probably pretty hot.
+ */
+#define GET_ERROR_MESSAGE_INFO()                                                   \
+    loc = &resolved->loc;                                                          \
+    if (ast_kind_is_decl(resolved->kind)) {                                        \
+        resolved_name = get_string(((ast_decl_t*)resolved)->full_name);            \
+        if (resolved->kind == AST_DECL_STRUCT) {                                   \
+            loc = &((ast_struct_t*)((ast_decl_t*)resolved)->val_expr)->params_loc; \
+        } else if (resolved->kind == AST_DECL_PROC) {                              \
+            loc = &((ast_proc_t*)((ast_decl_t*)resolved)->val_expr)->params_loc;   \
+        }                                                                          \
+    } else if (resolved->kind == AST_PARAM) {                                      \
+        resolved_name = get_string(((ast_param_t*)resolved)->name);                \
+    } else {                                                                       \
+        ASSERT(0, "resolved_node of ident not a decl or param");                   \
+        return;                                                                    \
+    }
+
+    if (expr->type == TY_TYPE && type_is_poly(expr->value.t)) {
+        GET_ERROR_MESSAGE_INFO();
+        report_range_err_no_exit(&expr->loc,
+                                 "struct '%s' is polymorphic, so it requires arguments to satisfy its polymorphic parameters",
+                                 resolved_name);
+        report_fixit_no_exit(expr->loc.end, "provide arguments for polymorphic parameters\a(...)");
+        report_range_info_no_context(loc, "'%s' defined with these polymorphic parameters:", resolved_name);
+
+    } else if (!(cxt.flags & CHECK_FLAG_ALLOW_REF_POLY_PROC)
+           &&  type_kind(expr->type) == TY_PROC
+           &&  type_is_poly(expr->type)) {
+
+        GET_ERROR_MESSAGE_INFO();
+        report_range_err_no_exit(&expr->loc,
+                                 "procedure '%s' is polymorphic, so it requires arguments to satisfy its polymorphic parameters",
+                                 resolved_name);
+        /* @todo
+         * We should probably provide some way to reference a monomorphism of a procedure without actually calling it...
+         */
+/*         report_fixit_no_exit(expr->loc.end, "you may provide arguments for polymorphic parameters by calling the procedure" */
+/*                                             ", but keep in mind that this is probably different than what you had in mind\a(...)"); */
+        report_range_info_no_context(loc, "'%s' defined with these polymorphic parameters:", resolved_name);
+    }
+}
+
 static void check_ident(check_context_t cxt, ast_ident_t *ident) {
     scope_t *resolved_node_scope;
 
@@ -2226,24 +2313,13 @@ static void check_ident(check_context_t cxt, ast_ident_t *ident) {
                 CYCLE_PATH_POP();
             }
 
-            ASSERT(cxt.parent_decl != NULL, "how do we not have a parent declaration?");
-
-            if (ident->resolved_node->kind == AST_POLYMORPHIC_CONSTANT
-            ||  (ident->resolved_node->kind == AST_PARAM && (ident->resolved_node->flags & AST_FLAG_POLYMORPH))) {
-
-
-                ASTP(cxt.parent_decl)->flags |= AST_FLAG_DECL_DEPENDS_ON_PARENTS_POLY_CONSTANTS;
-
-                /* @here -- this is totally not right */
-                cxt.parent_decl->poly_constant_dependant = ident->resolved_node;
-            }
-
-            ASTP(cxt.parent_decl)->flags |=
-                (ident->resolved_node->flags & AST_FLAG_DECL_DEPENDS_ON_PARENTS_POLY_CONSTANTS);
-
             ASTP(ident)->type  = ident->resolved_node->type;
             ASTP(ident)->value = ident->resolved_node->value;
         }
+    }
+
+    if (ASTP(ident)->flags & AST_FLAG_EXPR_TOP) {
+        check_expr_unsatisfied_poly(cxt, ASTP(ident));
     }
 }
 
@@ -2259,7 +2335,6 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     ast_ident_t  *right_ident;
     ast_t        *found_node;
     const char   *resolved_name;
-    const char   *found_node_name;
     ast_ident_t  *new_ident;
     const char   *lname;
     u32           llen;
@@ -2268,6 +2343,8 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     u32           new_name_len;
     char         *new_name_buff;
 
+
+    check_expr_unsatisfied_poly(cxt, expr->left);
 
     if (expr->left->type == TY_MODULE) {
         mod = (ast_module_t*)expr->left->value.a;
@@ -2287,7 +2364,7 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
            || resolved_decl->val_expr->kind == AST_STRUCT,
            "resolved_decl is not a module or struct declaration");
 
-    containing_scope = get_subscope_from_node(resolved_decl->scope,
+    containing_scope = get_subscope_from_node(resolved_decl->containing_scope,
                                               resolved_decl->val_expr);
 
     ASSERT(containing_scope != NULL, "did not find scope");
@@ -2320,35 +2397,6 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
                          get_string(right_ident->str_rep),
                          resolved_name);
         return;
-    }
-
-    if (expr->left->type == TY_TYPE
-    &&  found_node->flags & AST_FLAG_DECL_DEPENDS_ON_PARENTS_POLY_CONSTANTS) {
-
-        report_range_err_no_exit(&ASTP(expr)->loc,
-                                 "while struct '%s' does declare '%s', "
-                                 "it can't be used since '%s' depends on polymorphic constants "
-                                 "of '%s', which are not specified here",
-                                 resolved_name,
-                                 get_string(right_ident->str_rep),
-                                 get_string(right_ident->str_rep),
-                                 resolved_name);
-        report_fixit_no_exit(expr->left->loc.end,
-                             "provide arguments for polymorphic parameters of '%s'\a(...)",
-                             resolved_name);
-        ASSERT(resolved_decl->val_expr != NULL && resolved_decl->val_expr->kind == AST_STRUCT,
-               "no struct under there");
-
-        report_range_info_no_context_no_exit(&((ast_struct_t*)resolved_decl->val_expr)->params_loc,
-                                             "'%s' declared with these polymorphic parameters",
-                                             resolved_name);
-
-        found_node_name = get_string(right_ident->str_rep);
-        if (ast_kind_is_decl(found_node->kind)) {
-            found_node_name = get_string(((ast_decl_t*)found_node)->full_name);
-        }
-
-        report_range_info_no_context(&found_node->loc, "'%s' declared here:", found_node_name);
     }
 
     cxt.scope          = containing_scope;
@@ -2684,21 +2732,6 @@ static void operand_not_typed_error(ast_t *expr, ast_t *operand) {
     report_simple_info("the expression does not have a type or value");
 }
 
-#if 0
-static void check_expr_unsatisfied_poly(check_context_t cxt, ast_t *expr) {
-    if (!(cxt.flags & CHECK_FLAG_IN_PARAM)
-    &&  expr->type == TY_TYPE
-    &&  expr->value.t != TY_POLY
-    &&  type_is_poly(expr->value.t)) {
-
-        report_range_err_no_exit(&expr->loc,
-                                 "this use of polymorphic type %s requires arguments to satisfy its polymorphic parameters",
-                                 get_string(get_type_string_id(expr->value.t)));
-        report_fixit(expr->loc.end, "provide arguments for polymorphic parameters\a(...)", 123, 456);
-    }
-}
-#endif
-
 static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
     u32 tkl;
     u32 tkr;
@@ -2860,6 +2893,11 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
             ASSERT(0, "unhandled binary operator");
             return;
     }
+
+    if (expr->op != OP_CALL) {
+        check_expr_unsatisfied_poly(cxt, expr->left);
+        check_expr_unsatisfied_poly(cxt, expr->right);
+    }
 }
 
 static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
@@ -2937,6 +2975,8 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
             ASSERT(0, "unhandled unary operator");
             return;
     }
+
+    check_expr_unsatisfied_poly(cxt, expr->child);
 }
 
 static void check_expr(check_context_t cxt, ast_t *expr) {
@@ -2947,29 +2987,11 @@ static void check_expr(check_context_t cxt, ast_t *expr) {
     } else {
         ASSERT(0, "not an expression");
     }
-}
 
-#if 0
-static void check_struct_field(check_context_t cxt, ast_struct_field_t *field) {
-    ast_struct_t *st;
-
-    check_tags(cxt, ASTP(field), &field->tags);
-
-    st = (ast_struct_t*)cxt.parent_decl->val_expr;
-
-    if (st->bitfield_struct_bits && !field->bitfield_mask) {
-        report_range_err_no_exit(&ASTP(field)->loc,
-                                 "parent struct '%s' is a bitfield_struct, but field '%s' is not tagged with 'bitfield'",
-                                 get_string(cxt.parent_decl->name),
-                                 get_string(field->name));
-        report_fixit(ASTP(field)->loc.beg, "add the 'bitfield' tag\a[[ bitfield(start_bit, end_bit) ]]");
+    if (expr->flags & AST_FLAG_EXPR_TOP) {
+        check_expr_unsatisfied_poly(cxt, expr);
     }
-
-    check_node(cxt, field->type_expr);
-
-    ASTP(field)->type = field->type_expr->value.t;
 }
-#endif
 
 static void check_struct(check_context_t cxt, ast_struct_t *st) {
     scope_t  *new_scope;
@@ -2996,6 +3018,12 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
 
     check_tags(cxt, ASTP(cxt.parent_decl), &(cxt.parent_decl)->tags);
 
+    if ((ASTP(cxt.parent_decl)->flags & AST_FLAG_POLYMORPH)
+    &&  cxt.poly_constants == NULL) {
+
+        goto skip_children;
+    }
+
     array_traverse(st->fields, it) {
         check_node(cxt, *it);
     }
@@ -3004,6 +3032,7 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
         check_node(cxt, *it);
     }
 
+skip_children:;
     if (cxt.poly_constants == NULL) {
         ASTP(st)->value.t = get_struct_type(cxt.parent_decl);
     } else {
@@ -3273,6 +3302,8 @@ static void check_node(check_context_t cxt, ast_t *node) {
             node->type                  = TY_MODULE;
             ASTP(cxt.parent_decl)->type = TY_MODULE;
 
+            check_tags(cxt, ASTP(cxt.parent_decl), &(cxt.parent_decl)->tags);
+
             cxt.scope = get_subscope_from_node(cxt.scope, node);
             ASSERT(cxt.scope != NULL, "did not get subscope");
             array_traverse(((ast_module_t*)node)->children, it) {
@@ -3357,7 +3388,7 @@ static void check_node(check_context_t cxt, ast_t *node) {
 #ifdef SIMON_DO_ASSERTIONS
             report_simple_err_no_exit("INTERNAL ERROR: AST_%s unhandled in check_node()", ast_get_kind_str(node->kind));
             print_node(node);
-            ASSERT(0, "unhandled AST node kind in check_node()");
+            common_exit(1);
 #endif
     }
 
@@ -3365,6 +3396,7 @@ static void check_node(check_context_t cxt, ast_t *node) {
     if (node->type == TY_UNKNOWN) {
         report_simple_err_no_exit("INTERNAL ERROR: type not resolved in check_node()");
         print_node(node);
+        common_exit(1);
     }
     ASSERT(node->type != TY_UNKNOWN, "did not resolve type");
 #endif

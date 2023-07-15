@@ -71,19 +71,19 @@ X_AST
 };
 
 enum {
-    AST_FLAG_POLYMORPH                              = (1 << 1),
-    AST_FLAG_VARARGS                                = (1 << 2),
-    AST_FLAG_POLY_VARARGS                           = (1 << 3),
-    AST_FLAG_CALL_IS_CAST                           = (1 << 4),
-    AST_FLAG_CALL_IS_BUILTIN_VARG                   = (1 << 5),
-    AST_FLAG_IS_EXTERN                              = (1 << 6),
-    AST_FLAG_EXPR_TOP                               = (1 << 7),
-    AST_FLAG_IS_COPY                                = (1 << 8),
-    AST_FLAG_PAREN_EXPR                             = (1 << 9),
-    AST_FLAG_BITFIELD_DOT                           = (1 << 10),
-    AST_FLAG_HEX_INT                                = (1 << 11),
-    AST_FLAG_CONSTANT                               = (1 << 12),
-    AST_FLAG_DECL_DEPENDS_ON_PARENTS_POLY_CONSTANTS = (1 << 13),
+    AST_FLAG_POLYMORPH            = (1 << 1),
+    AST_FLAG_VARARGS              = (1 << 2),
+    AST_FLAG_POLY_VARARGS         = (1 << 3),
+    AST_FLAG_CALL_IS_CAST         = (1 << 4),
+    AST_FLAG_CALL_IS_BUILTIN_VARG = (1 << 5),
+    AST_FLAG_IS_EXTERN            = (1 << 6),
+    AST_FLAG_EXPR_TOP             = (1 << 7),
+    AST_FLAG_IS_COPY              = (1 << 8),
+    AST_FLAG_PAREN_EXPR           = (1 << 9),
+    AST_FLAG_BITFIELD_DOT         = (1 << 10),
+    AST_FLAG_HEX_INT              = (1 << 11),
+    AST_FLAG_CONSTANT             = (1 << 12),
+    AST_FLAG_POLY_IDENT           = (1 << 13),
 };
 
 struct ast;
@@ -167,7 +167,7 @@ AST_DEFINE(static_vargs,
 );
 
 AST_DEFINE(decl,
-    scope_t   *scope;
+    scope_t   *containing_scope;
     string_id  name;
     string_id  full_name;
     ast_t     *type_expr;
@@ -309,6 +309,7 @@ enum {
     CHECK_FLAG_IN_DEFER             = (1 << 4),
     CHECK_FLAG_POLY_PROC_TYPE_ONLY  = (1 << 5),
     CHECK_FLAG_FORCE_RECHECK        = (1 << 6),
+    CHECK_FLAG_ALLOW_REF_POLY_PROC  = (1 << 7),
 };
 
 void check_all(void);

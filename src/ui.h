@@ -34,6 +34,7 @@ void push_loc_breadcrumb(src_point_t pt, const char *fmt, ...);
 void push_range_breadcrumb(src_range_t *range, const char *fmt, ...);
 void pop_breadcrumb(void);
 void print_node(ast_t *node);
+void common_exit(int status);
 
 #define report_simple_err(...)                     (_report_simple_err(1, __VA_ARGS__))
 #define report_simple_info(...)                    (_report_simple_info(1, __VA_ARGS__))

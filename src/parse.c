@@ -866,7 +866,7 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
         ((ast_ident_t*)result)->str_rep       = str_rep;
         ((ast_ident_t*)result)->resolved_node = NULL;
 
-        result->flags           |= AST_FLAG_POLYMORPH;
+        result->flags           |= AST_FLAG_POLYMORPH | AST_FLAG_POLY_IDENT;
         SCOPE(cxt)->node->flags |= AST_FLAG_POLYMORPH;
         cxt->poly_expr_pattern   = 1;
 
@@ -1746,9 +1746,9 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
 
     result = AST_ALLOC(cxt, ast_decl_t);
 
-    result->scope = SCOPE(cxt);
-    if (result->scope == cxt->global_scope) {
-        result->scope = global_scope;
+    result->containing_scope = SCOPE(cxt);
+    if (result->containing_scope == cxt->global_scope) {
+        result->containing_scope = global_scope;
     }
 
     if (has_tags) {

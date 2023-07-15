@@ -31,7 +31,7 @@ static array_t breadcrumbs;
 
 #define ERR_COLOR   TERM_RED
 #define INFO_COLOR  TERM_YELLOW
-#define FIXIT_COLOR TERM_CYAN
+#define FIXIT_COLOR TERM_GREEN
 #define LOC_COLOR   TERM_BLUE
 #define RANGE_COLOR TERM_CYAN
 
@@ -86,7 +86,7 @@ static void print_breadcrumbs(void) {
     }
 }
 
-static void common_exit(int status) {
+void common_exit(int status) {
     print_breadcrumbs();
 
     fflush(output_file);

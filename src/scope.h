@@ -21,6 +21,7 @@ typedef struct scope {
 
 void     init_scopes(void);
 scope_t *create_scope(scope_t *parent, int kind, ast_t *node);
+scope_t *copy_scope(scope_t *scope);
 scope_t *create_named_scope(scope_t *parent, int kind, ast_t *node, string_id name_id);
 void     add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node);
 void     add_symbol(scope_t *scope, string_id name_id, ast_t *node);

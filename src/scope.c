@@ -101,6 +101,25 @@ scope_t *create_scope(scope_t *parent, int kind, ast_t *node) {
     return scope;
 }
 
+scope_t *copy_scope(scope_t *scope) {
+    scope_t *new_scope;
+
+    new_scope = mem_alloc(sizeof(*scope));
+
+    memcpy(new_scope, scope, sizeof(*new_scope));
+
+    new_scope->symbols = array_make(string_id);
+    array_copy(new_scope->symbols, scope->symbols);
+
+    new_scope->nodes = array_make(ast_t*);
+    array_copy(new_scope->nodes, scope->nodes);
+
+    new_scope->subscopes = array_make(scope_t*);
+    array_copy(new_scope->subscopes, scope->subscopes);
+
+    return new_scope;
+}
+
 scope_t *create_named_scope(scope_t *parent, int kind, ast_t *node, string_id name_id) {
     scope_t    *new_scope;
     const char *parent_name;
