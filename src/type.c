@@ -4,7 +4,7 @@
 #include "ui.h"
 #include "memory.h"
 
-static array_t type_table;
+array_t type_table;
 static u32     empty_type_list;
 
 void report_type_stats(void) {
@@ -200,6 +200,17 @@ u32 get_ptr_type(u32 ty) {
     return get_or_insert_type(new_t);
 }
 
+u32 get_slice_type(u32 ty) {
+    type_t new_t;
+
+    new_t.kind     = TY_SLICE;
+    new_t.flags    = type_is_poly(ty) ? TY_FLAG_IS_POLY : 0;
+    new_t.under_id = ty;
+    new_t._pad     = 0;
+
+    return get_or_insert_type(new_t);
+}
+
 u32 get_vargs_type(u32 ty) {
     type_t new_t;
 
@@ -242,16 +253,12 @@ u32 get_struct_mono_type(ast_decl_t *st, u32 constants_idx) {
 }
 
 u32 get_struct_field_type(u32 ty, string_id field_name) {
-    type_t        *t;
     ast_struct_t  *st;
     ast_t        **it;
     ast_decl_t    *field;
 
-    t = get_type_structure(ty);
-    ASSERT(t != NULL,                                         "did not find type");
-    ASSERT(t->kind == TY_STRUCT || t->kind == TY_STRUCT_MONO, "type is not a struct");
-
-    st = (ast_struct_t*)t->decl->val_expr;
+    st = struct_type_to_definition(ty);
+    ASSERT(st != NULL, "did not get struct definition from type");
 
     array_traverse(st->fields, it) {
         field = (ast_decl_t*)*it;
@@ -330,7 +337,7 @@ u32 get_ret_type(u32 proc_ty) {
 static void build_type_string(u32 ty, char *buff) {
     type_t              *tp;
     type_t               t;
-    polymorphed_t       *poly;
+    monomorphed_t       *mono;
     ast_poly_constant_t *it;
     const char          *lazy_comma;
     char                 under_buff[TYPE_STRING_BUFF_SIZE];
@@ -361,7 +368,7 @@ static void build_type_string(u32 ty, char *buff) {
         case TY_TYPE:                 strncat(buff, "type",                        TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_PROC:                 strncat(buff, "procedure",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_PTR:                  strncat(buff, "*",                           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
-        case TY_STR:                  strncat(buff, "str",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_SLICE:                strncat(buff, "[",                           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_VARGS:                strncat(buff, "...",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_GENERIC_POSITIVE_INT:
         case TY_GENERIC_NEGATIVE_INT:
@@ -382,8 +389,8 @@ static void build_type_string(u32 ty, char *buff) {
             strncat(buff, get_string(t.decl->full_name), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
             strncat(buff, "(", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
             lazy_comma = "";
-            poly = array_item(((ast_struct_t*)t.decl->val_expr)->polymorphs, t.mono_constants_idx);
-            array_traverse(poly->constants, it) {
+            mono = array_item(((ast_struct_t*)t.decl->val_expr)->monomorphs, t.mono_constants_idx);
+            array_traverse(mono->constants, it) {
                 strncat(buff, lazy_comma, TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
                 strncat(buff, get_string(it->name), TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
                 strncat(buff, ": ", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
@@ -404,6 +411,9 @@ static void build_type_string(u32 ty, char *buff) {
     if (type_kind_has_under(t.kind)) {
         build_type_string(t.under_id, under_buff);
         strncat(buff, under_buff, TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+        if (t.kind == TY_SLICE) {
+            strncat(buff, "]", TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
+        }
     } else if (t.kind == TY_PROC) {
         build_type_string(t.under_id, under_buff);
         strncat(buff, under_buff, TYPE_STRING_BUFF_SIZE - strlen(buff) - 1);
@@ -444,7 +454,7 @@ ast_struct_t *struct_type_to_definition(u32 ty) {
     type_t        *t;
     ast_decl_t    *decl;
     ast_struct_t  *st;
-    polymorphed_t *it;
+    monomorphed_t *it;
 
     t    = get_type_structure(ty);
     decl = struct_type_to_decl(ty);
@@ -456,7 +466,7 @@ ast_struct_t *struct_type_to_definition(u32 ty) {
 
     ASSERT(t->kind == TY_STRUCT_MONO, "should be a monomorphism");
 
-    array_traverse(st->polymorphs, it) {
+    array_traverse(st->monomorphs, it) {
         if (it->type == ty) {
             return (ast_struct_t*)it->node;
         }
@@ -500,23 +510,25 @@ static u8 type_bitfield_struct_bits(u32 t) {
 
 int types_are_compatible(u32 ta, u32 tb) {
     u32 tka;
+    u32 tkb;
 
     tka = type_kind(ta);
+    tkb = type_kind(tb);
 
-    if (tka == TY_GENERIC_INT
-    &&  (tb == TY_GENERIC_POSITIVE_INT || tb == TY_GENERIC_NEGATIVE_INT)) {
-
-        return 1;
-    }
-
-    if (tka == TY_GENERIC_FLOAT
-    &&  tb == TY_GENERIC_FLOAT) {
+    if ((tka == TY_GENERIC_INT)
+    &   (tkb == TY_GENERIC_INT)) {
 
         return 1;
     }
 
-    if (type_bitfield_struct_bits(ta)
-    &&  (tb == TY_GENERIC_POSITIVE_INT || tb == TY_GENERIC_NEGATIVE_INT)) {
+    if ((tka == TY_GENERIC_FLOAT)
+    &   (tkb == TY_GENERIC_FLOAT)) {
+
+        return 1;
+    }
+
+    if ((!!type_bitfield_struct_bits(ta))
+    &   (tkb == TY_GENERIC_INT)) {
 
         return 1;
     }
@@ -533,15 +545,7 @@ void realize_generic(u32 real, ast_t *expr) {
 
     tkreal = type_kind(real);
 
-
-    if (tkreal == TY_PTR) {
-        /* If an expression is using a generic integer in pointer arithmetic,
-         * we don't want to turn the integer into a pointer type.
-         * Just use u64.
-         */
-        real   = TY_U64;
-        tkreal = TY_GENERIC_INT;
-    } else if ((bits = type_bitfield_struct_bits(real))) {
+    if ((bits = type_bitfield_struct_bits(real))) {
         /* If we have a bitfield struct, just use its underlying integer type. */
         switch (bits) {
             case 8:  real = TY_U8;  break;
@@ -586,7 +590,7 @@ void realize_generic(u32 real, ast_t *expr) {
 
             report_range_err(&expr->loc,
                              "integer literal is being used as type %s, but is not in the range [%s%"PRIu64",%"PRIu64"]",
-                             INT_TYPE_IS_SIGNED(real) ? "-" : "", min_mag, max_mag);
+                             get_string(get_type_string_id(real)), INT_TYPE_IS_SIGNED(real) ? "-" : "", min_mag, max_mag);
             return;
         }
     } else if (tkreal == TY_GENERIC_FLOAT) {

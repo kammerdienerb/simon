@@ -20,6 +20,22 @@ static void insert_builtin_type(const char *name, u32 type_value) {
     add_symbol(global_scope, name_id, ASTP(b));
 }
 
+static void insert_builtin_macro(const char *name) {
+    string_id      name_id;
+    ast_builtin_t *b;
+
+    name_id          = get_string_id(name);
+    b                = mem_alloc(sizeof(*b));
+    ASTP(b)->kind    = AST_BUILTIN;
+    ASTP(b)->type    = TY_MACRO;
+    ASTP(b)->value.a = ASTP(b);
+    b->name          = name_id;
+
+    ASTP(b)->flags |= AST_FLAG_CONSTANT;
+
+    add_symbol(global_scope, name_id, ASTP(b));
+}
+
 static void _insert_builtin_proc_like(const char *name, u32 ret_type_or_special, u32 n_params, u32 *param_types) {
     string_id      name_id;
     ast_builtin_t *b;
@@ -55,7 +71,7 @@ do {                                                             \
 
 void init_scopes(void) {
 
-    global_scope = create_named_scope(NULL, AST_INVALID, NULL, get_string_id("<global scope>"));
+    global_scope = create_named_scope(NULL, AST_GLOBAL_SCOPE, NULL, get_string_id("<global scope>"));
 
     insert_builtin_type("type",   TY_TYPE);
     insert_builtin_type("module", TY_MODULE);
@@ -69,19 +85,23 @@ void init_scopes(void) {
     insert_builtin_type("s64",    TY_S64);
     insert_builtin_type("f32",    TY_F32);
     insert_builtin_type("f64",    TY_F64);
-    insert_builtin_type("str",    TY_STR);
 
 
     INSERT_BUILTIN_PROC_LIKE("cast", TY_BUILTIN_SPECIAL); /* This gets custom typechecking in ast.c */
-    INSERT_BUILTIN_PROC_LIKE("_builtin_strlen", TY_U64, TY_STR);
     INSERT_BUILTIN_PROC_LIKE("_builtin_prints", TY_NOT_TYPED, get_ptr_type(TY_U8));
     INSERT_BUILTIN_PROC_LIKE("_builtin_printp", TY_NOT_TYPED, get_ptr_type(TY_U8));
     INSERT_BUILTIN_PROC_LIKE("_builtin_printi", TY_NOT_TYPED, TY_S64);
     INSERT_BUILTIN_PROC_LIKE("_builtin_putc",   TY_NOT_TYPED, TY_U8);
     INSERT_BUILTIN_PROC_LIKE("_builtin_stack_alloc", get_ptr_type(TY_U8), TY_U64);
     INSERT_BUILTIN_PROC_LIKE("_builtin_varg", TY_BUILTIN_SPECIAL);
+    INSERT_BUILTIN_PROC_LIKE("_builtin_slice_from", TY_BUILTIN_SPECIAL);
     INSERT_BUILTIN_PROC_LIKE("_builtin_outb", TY_NOT_TYPED, get_ptr_type(TY_U8), TY_U8);
     INSERT_BUILTIN_PROC_LIKE("_builtin_inb", TY_U8, get_ptr_type(TY_U8));
+
+    insert_builtin_macro("compile_error");
+    insert_builtin_macro("require");
+    insert_builtin_macro("static_if");
+    insert_builtin_macro("vargs");
 }
 
 scope_t *create_scope(scope_t *parent, int kind, ast_t *node) {
@@ -102,20 +122,14 @@ scope_t *create_scope(scope_t *parent, int kind, ast_t *node) {
 }
 
 scope_t *copy_scope(scope_t *scope) {
-    scope_t *new_scope;
+    scope_t  *new_scope;
 
     new_scope = mem_alloc(sizeof(*scope));
 
     memcpy(new_scope, scope, sizeof(*new_scope));
-
-    new_scope->symbols = array_make(string_id);
-    array_copy(new_scope->symbols, scope->symbols);
-
-    new_scope->nodes = array_make(ast_t*);
-    array_copy(new_scope->nodes, scope->nodes);
-
-    new_scope->subscopes = array_make(scope_t*);
-    array_copy(new_scope->subscopes, scope->subscopes);
+    new_scope->symbols   = array_make_with_cap(string_id, array_len(scope->symbols));
+    new_scope->nodes     = array_make_with_cap(ast_t*,    array_len(scope->nodes));
+    new_scope->subscopes = array_make_with_cap(scope_t*,  array_len(scope->subscopes));
 
     return new_scope;
 }
@@ -128,7 +142,7 @@ scope_t *create_named_scope(scope_t *parent, int kind, ast_t *node, string_id na
 
     new_scope = create_scope(parent, kind, node);
 
-    if (parent == NULL || parent->parent == NULL) {
+    if (parent == NULL || parent->kind == AST_GLOBAL_SCOPE) {
         new_scope->name_id = name_id;
     } else {
         parent_name = get_string(parent->name_id);
@@ -152,6 +166,8 @@ ast_t *find_in_scope(scope_t *scope, string_id name_id) {
     int         i;
     string_id  *sym;
 
+    /* @performance
+     * Maybe binary search instead? They're just integers, so linear search will get us pretty far. */
     i = 0;
     array_traverse(scope->symbols, sym) {
         if (name_id == *sym) {
@@ -181,40 +197,8 @@ ast_t *search_up_scopes_return_scope(scope_t *scope, string_id name_id, scope_t 
     return existing_node;
 }
 
-ast_t *search_up_scopes_stop_at_module_return_scope(scope_t *scope, string_id name_id, scope_t **out_scope) {
-    ast_t *existing_node;
-
-    existing_node = find_in_scope(scope, name_id);
-
-    if (existing_node != NULL) {
-        if (out_scope != NULL) {
-            *out_scope = scope;
-        }
-    } else if (scope->kind != AST_MODULE && scope->parent != NULL) {
-        existing_node = search_up_scopes_stop_at_module_return_scope(scope->parent, name_id, out_scope);
-    }
-
-    return existing_node;
-}
-
 ast_t *search_up_scopes(scope_t *scope, string_id name_id) {
     return search_up_scopes_return_scope(scope, name_id, NULL);
-}
-
-ast_t *search_up_scopes_stop_at_module(scope_t *scope, string_id name_id) {
-    return search_up_scopes_stop_at_module_return_scope(scope, name_id, NULL);
-}
-
-void add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node) {
-    ast_t *existing_node;
-
-    if (name_id == UNDERSCORE_ID) { return; }
-
-    existing_node = search_up_scopes_stop_at_module(scope, name_id);
-    if (existing_node != NULL) { return; }
-
-    array_push(scope->symbols, name_id);
-    array_push(scope->nodes,   node);
 }
 
 static void redecl_error(string_id name, ast_t *bad, ast_t *existing) {
@@ -236,19 +220,41 @@ static void redecl_error(string_id name, ast_t *bad, ast_t *existing) {
     }
 }
 
-void add_symbol(scope_t *scope, string_id name_id, ast_t *node) {
+void add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node) {
     ast_t *existing_node;
 
     if (name_id == UNDERSCORE_ID) { return; }
 
-    existing_node = search_up_scopes_stop_at_module(scope, name_id);
-    if (existing_node != NULL) {
+    existing_node = search_up_scopes(scope, name_id);
+    if (existing_node != NULL && existing_node->kind == AST_BUILTIN) {
         redecl_error(name_id, node, existing_node);
         return;
     }
 
     array_push(scope->symbols, name_id);
     array_push(scope->nodes,   node);
+}
+
+void add_symbol(scope_t *scope, string_id name_id, ast_t *node) {
+    ast_t   *existing_node;
+    scope_t *exists_at;
+
+    if (name_id == UNDERSCORE_ID) { return; }
+
+    existing_node = search_up_scopes_return_scope(scope, name_id, &exists_at);
+    if (existing_node != NULL &&
+        (existing_node->kind == AST_BUILTIN || exists_at->kind != AST_GLOBAL_SCOPE)) {
+        redecl_error(name_id, node, existing_node);
+        return;
+    }
+
+    array_push(scope->symbols, name_id);
+    array_push(scope->nodes,   node);
+}
+
+void insert_subscope(scope_t *scope, scope_t *subscope) {
+    subscope->parent = scope;
+    array_push(scope->subscopes, subscope);
 }
 
 scope_t *add_subscope(scope_t *scope, int kind, ast_t *node) {
@@ -311,6 +317,7 @@ void _show_scope(scope_t *scope, int level) {
         printf("%s: %s\n", get_string(*symbol_it), AST_STR((*node_it)->kind));
 
         opening_node = *node_it;
+
         switch (opening_node->kind) {
             case AST_DECL_PROC:
             case AST_DECL_STRUCT:
@@ -327,6 +334,7 @@ void _show_scope(scope_t *scope, int level) {
                 (*subscope_it)->visited = 1;
             }
         }
+
         n += 1;
     }
 

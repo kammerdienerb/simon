@@ -23,12 +23,17 @@ extern string_id _BUILTIN_PRINTP_ID;
 extern string_id _BUILTIN_PRINTI_ID;
 extern string_id _BUILTIN_STACK_ALLOC_ID;
 extern string_id _BUILTIN_VARG_ID;
+extern string_id _BUILTIN_SLICE_FROM_ID;
 extern string_id CAST_ID;
 extern string_id EXTERN_ID;
 extern string_id PROGRAM_ENTRY_ID;
 extern string_id BITFIELD_STRUCT_ID;
 extern string_id BITFIELD_ID;
 extern string_id SPECIALIZATION_ID;
+extern string_id COMPILE_ERROR_ID;
+extern string_id REQUIRE_ID;
+extern string_id STATIC_IF_ID;
+extern string_id VARGS_ID;
 
 void        init_strings(void);
 string_id   get_string_id(const char *string);

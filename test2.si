@@ -1,46 +1,67 @@
-Hash_Table :: struct(%KEY_T: type, %VAL_T: type) {
-    key_type   :: KEY_T;
-    value_type :: VAL_T;
+# require!("Hash_Table.si");
 
-#     insert :: proc(table: *%TABLE_T, key: TABLE_T.key_type, value: TABLE_T.value_type) {
+# compile_error!("this is my error text");
 
-#     }
-}
-
-ht_insert :: proc(table: *%TABLE_T, key: TABLE_T.key_type, value: TABLE_T.value_type) {
-
+M :: macro {
+    FOO :: 0;
 }
 
 [[ program_entry ]]
 main :: proc() {
-    table: Hash_Table(str, s64);
-    ht_insert(*table, "abc", 123);
-#     Hash_Table(str, s64).insert(*table, "abc", 123);
+    M!();
+
+#     HT :: Hash_Table(str, s64);
+#     table: HT;
+#     HT.insert(*table, "abc", 123);
 }
 
 # @here
-# The key: TABLE_T.key_type param is failing because it is extracting the struct's declaration
-# from the type and using that to try to get the type of the key_type child. This won't work
-# because the properly typed version of that child lives in a polymorphic copy in the polymorphs
-# array. So... what to do? Well,
-#     - We could add a function that gets the struct struct node from a type rather than (or, in
-#       addition to) the declaration and then use that in places where we search for children by
-#       name or whatever.
-#     - Or, not copy polymorphs and do it a different way??? I'm pretty sure I thought about this
-#       and decided it wouldn't work for because of one or more features, but I can't remember at
-#       the moment.
+# Got a basic form of macro expansion working. Need to extend it for the other
+# built in macros (require, static_if), and then start working on user-defined
+# macros.
 #
-# I think we need to totally rework the system so that nested polymorphs work and aren't a pain.
-# My first thought is that we create some new outer scopes that have all poly constants (even from
-# parents) around every poly declaration. Not sure though...
-# It would be _really_ nice if we didn't even have cxt.poly_constants and didn't need to check for
-# it.
+# UPDATE:
+# This still has some problems...
+# The way we've designed the user-defined macros is that they can get replaced with
+# whatever kind of node the macro expands to. But how are we going to validate code
+# after that? For example:
 #
-# Okay, another thing: I think we need to move the scope creation into the type checking phase. Why?
-# Well, we're already in a situation where we need to copy scope trees when we create monomorphisms.
-# When we typecheck those though, we can end up in situations where compile-time logic (say, static
-# if) determines if a scope is created or what might be installed to a scope. So what might be
-# better is to create those scopes as we try to typecheck scoped nodes and install declarations
-# at the same time. What are the implications of this? Do we end up in sticky situtations where we
-# need to do an identifier lookup, but can't because the scope and installation aren't done yet? I
-# don't think so, but I need to think it through.
+#        make_a_decl :: macro() {
+#            FOO :: 123;
+#        }
+#
+#        bar := make_a_decl!();
+#
+# How are we going to avoid an impossible number of scenarios where a node expects its
+# child to be something specific? In this case, the variable expects its initialization
+# to be an expression, but it will end up being a declaration. Maybe we should have some
+# way to bubble down the expected node type to the point where we create the macro call
+# node. Then when we expand it, we make sure that the resulting node is of that type.
+# So here, by the time we get to parse_macro_call(), we would have informed it that the
+# macro is a MACRO_EXPR, or something. Then when it gets expanded, we throw an error
+# because it results in a declaration node instead. That might work, but we'll need to
+# work through some of the more complicated cased (like block macros) to be sure.
+
+
+### Interesting ideas:
+# CPU :: struct {
+#     [[ bitfield_struct(u16) ]]
+#     Register_16 :: struct {
+#         [[ bitfield(0, 15) ]]  _16: u16;
+#         [[ bitfield(0, 7)  ]]  lo:  u16;
+#         [[ bitfield(8, 15) ]]  hi:  u16;
+#         [[ bitfield(3, 9)  ]]  flags: u8;
+#     }
+
+#     AR: Register_16;
+#         [[ field_alias(AR.lo) ]] A: u16;
+#         [[ field_alias(AR.hi) ]] R: u16;
+# }
+
+# Vec3 :: struct(%T: type) {
+#     array: [3]T;
+
+#     [[ field_alias(array[0]) ]] x: T;
+#     [[ field_alias(array[1]) ]] y: T;
+#     [[ field_alias(array[2]) ]] z: T;
+# }

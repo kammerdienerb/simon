@@ -1,114 +1,73 @@
+# require!("basic.si");
+
 Point :: struct {
     x: u32;
     y: u32;
 }
 
 [[ specialization(Format.to_formatted_str) ]]
-Point_to_formatted_str :: proc(buff: *u8, len: *u64, arg: Point, f: Format.Format_Info): s64 {
-    num_len := cast(u64, 0);
-    Format.u32_to_formatted_str(NULL, *num_len, 0, f);
-
-    needed_len := 4 + (2 * num_len);
-
-    if @len < needed_len {
-        @len = needed_len;
-        return ERR_TOO_SMALL;
-    }
-
-    i := cast(u64, 0);
-
-    buff[i] = '(';
-    i += 1;
-
-    tmp := @len - i;
-
-    err := Format.u32_to_formatted_str(buff + i, *tmp, arg.x, f);
-    if err != SUCCESS {
-        return err;
-    }
-
-    i += tmp;
-    buff[i] = ',';
-    i += 1;
-    buff[i] = ' ';
-    i += 1;
-
-    tmp = @len - i;
-
-    err = Format.u32_to_formatted_str(buff + i, *tmp, arg.y, f);
-    if err != SUCCESS {
-        return err;
-    }
-
-    i += tmp;
-
-    buff[i] = ')';
-    i += 1;
-
-    @len = i;
-
+Point_to_formatted_str :: proc(sb: *String_Builder, arg: Point, f: Format.Format_Info): s64 {
+    string_builder_append(sb, '(');
+    Format.to_formatted_str(sb, arg.x, f);
+    string_builder_append(sb, ',');
+    string_builder_append(sb, ' ');
+    Format.to_formatted_str(sb, arg.y, f);
+    string_builder_append(sb, ')');
     return SUCCESS;
-}
-
-# String_Builder :: struct(%allocator_type: type) {
-#     allocator: allocator_type,
-# }
-
-P :: macro {
-    aprintf(*block_alloc, "MACRO TEST\n");
 }
 
 [[ program_entry ]]
 main :: proc() {
-    defer { Sys.exit(0); }
+#     defer { exit(0); }
 
     N: u64 = 4096;
-    block_alloc := Fixed_Allocator.new(_builtin_stack_alloc(N), N);
+    mem := singleton_allocator_new(_builtin_stack_alloc(N), N);
 
-#     sb: String_Builder(Fixed_Allocator.T);
+    aprintf(*mem, "my memory: {}\n", mem.base);
 
+    aprintf(*mem, "hello, {}: {}\n", "world", -123);
     p: Point;
     p.x = 0xFFFFFFFF;
     p.y = 0x76767676;
-    aprintf(*block_alloc, "my point: {x}\n", p);
+    aprintf(*mem, "my point: {x}\n", p);
 
-    defer {
-        aprintf(*block_alloc, "zap\n");
-    }
-    defer {
-        defer {
-            aprintf(*block_alloc, "bar\n");
-        }
-        aprintf(*block_alloc, "foo\n");
-    }
+#     defer {
+#         aprintf(*mem, "zap\n");
+#     }
+#     defer {
+#         defer {
+#             aprintf(*mem, "bar\n");
+#         }
+#         aprintf(*mem, "foo\n");
+#     }
 
-    aprintf(*block_alloc, "hello! {}\n", 123);
+#     aprintf(*mem, "hello! {}\n", 123);
 
-    defer { aprintf(*block_alloc, "bye!\n"); }
+#     defer { aprintf(*mem, "bye!\n"); }
 
-    ptr := Allocator.alloc(*block_alloc, 64);
+#     ptr := Allocator.alloc(*mem, 64);
 
-    aprintf(*block_alloc, "allocated {} bytes at {}\n", N, ptr);
+#     aprintf(*mem, "allocated {} bytes at {}\n", N, ptr);
 
-    loop i := 0; i < 10; i += 1 {
-        defer { aprintf(*block_alloc, "<- {}\n", i); }
-        if i > 4 {
-            defer { aprintf(*block_alloc, "INNER IF\n"); }
-            break;
-        }
-        aprintf(*block_alloc, "{} ->\n", i);
-    }
+#     loop i := 0; i < 10; i += 1 {
+#         defer { aprintf(*mem, "<- {}\n", i); }
+#         if i > 4 {
+#             defer { aprintf(*mem, "INNER IF\n"); }
+#             break;
+#         }
+#         aprintf(*mem, "{} ->\n", i);
+#     }
 
-    if 1 {
-        defer {
-            aprintf(*block_alloc, "A\n");
-            aprintf(*block_alloc, "B\n");
-            aprintf(*block_alloc, "C\n");
-        }
-        defer {
-            aprintf(*block_alloc, "D\n");
-            aprintf(*block_alloc, "E\n");
-            aprintf(*block_alloc, "F\n");
-        }
-    }
+#     if 1 {
+#         defer {
+#             aprintf(*mem, "A\n");
+#             aprintf(*mem, "B\n");
+#             aprintf(*mem, "C\n");
+#         }
+#         defer {
+#             aprintf(*mem, "D\n");
+#             aprintf(*mem, "E\n");
+#             aprintf(*mem, "F\n");
+#         }
+#     }
 }

@@ -31,7 +31,9 @@ if [[ ${DEBUG} == "yes" ]]; then
 else
     OPT="-O3"
     LTO="-flto"
-    if [[ "${APPLE_ARM}" != "yes" ]]; then
+    if [[ "${APPLE_ARM}" == "yes" ]]; then
+        MARCH="-mcpu=native"
+    else
         MARCH="-march=native -mtune=native"
     fi
 fi

@@ -1,0 +1,9 @@
+# Hash_Table.si
+
+Hash_Table :: struct(%KEY_T: type, %VAL_T: type) {
+    key_type   :: KEY_T;
+    value_type :: VAL_T;
+
+    insert :: proc(table: *%TABLE_T, key: TABLE_T.key_type, value: TABLE_T.value_type) {
+    }
+}

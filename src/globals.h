@@ -11,7 +11,12 @@
 extern tp_t            *tp;
 extern pthread_mutex_t  roots_mtx;
 extern array_t          roots;
+extern pthread_mutex_t  macro_calls_mtx;
+extern array_t          macro_calls;
 extern ast_decl_t      *program_entry;
+extern array_t          all_types;
+extern array_t          all_procs;
+extern array_t          all_vars;
 
 #define ROOTS_LOCK()                             \
 do {                                             \
@@ -24,6 +29,20 @@ do {                                             \
 do {                                             \
     if (tp != NULL) {                            \
         pthread_mutex_unlock(&roots_mtx);        \
+    }                                            \
+} while (0)
+
+#define MACRO_CALLS_LOCK()                       \
+do {                                             \
+    if (tp != NULL) {                            \
+        pthread_mutex_lock(&macro_calls_mtx);    \
+    }                                            \
+} while (0)
+
+#define MACRO_CALLS_UNLOCK()                     \
+do {                                             \
+    if (tp != NULL) {                            \
+        pthread_mutex_unlock(&macro_calls_mtx);  \
     }                                            \
 } while (0)
 

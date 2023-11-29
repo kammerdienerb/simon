@@ -29,7 +29,7 @@
     X(TY_F32)                  \
     X(TY_F64)                  \
     X(TY_PTR)                  \
-    X(TY_STR)                  \
+    X(TY_SLICE)                \
     X(TY_GENERIC_POSITIVE_INT) \
     X(TY_GENERIC_NEGATIVE_INT) \
     X(TY_GENERIC_INT)          \
@@ -54,10 +54,9 @@
     ||  (_t) == TY_S8)
 
 #define TKINDPAIR_INT_INT ((((u64)TY_GENERIC_INT)   << 32ULL) + TY_GENERIC_INT)
-#define TKINDPAIR_PTR_PTR ((((u64)TY_PTR)           << 32ULL) + TY_PTR)
-#define TKINDPAIR_PTR_INT ((((u64)TY_PTR)           << 32ULL) + TY_GENERIC_INT)
 #define TKINDPAIR_FLT_FLT ((((u64)TY_GENERIC_FLOAT) << 32ULL) + TY_GENERIC_FLOAT)
 #define TKINDPAIR_FLT_INT ((((u64)TY_GENERIC_FLOAT) << 32ULL) + TY_GENERIC_INT)
+#define TKINDPAIR_PTR_INT ((((u64)TY_PTR)           << 32ULL) + TY_GENERIC_INT)
 
 #define TY_INT_PTR (TY_U64)
 
@@ -77,6 +76,7 @@ enum {
 
 #define X_HAVE_UNDER_TYPES     \
     X(TY_PTR)                  \
+    X(TY_SLICE)                \
     X(TY_VARGS)
 
 #define X_INT_TYPES            \
@@ -142,6 +142,7 @@ typedef struct type {
     };
 } type_t;
 
+extern array_t type_table;
 
 int init_types(void);
 void report_type_stats(void);
@@ -153,6 +154,7 @@ int type_kind_is_float(u32 kind);
 int type_kind_is_numeric(u32 kind);
 int type_kind(u32 ty);
 u32 get_ptr_type(u32 ty);
+u32 get_slice_type(u32 ty);
 u32 get_vargs_type(u32 ty);
 u32 get_under_type(u32 ty);
 u32 get_struct_type(ast_decl_t *st);

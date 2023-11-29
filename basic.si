@@ -2,82 +2,175 @@
 
 NULL :: cast(*u8, 0);
 
-
-SUCCESS       :: 0;
+SUCCESS       ::  0;
 ERR_TOO_SMALL :: -1;
 ERR_BAD_ALLOC :: -2;
 
-DEFAULT_HEAP_ALLOCATOR: Heap_Allocator.T;
-
-heap_alloc :: proc(n_bytes: u64): *u8 { return Allocator.alloc(*DEFAULT_HEAP_ALLOCATOR, n_bytes); }
-heap_free  :: proc(ptr: *u8)          { Allocator.free(*DEFAULT_HEAP_ALLOCATOR, ptr);             }
-
 Allocator :: module {
-    alloc :: proc(allocator: *%allocator_type, n_bytes: u64): *u8 { \ERROR "allocator does not implement alloc()" }
-    free  :: proc(allocator: *%allocator_type, ptr: *u8)          { \ERROR "allocator does not implement free()"  }
-}
-
-Heap_Allocator :: module {
-    T :: struct {}
-
-    [[ specialization(Allocator.alloc) ]]
-    alloc :: proc(allocator: *T, n_bytes: u64): *u8 { return NULL; }
-
-    [[ specialization(Allocator.free) ]]
-    free :: proc(allocator: *T, ptr: *u8) {  }
-}
-
-Fixed_Allocator :: module {
-    T :: struct {
-        ptr: *u8;
-        end: *u8;
+    Bundle :: struct {
+        self:    *u8;
+        alloc:   proc(*u8, u64): *u8;
+        realloc: proc(*u8, *u8, u64): *u8;
+        free:    proc(*u8, *u8);
     }
 
-    new :: proc(buff: *u8, size: u64): T {
-        ret: T;
-
-        ret.ptr = buff;
-        ret.end = buff + size;
-
-        return ret;
+    bundle_alloc :: proc(bundle: *Bundle, n_bytes: u64): *u8 {
+        return bundle.alloc(bundle.self, n_bytes);
     }
 
-    [[ specialization(Allocator.alloc) ]]
-    alloc :: proc(allocator: *T, n_bytes: u64): *u8 {
-        # @todo: alignment
-
-        if (allocator.ptr + n_bytes > allocator.end) { return NULL; }
-
-        ret := allocator.ptr;
-
-        allocator.ptr += n_bytes;
-
-        return ret;
+    bundle_realloc :: proc(bundle: *Bundle, ptr: *u8, n_bytes: u64): *u8 {
+        return bundle.realloc(bundle.self, ptr, n_bytes);
     }
 
-    [[ specialization(Allocator.free) ]]
-    free :: proc(allocator: *T, ptr: *u8) {  }
+    bundle_free :: proc(bundle: *Bundle, ptr: *u8) {
+        bundle.free(bundle.self, ptr);
+    }
+
+    alloc   :: proc(allocator: *%allocator_type, n_bytes: u64): *u8           { compile_error!("allocator does not implement alloc()");   }
+    realloc :: proc(allocator: *%allocator_type, ptr: *u8, n_bytes: u64): *u8 { compile_error!("allocator does not implement realloc()"); }
+    free    :: proc(allocator: *%allocator_type, ptr: *u8)                    { compile_error!("allocator does not implement free()");    }
+    bundle  :: proc(allocator: *%allocator_type): Bundle                      { compile_error!("allocator does not implement bundle()");  }
 }
 
-Sys :: module {
-    [[ extern ]] open  :: proc(path: str, oflag: s32): s32;
-    [[ extern ]] read  :: proc(fd: s32, bytes: str, len: u64): s32;
-    [[ extern ]] write :: proc(fd: s32, bytes: str, len: u64): s32;
-    [[ extern ]] exit  :: proc(code: s64);
+Heap_Allocator :: struct {}
+[[ specialization(Allocator.alloc) ]]
+heap_alloc :: proc(allocator: *Heap_Allocator, n_bytes: u64): *u8 { return NULL; }
+
+[[ specialization(Allocator.free) ]]
+heap_free :: proc(allocator: *Heap_Allocator, ptr: *u8) {  }
+
+Fixed_Allocator :: struct {
+    base: *u8;
+    end:  *u8;
 }
 
-Util :: module {
-    slen :: proc(s: str) : u64 {
-        len := cast(u64, 0);
+fixed_allocator_new :: proc(buff: *u8, size: u64): Fixed_Allocator {
+    ret: Fixed_Allocator;
 
-        loop i := 0; s[i] != 0; i += 1 { len += 1; }
+    ret.base = buff;
+    ret.end  = buff + size;
 
-        return len;
+    return ret;
+}
+
+[[ specialization(Allocator.alloc) ]]
+fixed_alloc :: proc(allocator: *Fixed_Allocator, n_bytes: u64): *u8 {
+    # @todo: alignment
+
+    if allocator.base + n_bytes > allocator.end { return NULL; }
+
+    ret := allocator.base;
+
+    allocator.base += n_bytes;
+
+    return ret;
+}
+
+[[ specialization(Allocator.free) ]]
+fixed_free :: proc(allocator: *Fixed_Allocator, ptr: *u8) {  }
+
+Singleton_Allocator :: struct {
+    base: *u8;
+    end:  *u8;
+}
+
+singleton_allocator_new :: proc(buff: *u8, size: u64): Singleton_Allocator {
+    ret: Singleton_Allocator;
+
+    ret.base = buff;
+    ret.end  = buff + size;
+
+    return ret;
+}
+
+[[ specialization(Allocator.alloc) ]]
+singleton_alloc :: proc(allocator: *Singleton_Allocator, n_bytes: u64): *u8 {
+    # @todo: alignment
+
+    if allocator.base + n_bytes >= allocator.end { return NULL; }
+
+    return allocator.base;
+}
+
+[[ specialization(Allocator.realloc) ]]
+singleton_realloc :: proc(allocator: *Singleton_Allocator, ptr: *u8, n_bytes: u64): *u8 {
+    # @todo: alignment
+
+    if ptr != NULL and ptr != allocator.base     { return NULL; }
+    if allocator.base + n_bytes >= allocator.end { return NULL; }
+
+    return allocator.base;
+}
+
+[[ specialization(Allocator.free) ]]
+singleton_free :: proc(allocator: *Singleton_Allocator, ptr: *u8) {  }
+
+[[ specialization(Allocator.bundle) ]]
+singleton_bundle :: proc(allocator: *Singleton_Allocator): Allocator.Bundle {
+    ret: Allocator.Bundle;
+    ret.self    = cast(*u8, allocator);
+    ret.alloc   = cast(proc(*u8, u64): *u8,      singleton_alloc);
+    ret.realloc = cast(proc(*u8, *u8, u64): *u8, singleton_realloc);
+    ret.free    = cast(proc(*u8, *u8),           singleton_free);
+    return ret;
+}
+
+
+
+[[ extern ]] open  :: proc(path: *u8, oflag: s32): s32;
+[[ extern ]] read  :: proc(fd: s32, bytes: *u8, len: u64): s32;
+[[ extern ]] write :: proc(fd: s32, bytes: *u8, len: u64): s32;
+[[ extern ]] exit  :: proc(code: s64);
+
+write_string :: proc(s: [u8]) {
+    write(1, *s[0], lenof s);
+}
+
+
+
+String_Builder :: struct {
+    allocator:  Allocator.Bundle;
+    data:      *u8;
+    cursor:    *u8;
+    len:        u64;
+}
+
+string_builder_reset :: proc(sb: *%sb_type) {
+    sb.data   = NULL;
+    sb.cursor = NULL;
+    sb.len    = 0;
+}
+
+string_builder_new :: proc(allocator: *%allocator_type): String_Builder {
+    ret: String_Builder;
+    string_builder_reset(*ret);
+    ret.allocator = Allocator.bundle(allocator);
+    return ret;
+}
+
+string_builder_append :: proc(sb: *%sb_type, c: u8): s64 {
+    was_null := sb.data == NULL;
+
+    sb.data = Allocator.bundle_realloc(*sb.allocator, sb.data, sb.len + 1);
+
+    if was_null {
+        sb.cursor = sb.data;
     }
 
-    putc  :: proc(c: u8)          { Sys.write(1, cast(str, *c), 1); }
-    puts  :: proc(s: str)         { Sys.write(1, s, slen(s));       }
-    putsn :: proc(s: str, n: u64) { Sys.write(1, s, n);             }
+    if sb.data == NULL {
+        string_builder_reset(sb);
+        return ERR_BAD_ALLOC;
+    }
+
+    sb.len     += 1;
+    @sb.cursor  = c;
+    sb.cursor  += 1;
+
+    return SUCCESS;
+}
+
+string_builder_get :: proc(sb: *%sb_type): [u8] {
+    return _builtin_slice_from(sb.data, sb.len);
 }
 
 Format :: module {
@@ -99,237 +192,142 @@ Format :: module {
     }
 
 
-    to_formatted_str :: proc(buff: *u8, len: *u64, arg: %T, f: Format_Info): s64 {
-        \ERROR "no specialization provided for type T"
+    to_formatted_str :: proc(sb: *String_Builder, arg: %T, f: Format_Info): s64 {
+        compile_error!("no specialization provided for type T");
     }
 
-#     char * dtoa(char *s, double n) {
-#         // handle special cases
-#         if (isnan(n)) {
-#             strcpy(s, "nan");
-#         } else if (isinf(n)) {
-#             strcpy(s, "inf");
-#         } else if (n == 0.0) {
-#             strcpy(s, "0");
-#         } else {
-#             int digit, m, m1;
-#             char *c = s;
-#             int neg = (n < 0);
-#             if (neg)
-#                 n = -n;
-#             // calculate magnitude
-#             m = log10(n);
-#             int useExp = (m >= 14 || (neg && m >= 9) || m <= -9);
-#             if (neg)
-#                 *(c++) = '-';
-#             // set up for scientific notation
-#             if (useExp) {
-#                 if (m < 0)
-#                 m -= 1.0;
-#                 n = n / pow(10.0, m);
-#                 m1 = m;
-#                 m = 0;
-#             }
-#             if (m < 1.0) {
-#                 m = 0;
-#             }
-#             // convert the number
-#             while (n > PRECISION || m >= 0) {
-#                 double weight = pow(10.0, m);
-#                 if (weight > 0 && !isinf(weight)) {
-#                     digit = floor(n / weight);
-#                     n -= (digit * weight);
-#                     *(c++) = '0' + digit;
-#                 }
-#                 if (m == 0 && n > 0)
-#                     *(c++) = '.';
-#                 m--;
-#             }
-#             if (useExp) {
-#                 // convert the exponent
-#                 int i, j;
-#                 *(c++) = 'e';
-#                 if (m1 > 0) {
-#                     *(c++) = '+';
-#                 } else {
-#                     *(c++) = '-';
-#                     m1 = -m1;
-#                 }
-#                 m = 0;
-#                 while (m1 > 0) {
-#                     *(c++) = '0' + m1 % 10;
-#                     m1 /= 10;
-#                     m++;
-#                 }
-#                 c -= m;
-#                 for (i = 0, j = m-1; i<j; i++, j--) {
-#                     // swap without temporary
-#                     c[i] ^= c[j];
-#                     c[j] ^= c[i];
-#                     c[i] ^= c[j];
-#                 }
-#                 c += m;
-#             }
-#             *(c) = '\0';
-#         }
-#         return s;
-#     }
-
     [[ specialization(to_formatted_str) ]]
-    u64_to_formatted_str :: proc(buff: *u8, len: *u64, arg: u64, f: Format.Format_Info): s64 {
+    u64_to_formatted_str :: proc(sb: *String_Builder, arg: u64, f: Format.Format_Info): s64 {
+        buff: [u8];
+        len: u64 = 1;
+        save_arg := arg;
+
         if f.hex {
-            if @len < 16 {
-                @len = 16;
-                return ERR_TOO_SMALL;
-            }
-
-            @len = 0;
-
-            save_arg := arg;
-
-            loop ; arg >= 16; arg = arg >> 4 { @len += 1; }
-            @len += 1;
-
             digits := "0123456789abcdef";
             if f.hex == HEX_UPPER {
                 digits = "0123456789ABCDEF";
             }
 
-            ptr    := buff + @len - 1;
-            arg     = save_arg;
+            loop ; arg >= 16; arg = arg >> 4 { len += 1; }
+            arg = save_arg;
 
+            idx  := len - 1;
+            buff  = _builtin_slice_from(_builtin_stack_alloc(len), len);
             loop ; arg >= 16; arg = arg >> 4 {
-                @ptr  = digits[arg & 0xF];
-                ptr  -= 1;
+                buff[idx]  = digits[arg & 0xF];
+                idx       -= 1;
             }
-            @ptr  = digits[arg & 0xF];
-            ptr  -= 1;
+            buff[idx]  = digits[arg & 0xF];
         } else {
-            if @len < 20 {
-                @len = 20;
-                return ERR_TOO_SMALL;
-            }
+            loop ; arg >= 10; arg /= 10 { len += 1; }
+            arg = save_arg;
 
-            @len = 0;
-
-            save_arg := arg;
-
-            loop ; arg >= 10; arg /= 10 { @len += 1; }
-            @len += 1;
-
-            ptr := buff + @len - 1;
-            arg  = save_arg;
-
+            idx  := len - 1;
+            buff  = _builtin_slice_from(_builtin_stack_alloc(len), len);
             loop ; arg >= 10; arg /= 10 {
-                @ptr  = '0' + (arg % 10);
-                ptr  -= 1;
+                buff[idx]  = '0' + (arg % 10);
+                idx       -= 1;
             }
-            @ptr  = '0' + (arg % 10);
-            ptr  -= 1;
+            buff[idx] = '0' + (arg % 10);
+        }
+
+        loop idx : u64 = 0; idx < len; idx += 1 {
+            err := string_builder_append(sb, buff[idx]);
+            if err { return err; }
         }
 
         return SUCCESS;
     }
 
     [[ specialization(to_formatted_str) ]]
-    u32_to_formatted_str :: proc(buff: *u8, len: *u64, arg: u32, f: Format.Format_Info): s64 {
-        return u64_to_formatted_str(buff, len, cast(u64, arg), f);
+    u32_to_formatted_str :: proc(sb: *String_Builder, arg: u32, f: Format.Format_Info): s64 {
+        return u64_to_formatted_str(sb, cast(u64, arg), f);
     }
     [[ specialization(to_formatted_str) ]]
-    u16_to_formatted_str :: proc(buff: *u8, len: *u64, arg: u16, f: Format.Format_Info): s64 {
-        return u64_to_formatted_str(buff, len, cast(u64, arg), f);
+    u16_to_formatted_str :: proc(sb: *String_Builder, arg: u16, f: Format.Format_Info): s64 {
+        return u64_to_formatted_str(sb, cast(u64, arg), f);
     }
     [[ specialization(to_formatted_str) ]]
-    u8_to_formatted_str :: proc(buff: *u8, len: *u64, arg: u8, f: Format.Format_Info): s64 {
-        return u64_to_formatted_str(buff, len, cast(u64, arg), f);
+    u8_to_formatted_str :: proc(sb: *String_Builder, arg: u8, f: Format.Format_Info): s64 {
+        return u64_to_formatted_str(sb, cast(u64, arg), f);
     }
 
     [[ specialization(to_formatted_str) ]]
-    s64_to_formatted_str :: proc(buff: *u8, len: *u64, arg: s64, f: Format.Format_Info): s64 {
-        if f.hex { return u64_to_formatted_str(buff, len, cast(u64, arg), f); }
+    s64_to_formatted_str :: proc(sb: *String_Builder, arg: s64, f: Format.Format_Info): s64 {
+        if f.hex { return u64_to_formatted_str(sb, cast(u64, arg), f); }
 
-        if @len < 21 {
-            @len = 21;
-            return ERR_TOO_SMALL;
-        }
-
-        @len  = 0;
+        len  : u64 = 1;
         neg  := 0;
+
         if arg < 0 {
-            @len += 1;
-            neg   = 1;
-            arg   = -arg;
+            len += 1;
+            neg  = 1;
+            arg  = -arg;
         }
 
         save_arg := arg;
 
-        loop ; arg >= 10; arg /= 10 { @len += 1; }
-        @len += 1;
+        loop ; arg >= 10; arg /= 10 { len += 1; }
 
-        ptr := buff + @len - 1;
         arg  = save_arg;
 
+        idx  := len - 1;
+        buff := _builtin_slice_from(_builtin_stack_alloc(len), len);
         loop ; arg >= 10; arg /= 10 {
-            @ptr  = '0' + (arg % 10);
-            ptr  -= 1;
+            buff[idx]  = '0' + (arg % 10);
+            idx       -= 1;
         }
-        @ptr  = '0' + (arg % 10);
-        ptr  -= 1;
+        buff[idx]  = '0' + (arg % 10);
+        idx       -= 1;
 
         if neg {
-            @ptr = '-';
+            buff[idx]  = '-';
+        }
+
+        idx = 0;
+        loop ; idx < len; idx += 1 {
+            err := string_builder_append(sb, buff[idx]);
+            if err { return err; }
         }
 
         return SUCCESS;
     }
 
     [[ specialization(to_formatted_str) ]]
-    s32_to_formatted_str :: proc(buff: *u8, len: *u64, arg: s32, f: Format.Format_Info): s64 {
-        return s64_to_formatted_str(buff, len, cast(s64, arg), f);
+    s32_to_formatted_str :: proc(sb: *String_Builder, arg: s32, f: Format.Format_Info): s64 {
+        return s64_to_formatted_str(sb, cast(s64, arg), f);
     }
     [[ specialization(to_formatted_str) ]]
-    s16_to_formatted_str :: proc(buff: *u8, len: *u64, arg: s16, f: Format.Format_Info): s64 {
-        return s64_to_formatted_str(buff, len, cast(s64, arg), f);
+    s16_to_formatted_str :: proc(sb: *String_Builder, arg: s16, f: Format.Format_Info): s64 {
+        return s64_to_formatted_str(sb, cast(s64, arg), f);
     }
     [[ specialization(to_formatted_str) ]]
-    s8_to_formatted_str :: proc(buff: *u8, len: *u64, arg: s8, f: Format.Format_Info): s64 {
-        return s64_to_formatted_str(buff, len, cast(s64, arg), f);
+    s8_to_formatted_str :: proc(sb: *String_Builder, arg: s8, f: Format.Format_Info): s64 {
+        return s64_to_formatted_str(sb, cast(s64, arg), f);
     }
 
     [[ specialization(to_formatted_str) ]]
-    ptr_to_formatted_str :: proc(buff: *u8, len: *u64, arg: *u8, f: Format.Format_Info): s64 {
+    ptr_to_formatted_str :: proc(sb: *String_Builder, arg: *u8, f: Format.Format_Info): s64 {
         if not f.hex {
             f.hex = HEX_UPPER;
         }
 
-        save_len := @len;
-        @len     -= 2;
+        string_builder_append(sb, '0');
+        string_builder_append(sb, 'x');
 
-
-        err := u64_to_formatted_str(buff + 2, len, cast(u64, arg), f);
-
-        if err == SUCCESS {
-            buff[0] = '0';
-            buff[1] = 'x';
-        }
-
-        @len += 2;
+        err := to_formatted_str(sb, cast(u64, arg), f);
 
         return err;
     }
 
     [[ specialization(to_formatted_str) ]]
-    str_to_formatted_str :: proc(buff: *u8, len: *u64, arg: str, f: Format.Format_Info): s64 {
-        arg_len := Util.slen(arg);
+    str_to_formatted_str :: proc(sb: *String_Builder, arg: [u8], f: Format.Format_Info): s64 {
+        arg_len := lenof arg;
 
-        if @len < arg_len {
-            @len = arg_len;
-            return ERR_TOO_SMALL;
+        loop i: u64 = 0; i < arg_len; i += 1 {
+            err := string_builder_append(sb, arg[i]);
+            if err { return err; }
         }
-
-        @len = arg_len;
-
-        loop i: u64 = 0; i < arg_len; i += 1 { buff[i] = arg[i]; }
 
         return SUCCESS;
     }
@@ -339,13 +337,12 @@ Format :: module {
     #     return ERR_TOO_SMALL;
     # }
 
-    _fmt :: proc(allocator: *%allocator_type, fmt: str, args: %...): s64 {
-        buff      :=      NULL;
-        buff_len  : u64 = 0;
-        fmt_len   :=      Util.slen(fmt);
-        which_arg :=      0;
+    _fmt :: proc(allocator: *%allocator_type, fmt: [u8], args: %...): s64 {
+        sb        := string_builder_new(allocator);
+        fmt_len   := lenof fmt;
+        which_arg := 0;
 
-        defer { Allocator.free(allocator, buff); }
+#         defer { Allocator.free(allocator, buff); }
 
         loop i: u64 = 0; i < fmt_len; i += 1 {
             if fmt[i] == '{' {
@@ -358,33 +355,20 @@ Format :: module {
                 }
 
                 a := 0;
-                \VARGS [
+                vargs![] {
                     if a == which_arg {
-                        len := buff_len;
-                        err := to_formatted_str(buff, *len, _builtin_varg(), info);
+                        err := to_formatted_str(*sb, _builtin_varg(), info);
+                        if err { return err; }
 
-                        if err == ERR_TOO_SMALL {
-                            Allocator.free(allocator, buff);
-
-                            buff = Allocator.alloc(allocator, len);
-                            if buff == NULL { return ERR_BAD_ALLOC; }
-
-                            buff_len = len;
-
-                            err = to_formatted_str(buff, *len, _builtin_varg(), info);
-                            if err { return err; }
-                        } else if err {
-                            return err;
-                        }
-
-                        Util.putsn(cast(str, buff), len);
+                        write_string(string_builder_get(*sb));
+                        string_builder_reset(*sb);
                     }
                     a += 1;
-                ]
+                }
 
                 which_arg += 1;
             } else {
-                Util.putc(fmt[i]);
+                write_string(_builtin_slice_from(*fmt[i], 1));
             }
         }
 
@@ -392,10 +376,6 @@ Format :: module {
     }
 }
 
-printf :: proc(fmt: str, args: %...): s64 {
-    return Format._fmt(*DEFAULT_HEAP_ALLOCATOR, fmt, args);
-}
-
-aprintf :: proc(allocator: *%allocator_type, fmt: str, args: %...): s64 {
+aprintf :: proc(allocator: *%allocator_type, fmt: [u8], args: %...): s64 {
     return Format._fmt(allocator, fmt, args);
 }

@@ -61,6 +61,13 @@ int main(int argc, char **argv) {
 
 void do_sanity_checks(void) {
     ASSERT(sizeof(ast_ident_t) <= sizeof(ast_bin_expr_t), "ident doesn't fit into bin_expr");
+
+    ASSERT(offsetof(ast_module_t, scope) == offsetof(ast_scoped_t, scope), "scope misalign");
+    ASSERT(offsetof(ast_proc_t,   scope) == offsetof(ast_scoped_t, scope), "scope misalign");
+    ASSERT(offsetof(ast_struct_t, scope) == offsetof(ast_scoped_t, scope), "scope misalign");
+    ASSERT(offsetof(ast_block_t,  scope) == offsetof(ast_scoped_t, scope), "scope misalign");
+    ASSERT(offsetof(ast_if_t,     scope) == offsetof(ast_scoped_t, scope), "scope misalign");
+    ASSERT(offsetof(ast_loop_t,   scope) == offsetof(ast_scoped_t, scope), "scope misalign");
 }
 
 int do_options(int argc, char **argv) {
@@ -80,18 +87,18 @@ void do_init(void) {
     start_us = measure_time_now_us();
 
 #ifdef USE_LIBC_MALLOC
-    verb_message("using libc malloc\n");
+/*     verb_message("using libc malloc\n"); */
 #else
-    verb_message("using our own allocator\n");
+/*     verb_message("using our own allocator\n"); */
 #endif
     init_mem();
     init_tls();
 
     if (options.n_threads > 1) {
-        verb_message("setting up threadpool with %d threads\n", options.n_threads);
+/*         verb_message("setting up threadpool with %d threads\n", options.n_threads); */
         tp = tp_make(options.n_threads);
     } else {
-        verb_message("running single-threaded\n");
+/*         verb_message("running single-threaded\n"); */
     }
 
     init_strings();
@@ -100,19 +107,23 @@ void do_init(void) {
     init_types();
     init_scopes();
 
-    roots = array_make(ast_t*);
+    roots       = array_make(ast_t*);
+    macro_calls = array_make(ast_macro_call_t*);
+    all_types   = array_make(ast_decl_t*);
+    all_procs   = array_make(ast_decl_t*);
+    all_vars    = array_make(ast_decl_t*);
 
     verb_message("init took %lu us\n", measure_time_now_us() - start_us);
 }
 
 void do_parse(void) {
-    int    n_files;
-    u64    start_us;
-    char **it;
-    u64    parse_time;
+    u64                start_us;
+    char             **it;
+    u64                parse_time;
+    ast_macro_call_t **macro_it;
+    int                n_files;
 
-    n_files = array_len(options.input_files);
-    verb_message("parsing %d file%s...\n", n_files, n_files > 1 ? "s" : "");
+    verb_message("parsing...\n");
 
     start_us = measure_time_now_us();
 
@@ -127,10 +138,18 @@ void do_parse(void) {
         wait_for_parsing_async();
     }
 
+    array_traverse(macro_calls, macro_it) {
+        expand_macro(*macro_it);
+    }
+
     parse_time = measure_time_now_us() - start_us;
+
+    n_files = num_ifiles();
+
+    verb_message("parsed       %d file%s\n", n_files, n_files > 1 ? "s" : "");
     verb_message("total lines: %lu\n", n_lines);
     verb_message("parsing took %lu us\n", parse_time);
-    verb_message("~ %lu lines/s\n", (u64)(((double)n_lines) / (((double)parse_time) / 1000000.0)));
+    verb_message("parse speed: %lu lines/s\n", (u64)(((double)n_lines) / (((double)parse_time) / 1000000.0)));
 }
 
 void do_check(void) {

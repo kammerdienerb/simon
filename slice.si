@@ -1,0 +1,5 @@
+[[ program_entry ]]
+main :: proc() {
+    x: u8;
+    _builtin_outb(*x, 'a');
+}

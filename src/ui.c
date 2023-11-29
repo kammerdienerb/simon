@@ -67,6 +67,7 @@ void verb_message(const char *fmt, ...) {
         vprintf(fmt, va);
         va_end(va);
         UNLOCK_OUTPUT();
+        fflush(stdout);
     }
 }
 

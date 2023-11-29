@@ -99,3 +99,14 @@
                 value:  value_type;
                 next:  *List(value_type);
             }
+
+# =============================================================================================
+
+# Should we even have non-polymorphic varags? Why not just pass everything in a slice?
+
+            takes_ints :: proc(args: [s64]) { ... }
+            takes_ints([ 1, 2, 3 ]);
+
+# =============================================================================================
+
+# TODO: Check for control-flow paths that don't return in a returning proc.

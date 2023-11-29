@@ -1,6 +1,0 @@
-foo :: proc(): type { return str; }
-
-[[ program_entry ]]
-main :: proc() {
-    f: foo();
-}

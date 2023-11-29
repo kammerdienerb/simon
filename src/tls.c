@@ -12,7 +12,7 @@ static void init_tls_data(tls_t *tls) {
 static __thread tls_t local_tls;
 
 void init_tls(void) {
-    verb_message("TLS_METHOD = TLS_PER_OS_THREAD\n");
+/*     verb_message("TLS_METHOD = TLS_PER_OS_THREAD\n"); */
 }
 
 tls_t * get_tls(void) {
@@ -33,7 +33,7 @@ static u32                   num_threads;
 static __thread tls_entry_t *local_tls_entry;
 
 void init_tls(void) {
-    verb_message("TLS_METHOD = TLS_PER_HW_THREAD\n");
+/*     verb_message("TLS_METHOD = TLS_PER_HW_THREAD\n"); */
     pthread_mutex_init(&tls_entry_array_lock, NULL);
     num_threads = platform_get_num_hw_threads() + 1;
 }

@@ -10,12 +10,13 @@ use_hash_table(string_id, ifile_t);
 
 
 static hash_table(string_id, ifile_t) ifile_table;
+static pthread_mutex_t                ifile_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void init_ifile_table(void) {
     ifile_table = hash_table_make(string_id, ifile_t, str_id_hash);
 }
 
-int copy_file_into_memory(const char *path, ifile_t *file) {
+static int copy_file_into_memory(const char *path, ifile_t *file) {
     int   status;
     FILE *f;
     int   fd;
@@ -70,7 +71,7 @@ out:
     return status;
 }
 
-int map_file_into_readonly_memory(const char *path, ifile_t *file) {
+static int map_file_into_readonly_memory(const char *path, ifile_t *file) {
     int   status;
     FILE *f;
     int   fd;
@@ -109,12 +110,15 @@ ifile_t * add_ifile_readonly(string_id path_id) {
     int     err;
     ifile_t  new;
 
+    pthread_mutex_lock(&ifile_lock);
+
     f = hash_table_get_val(ifile_table, path_id);
 
     if (f != NULL) {
-        return f->free_buff
-                ? NULL
-                : f;
+        if (f->free_buff) {
+            f = NULL;
+        }
+        goto out_unlock;
     }
 
     err = map_file_into_readonly_memory(get_string(path_id), &new);
@@ -129,6 +133,9 @@ ifile_t * add_ifile_readonly(string_id path_id) {
 
     ASSERT(f != NULL, "didn't insert file");
 
+out_unlock:;
+    pthread_mutex_unlock(&ifile_lock);
+
     return f;
 }
 
@@ -137,9 +144,14 @@ ifile_t * add_ifile_writeonly(string_id path_id) {
     int     err;
     ifile_t  new;
 
+    pthread_mutex_lock(&ifile_lock);
+
     f = hash_table_get_val(ifile_table, path_id);
 
-    if (f != NULL) { return NULL; }
+    if (f != NULL) {
+        f = NULL;
+        goto out_unlock;
+    }
 
     err = map_file_into_readonly_memory(get_string(path_id), &new);
 
@@ -151,6 +163,9 @@ ifile_t * add_ifile_writeonly(string_id path_id) {
 
     ASSERT(f != NULL, "didn't insert file");
 
+out_unlock:;
+    pthread_mutex_unlock(&ifile_lock);
+
     return f;
 }
 
@@ -159,12 +174,15 @@ ifile_t * add_ifile_rw(string_id path_id) {
     int     err;
     ifile_t  new;
 
+    pthread_mutex_lock(&ifile_lock);
+
     f = hash_table_get_val(ifile_table, path_id);
 
     if (f != NULL) {
-        return f->free_buff
-                ? NULL
-                : f;
+        if (f->free_buff) {
+            f = NULL;
+        }
+        goto out_unlock;
     }
 
     err = copy_file_into_memory(get_string(path_id), &new);
@@ -177,11 +195,34 @@ ifile_t * add_ifile_rw(string_id path_id) {
 
     ASSERT(f != NULL, "didn't insert file");
 
+out_unlock:;
+    pthread_mutex_unlock(&ifile_lock);
+
     return f;
 }
 
 ifile_t * get_ifile(string_id path_id) {
-    return hash_table_get_val(ifile_table, path_id);
+    ifile_t *f;
+
+    pthread_mutex_lock(&ifile_lock);
+
+    f = hash_table_get_val(ifile_table, path_id);
+
+    pthread_mutex_unlock(&ifile_lock);
+
+    return f;
+}
+
+int num_ifiles(void) {
+    int n;
+
+    pthread_mutex_lock(&ifile_lock);
+
+    n = hash_table_len(ifile_table);
+
+    pthread_mutex_unlock(&ifile_lock);
+
+    return n;
 }
 
 int checked_open_FILE(const char *path, const char *mode, FILE **f, u64 *file_size) {
