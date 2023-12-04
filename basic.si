@@ -88,7 +88,7 @@ singleton_allocator_new :: proc(buff: *u8, size: u64): Singleton_Allocator {
 singleton_alloc :: proc(allocator: *Singleton_Allocator, n_bytes: u64): *u8 {
     # @todo: alignment
 
-    if allocator.base + n_bytes >= allocator.end { return NULL; }
+    if allocator.base + n_bytes > allocator.end { return NULL; }
 
     return allocator.base;
 }
@@ -97,8 +97,8 @@ singleton_alloc :: proc(allocator: *Singleton_Allocator, n_bytes: u64): *u8 {
 singleton_realloc :: proc(allocator: *Singleton_Allocator, ptr: *u8, n_bytes: u64): *u8 {
     # @todo: alignment
 
-    if ptr != NULL and ptr != allocator.base     { return NULL; }
-    if allocator.base + n_bytes >= allocator.end { return NULL; }
+    if ptr != NULL and ptr != allocator.base    { return NULL; }
+    if allocator.base + n_bytes > allocator.end { return NULL; }
 
     return allocator.base;
 }
