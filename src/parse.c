@@ -1946,7 +1946,7 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
     result->name       = name;
     result->full_name  = get_full_name(name, SCOPE(cxt));
 
-    if (var_shape_kind != AST_DECL_STRUCT_FIELD) {
+    if (var_shape_kind != AST_DECL_STRUCT_FIELD && !SCOPE(cxt)->in_proc) {
         INSTALL(cxt, name, ASTP(result));
     }
 

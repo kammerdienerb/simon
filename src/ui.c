@@ -107,7 +107,7 @@ void common_exit(int status) {
 
     fflush(output_file);
 
-    ASSERT(status == 0, "error on exit");
+/*     ASSERT(status == 0, "error on exit"); */
     exit(status);
 }
 

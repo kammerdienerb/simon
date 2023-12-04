@@ -95,7 +95,9 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
                 array_push(decl->tags, new);
             }
 
-            add_symbol(insert_scope, decl->name, ASTP(decl));
+            if (!insert_scope->in_proc) {
+                add_symbol(insert_scope, decl->name, ASTP(decl));
+            }
 
             if (node->flags & AST_FLAG_MACRO_EXPAND_ARG
             &&  collect_macro_expand_args != NULL) {
@@ -406,6 +408,7 @@ static void expand_compile_error_macro(ast_macro_call_t *call) {
         return;
     }
 
+    memset(&error, 0, sizeof(error));
     ASTP(&error)->kind    = AST_COMPILE_ERROR;
     ASTP(&error)->flags   = ASTP(call)->flags;
     ASTP(&error)->type    = TY_UNKNOWN;
@@ -1481,6 +1484,10 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
     &&  !decl->containing_scope->in_proc) {
 
         array_push(all_vars, decl);
+    }
+
+    if (cxt.scope->in_proc) {
+        add_symbol(cxt.scope, decl->name, ASTP(decl));
     }
 }
 

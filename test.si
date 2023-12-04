@@ -1,73 +1,27 @@
 # require!("basic.si");
 
-Point :: struct {
-    x: u32;
-    y: u32;
+the_lock: u32;
+
+lock :: macro(lockptr) {
+    printf("lock\n");
+    @$lockptr = 1;
 }
 
-[[ specialization(Format.to_formatted_str) ]]
-Point_to_formatted_str :: proc(sb: *String_Builder, arg: Point, f: Format.Format_Info): s64 {
-    string_builder_append(sb, '(');
-    Format.to_formatted_str(sb, arg.x, f);
-    string_builder_append(sb, ',');
-    string_builder_append(sb, ' ');
-    Format.to_formatted_str(sb, arg.y, f);
-    string_builder_append(sb, ')');
-    return SUCCESS;
+unlock :: macro(lockptr) {
+    printf("unlock\n");
+    @$lockptr = 0;
+}
+
+scoped_lock :: macro(lockptr) {
+    lock!($lockptr);
+    defer { unlock!($lockptr); }
 }
 
 [[ program_entry ]]
 main :: proc() {
-#     defer { exit(0); }
+    defer { exit(0); }
 
-    N: u64 = 4096;
-    mem := singleton_allocator_new(_builtin_stack_alloc(N), N);
+    scoped_lock!(*the_lock);
 
-    aprintf(*mem, "my memory: {}\n", mem.base);
-
-    aprintf(*mem, "hello, {}: {}\n", "world", -123);
-    p: Point;
-    p.x = 0xFFFFFFFF;
-    p.y = 0x76767676;
-    aprintf(*mem, "my point: {x}\n", p);
-
-#     defer {
-#         aprintf(*mem, "zap\n");
-#     }
-#     defer {
-#         defer {
-#             aprintf(*mem, "bar\n");
-#         }
-#         aprintf(*mem, "foo\n");
-#     }
-
-#     aprintf(*mem, "hello! {}\n", 123);
-
-#     defer { aprintf(*mem, "bye!\n"); }
-
-#     ptr := Allocator.alloc(*mem, 64);
-
-#     aprintf(*mem, "allocated {} bytes at {}\n", N, ptr);
-
-#     loop i := 0; i < 10; i += 1 {
-#         defer { aprintf(*mem, "<- {}\n", i); }
-#         if i > 4 {
-#             defer { aprintf(*mem, "INNER IF\n"); }
-#             break;
-#         }
-#         aprintf(*mem, "{} ->\n", i);
-#     }
-
-#     if 1 {
-#         defer {
-#             aprintf(*mem, "A\n");
-#             aprintf(*mem, "B\n");
-#             aprintf(*mem, "C\n");
-#         }
-#         defer {
-#             aprintf(*mem, "D\n");
-#             aprintf(*mem, "E\n");
-#             aprintf(*mem, "F\n");
-#         }
-#     }
+    printf("doing work with the lock\n");
 }
