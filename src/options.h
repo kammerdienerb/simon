@@ -12,6 +12,7 @@ typedef struct {
     const char *backend;
     const char *output_name;
     int         c_source;
+    int         with_libc;
 } options_t;
 
 extern options_t options;

@@ -1072,8 +1072,8 @@ void do_c_backend(void) {
 
 /*     sprintf(cmd_buff, "cat %s && cc -o %s %s -std=c99 -O0 -g -nostdlib -ffreestanding -fno-builtin -Wall -Wextra -Werror -Wno-unused-variable -Wno-unused-parameter -Wl,-e,%s", */
 /*             options.output_name, exe_name, options.output_name, get_string(program_entry->full_name)); */
-    sprintf(cmd_buff, "cc -o %s %s -std=c99 -O0 -g -nostdlib -ffreestanding -fno-builtin -Wl,-e,%s",
-            exe_name, options.output_name, get_string(program_entry->full_name));
+    sprintf(cmd_buff, "cc -o %s %s -std=c99 -O0 -g -nostdlib -ffreestanding -fno-builtin -fno-stack-protector %s -Wl,-e,%s",
+            exe_name, options.output_name, options.with_libc ? "-lc" : "", get_string(program_entry->full_name));
 
     verb_message("C COMPILER COMMAND:\n%s\n", cmd_buff);
 
