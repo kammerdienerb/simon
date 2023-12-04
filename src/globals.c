@@ -16,3 +16,4 @@ array_t          all_types;
 array_t          all_procs;
 array_t          all_vars;
 FILE            *output_file;
+int              expanding_macros;

@@ -1,0 +1,23 @@
+Point :: struct {
+    x: u32;
+    y: u32;
+}
+
+[[ specialization(Format.to_formatted_str) ]]
+Point_to_formatted_str :: proc(sb: *String_Builder, arg: Point, f: Format.Format_Info): s64 {
+    if f.hex {
+        return Format._sbfmt(sb, "(0x{x}, 0x{x})", arg.x, arg.y);
+    } else {
+        return Format._sbfmt(sb, "({}, {})", arg.x, arg.y);
+    }
+}
+
+[[ program_entry ]]
+main :: proc() {
+    defer { exit(0); }
+
+    my_point: Point;
+    my_point.x = 76767676;
+    my_point.y = 0xFFFFFFFF;
+    printf("my_point: {x}\n", my_point);
+}

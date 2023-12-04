@@ -58,24 +58,22 @@ do {                                        \
     ASTP(dst)->value.a  = NULL;             \
 } while (0)
 
-#define CPY_FIELD(dst, src, nm, scp) ((dst)->nm = copy_tree(((__typeof(dst))(src))->nm, (scp)));
+#define CPY_FIELD(dst, src, nm, scp) ((dst)->nm = _copy_tree(((__typeof(dst))(src))->nm, (scp), collect_macro_expand_args));
 #define CPY_SCOPE(dst, _parent_scope)                \
 do {                                                 \
     (dst)->scope         = copy_scope((dst)->scope); \
     insert_subscope((_parent_scope), (dst)->scope);  \
 } while (0)
 
-/* @here: This is not sufficient. We need to know the true size of these
- *        objects based on their kind. Perhaps we need to set up a table that
- *        maps kind to size? */
-#define REPLACE_NODE(dst, src)                                                      \
-do {                                                                                  \
+#define REPLACE_NODE(dst, src)                                         \
+do {                                                                   \
     ASSERT(ast_size_table[(dst)->kind] >= ast_size_table[(src)->kind], \
-           "dst node not big enough for replacement"); \
-    memcpy((void*)(dst), (void*)(src), ast_size_table[(src)->kind]);                              \
+           "dst node not big enough for replacement");                 \
+    memcpy((void*)(dst), (void*)(src), ast_size_table[(src)->kind]);   \
 } while (0)
 
-static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
+static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_macro_expand_args) {
+    ast_t *exp;
 
     if (node == NULL) { return NULL; }
 
@@ -93,11 +91,18 @@ static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
 
             decl->tags = array_make(ast_t*);
             array_traverse(((ast_decl_t*)node)->tags, it) {
-                new = copy_tree(*it, insert_scope);
+                new = _copy_tree(*it, insert_scope, collect_macro_expand_args);
                 array_push(decl->tags, new);
             }
 
             add_symbol(insert_scope, decl->name, ASTP(decl));
+
+            if (node->flags & AST_FLAG_MACRO_EXPAND_ARG
+            &&  collect_macro_expand_args != NULL) {
+
+                exp = ASTP(decl);
+                array_push(*collect_macro_expand_args, exp);
+            }
 
             return ASTP(decl);
         }
@@ -110,7 +115,7 @@ static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
 
             mod->children = array_make(ast_t*);
             array_traverse(((ast_module_t*)node)->children, it) {
-                new = copy_tree(*it, mod->scope);
+                new = _copy_tree(*it, mod->scope, collect_macro_expand_args);
                 array_push(mod->children, new);
             }
 
@@ -125,7 +130,7 @@ static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
 
             proc->params = array_make(ast_t*);
             array_traverse(((ast_proc_t*)node)->params, it) {
-                new = copy_tree(*it, proc->scope);
+                new = _copy_tree(*it, proc->scope, collect_macro_expand_args);
                 array_push(proc->params, new);
             }
             CPY_FIELD(proc, node, ret_type_expr, proc->scope);
@@ -143,17 +148,17 @@ static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
 
             st->params = array_make(ast_t*);
             array_traverse(((ast_struct_t*)node)->params, it) {
-                new = copy_tree(*it, st->scope);
+                new = _copy_tree(*it, st->scope, collect_macro_expand_args);
                 array_push(st->params, new);
             }
             st->fields = array_make(ast_t*);
             array_traverse(((ast_struct_t*)node)->fields, it) {
-                new = copy_tree(*it, st->scope);
+                new = _copy_tree(*it, st->scope, collect_macro_expand_args);
                 array_push(st->fields, new);
             }
             st->children = array_make(ast_t*);
             array_traverse(((ast_struct_t*)node)->children, it) {
-                new = copy_tree(*it, st->scope);
+                new = _copy_tree(*it, st->scope, collect_macro_expand_args);
                 array_push(st->children, new);
             }
             st->monomorphs = array_make(monomorphed_t);
@@ -168,6 +173,13 @@ static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
             CPY_FIELD(param, node, val, insert_scope);
 
             add_symbol(insert_scope, param->name, ASTP(param));
+
+            if (node->flags & AST_FLAG_MACRO_EXPAND_ARG
+            &&  collect_macro_expand_args != NULL) {
+
+                exp = ASTP(param);
+                array_push(*collect_macro_expand_args, exp);
+            }
 
             return ASTP(param);
         }
@@ -194,6 +206,13 @@ static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
 
             if (ASTP(ident)->flags & AST_FLAG_POLY_IDENT) {
                 add_symbol(insert_scope, ident->str_rep, ASTP(ident));
+            }
+
+            if (node->flags & AST_FLAG_MACRO_EXPAND_ARG
+            &&  collect_macro_expand_args != NULL) {
+
+                exp = ASTP(ident);
+                array_push(*collect_macro_expand_args, exp);
             }
 
             return ASTP(ident);
@@ -223,7 +242,7 @@ static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
 
             block->stmts = array_make(ast_t*);
             array_traverse(((ast_block_t*)node)->stmts, it) {
-                new = copy_tree(*it, block->scope);
+                new = _copy_tree(*it, block->scope, collect_macro_expand_args);
                 array_push(block->stmts, new);
             }
 
@@ -238,7 +257,7 @@ static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
 
             array_traverse(((ast_arg_list_t*)node)->args, it) {
                 new_arg.name = it->name;
-                new_arg.expr = copy_tree(it->expr, insert_scope);
+                new_arg.expr = _copy_tree(it->expr, insert_scope, collect_macro_expand_args);
                 array_push(arg_list->args, new_arg);
             }
 
@@ -294,16 +313,31 @@ static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
 
             return ASTP(vargs_block);
         }
+        case AST_MACRO_CALL:
+            if (expanding_macros) {
+                report_range_err(&node->loc, "encountered a recursive macro situation");
+            } else {
+                goto unhandled;
+            }
+            break;
         default:
         unhandled:;
     }
 
 #ifdef SIMON_DO_ASSERTIONS
-    report_range_err_no_exit(&node->loc, "INTERNAL ERROR: AST_%s unhandled in copy_tree()", ast_get_kind_str(node->kind));
-    ASSERT(0, "unhandled AST node kind in copy_tree()");
+    report_range_err_no_exit(&node->loc, "INTERNAL ERROR: AST_%s unhandled in _copy_tree()", ast_get_kind_str(node->kind));
+    ASSERT(0, "unhandled AST node kind in _copy_tree()");
 #endif
 
     return NULL;
+}
+
+static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
+    return _copy_tree(node, insert_scope, NULL);
+}
+
+static ast_t *copy_tree_collect_macro_expand_args(ast_t *node, scope_t *insert_scope, array_t *collect_macro_expand_args) {
+    return _copy_tree(node, insert_scope, collect_macro_expand_args);
 }
 
 static void push_breadcrumb_for_poly_constants(src_range_t *range, string_id decl_name_id, array_t *constants) {
@@ -326,6 +360,17 @@ static void push_breadcrumb_for_poly_constants(src_range_t *range, string_id dec
                           get_string(decl_name_id),
                           buff);
 }
+
+#define EMBC(_node, ...)                \
+do {                                    \
+    if ((_node)->macro_decl != NULL) {  \
+        push_macro_breadcrumb((_node)); \
+    }                                   \
+    __VA_ARGS__;                        \
+    if ((_node)->macro_decl != NULL) {  \
+        pop_breadcrumb();               \
+    }                                   \
+} while (0)
 
 void check_poly_backlog(void) {
     poly_backlog_entry_t *backlog_entry_p;
@@ -406,15 +451,10 @@ static void expand_vargs_macro(ast_macro_call_t *call) {
     proc = (ast_proc_t*)parent_scope->node;
     decl = proc->parent_decl;
 
-    if (!(ASTP(proc)->flags & AST_FLAG_VARARGS)
-    ||  !(ASTP(proc)->flags & AST_FLAG_POLY_VARARGS)) {
-
+    if (!(ASTP(proc)->flags & AST_FLAG_POLY_VARARGS)) {
         report_range_err_no_exit(&ASTP(call)->loc, "expansion of macro 'vargs' is only allowed within a procedure with polymorphic variadic arguments");
-        if (!(ASTP(proc)->flags & AST_FLAG_VARARGS)) {
-            report_range_info_no_context(&ASTP(decl)->loc, "procedure '%s' does not have variadic arguments", get_string(decl->name));
-        }
         if (!(ASTP(proc)->flags & AST_FLAG_POLY_VARARGS)) {
-            report_range_info_no_context(&ASTP(decl)->loc, "procedure '%s' has variadic arguments, but they are not polymorphic", get_string(decl->name));
+            report_range_info_no_context(&ASTP(decl)->loc, "procedure '%s' does not have variadic arguments", get_string(decl->name));
         }
         return;
     }
@@ -430,12 +470,24 @@ static void expand_vargs_macro(ast_macro_call_t *call) {
 static void check_ident(check_context_t cxt, ast_ident_t *ident);
 
 void expand_macro(ast_macro_call_t *call) {
-    check_context_t   cxt;
-    src_range_t   call_loc;
-    ast_t        *found_node;
-    string_id     found_name;
-    ast_macro_t  *macro;
-    int           expected_kind;
+    check_context_t  cxt;
+    ast_arg_list_t  *arg_list;
+    src_range_t      call_loc;
+    ast_t           *found_node;
+    string_id        found_name;
+    ast_macro_t     *macro;
+    int              expected_kind;
+    ast_t           *new_node;
+    ast_t           *new_stmt;
+    array_t          macro_expand_args;
+    ast_t          **it;
+    ast_t           *expand_arg;
+    arg_t           *arg_p;
+    string_id        name;
+    src_range_t      expand_arg_loc;
+    u32              idx;
+    string_id       *param_name_it;
+    const char      *err_str;
 
     if (call->ident->str_rep == COMPILE_ERROR_ID) {
         expand_compile_error_macro(call);
@@ -445,12 +497,12 @@ void expand_macro(ast_macro_call_t *call) {
         return;
     }
 
-
     /* I'm not sure if this is the right time/way to do this... */
     memset(&cxt, 0, sizeof(cxt));
     cxt.scope = call->scope;
     check_ident(cxt, call->ident);
 
+    arg_list   = (ast_arg_list_t*)call->arg_list;
     call_loc   = ASTP(call)->loc;
     found_node = call->ident->resolved_node;
 
@@ -466,51 +518,213 @@ void expand_macro(ast_macro_call_t *call) {
         report_range_info_no_context(&found_node->loc, "'%s' declared here:", found_name);
     }
 
-    ASSERT(0, "TODO");
+    check_node(cxt, found_node);
+
+    ASTP(call)->macro_decl = found_node;
+    push_macro_breadcrumb(ASTP(call));
 
     macro = (ast_macro_t*)((ast_decl_t*)found_node)->val_expr;
 
-    REPLACE_NODE(ASTP(call), *(ast_t**)array_item(((ast_block_t*)macro->block)->stmts, 0));
+    if (array_len(arg_list->args) < array_len(macro->param_names)) {
+        report_loc_err(ASTP(arg_list)->loc.end,
+                       "too few arguments in macro expansion");
+    }
+    if (array_len(arg_list->args) > array_len(macro->param_names)) {
+        arg_p = array_item(arg_list->args, array_len(macro->param_names));
+        report_range_err(&arg_p->expr->loc,
+                         "too many arguments in macro expansion");
+    }
 
-    expected_kind = call->expected_kind;
+    expected_kind     = call->expected_kind;
+    macro_expand_args = array_make(ast_t*);
+
+    if (array_len(((ast_block_t*)macro->block)->stmts) == 1) {
+        new_node = copy_tree_collect_macro_expand_args(
+                    *(ast_t**)array_item(((ast_block_t*)macro->block)->stmts, 0),
+                    call->scope->parent,
+                    &macro_expand_args);
+    } else {
+        new_node                         = AST_ALLOC(ast_block_t);
+        new_node->kind                   = AST_BLOCK;
+        new_node->flags                 |= AST_FLAG_SYNTHETIC_BLOCK;
+        ((ast_block_t*)new_node)->scope  = cxt.scope;
+        ((ast_block_t*)new_node)->stmts  = array_make(ast_t*);
+
+        array_traverse(((ast_block_t*)macro->block)->stmts, it) {
+            new_stmt = copy_tree_collect_macro_expand_args(*it, call->scope->parent, &macro_expand_args);
+            array_push(((ast_block_t*)new_node)->stmts, new_stmt);
+        }
+    }
+
+    new_node->loc        = call_loc;
+    new_node->macro_decl = found_node;
+
+
+    array_traverse(macro_expand_args, it) {
+        expand_arg = *it;
+
+        expand_arg_loc.beg = expand_arg->loc.beg;
+
+        switch (expand_arg->kind) {
+#define X(k) case k:
+                X_AST_DECLARATIONS
+#undef X
+                name               = ((ast_decl_t*)expand_arg)->name;
+                expand_arg_loc.end = ((ast_decl_t*)expand_arg)->name_end;
+                break;
+
+            case AST_IDENT:
+                name               = ((ast_ident_t*)expand_arg)->str_rep;
+                expand_arg_loc.end = expand_arg->loc.end;
+                break;
+
+            default:
+                ASSERT(0, "bad node kind for macro expand arg");
+        }
+
+        idx = 0;
+        array_traverse(macro->param_names, param_name_it) {
+            if (*param_name_it == name) {
+                goto found;
+            }
+            idx += 1;
+        }
+
+        pop_breadcrumb();
+        report_range_err(&expand_arg_loc, "macro '%s' does not define a parameter named '%s'", found_name, name);
+
+found:;
+        arg_p = array_item(arg_list->args, idx);
+
+        switch (expand_arg->kind) {
+/* #define X(k) case k: */
+/*                 X_AST_DECLARATIONS */
+/* #undef X */
+/*                 break; */
+
+            case AST_IDENT:
+                REPLACE_NODE(expand_arg, copy_tree(arg_p->expr, call->scope->parent));
+                break;
+
+            default:
+                ASSERT(0, "bad node kind for macro expand arg");
+        }
+    }
+
+    pop_breadcrumb();
+
+    REPLACE_NODE(ASTP(call), new_node);
+
+    switch (new_node->kind) {
+#define X(k) case k:
+                X_AST_ALL_EXPRS
+#undef X
+        err_str = "n expression";
+                    break;
+#define X(k) case k:
+                X_AST_ONLY_STATEMENTS
+#undef X
+        err_str = " statement";
+                    break;
+#define X(k) case k:
+                X_AST_DECLARATIONS
+#undef X
+        err_str = " declaration";
+                    break;
+        default:
+            ASSERT(0, "should not get here");
+    }
 
     switch (expected_kind) {
         case MACRO_EXPR:
-            switch (ASTP(call)->kind) {
+            switch (new_node->kind) {
 #define X(k) case k:
                 X_AST_ALL_EXPRS
 #undef X
                     break;
 
                 default:
-                    report_range_err(&call_loc, "asdf");
+                    report_range_err_no_exit(&call_loc,
+                                             "macro '%s' is being used in a context that expects an expression, but expands to a%s",
+                                             get_string(found_name),
+                                             err_str);
+                    report_range_info(&ASTP(macro)->loc,
+                                      "expansion to a%s, as defined in '%s' here:",
+                                      err_str,
+                                      get_string(found_name));
             }
             break;
+
         case MACRO_STMT:
-            switch (ASTP(call)->kind) {
+            switch (new_node->kind) {
 #define X(k) case k:
                 X_AST_STATEMENTS
 #undef X
                     break;
 
                 default:
-                    report_range_err(&call_loc, "asdf");
+                    report_range_err_no_exit(&call_loc,
+                                             "macro '%s' is being used in a context that expects a statement, but expands to a%s",
+                                             get_string(found_name),
+                                             err_str);
+                    report_range_info(&ASTP(macro)->loc,
+                                      "expansion to a%s, as defined in '%s' here:",
+                                      err_str,
+                                      get_string(found_name));
             }
             break;
+
         case MACRO_DECL:
-            switch (ASTP(call)->kind) {
+            switch (new_node->kind) {
 #define X(k) case k:
                 X_AST_DECLARATIONS
 #undef X
                     break;
 
                 default:
-                    report_range_err(&call_loc, "asdf");
+                    report_range_err_no_exit(&call_loc,
+                                             "macro '%s' is being used in a context that expects a declaration, but expands to a%s",
+                                             get_string(found_name),
+                                             err_str);
+                    report_range_info(&ASTP(macro)->loc,
+                                      "expansion to a%s, as defined in '%s' here:",
+                                      err_str,
+                                      get_string(found_name));
             }
             break;
+
         default:
             ASSERT(0, "bad expected macro kind");
     }
+
+    push_macro_breadcrumb(ASTP(call));
+
+    if (expected_kind == MACRO_DECL) {
+        switch (cxt.scope->kind) {
+            case AST_DECL_MACRO:
+                array_push(((ast_module_t*)(((ast_decl_t*)cxt.scope->node)->val_expr))->children, new_node);
+                goto install;
+                break;
+            case AST_DECL_STRUCT:
+                if (new_node->kind == AST_DECL_VAR
+                &&  new_node->flags & AST_FLAG_CONSTANT) {
+
+                    new_node->kind = AST_DECL_STRUCT_FIELD;
+                    array_push(((ast_struct_t*)(((ast_decl_t*)cxt.scope->node)->val_expr))->fields, new_node);
+                } else {
+                    array_push(((ast_struct_t*)(((ast_decl_t*)cxt.scope->node)->val_expr))->children, new_node);
+                    goto install;
+                }
+                break;
+            default:
+install:;
+                add_symbol(cxt.scope, ((ast_decl_t*)new_node)->name, new_node);
+        }
+    }
+
+    pop_breadcrumb();
+
+    array_free(macro_expand_args);
 }
 
 void check_all(void) {
@@ -548,15 +762,19 @@ void check_all(void) {
     ||  entry_scope->parent       == NULL
     ||  entry_scope->parent->kind != AST_GLOBAL_SCOPE) {
 
-        report_range_err(&ASTP(program_entry)->loc,
-                         "'program_entry' procedure must be in global scope");
+        EMBC(ASTP(program_entry), {
+            report_range_err(&ASTP(program_entry)->loc,
+                             "'program_entry' procedure must be in global scope");
+        });
         return;
     }
 }
 
 void multiple_entry_error(ast_decl_t *new, ast_decl_t *old) {
-    report_range_err_no_exit(&ASTP(new)->loc, "only one procedure can be delcared as 'program_entry'");
-    report_range_info(&ASTP(old)->loc, "another 'program_entry' procedure defined here:");
+    EMBC(ASTP(new), {
+        report_range_err_no_exit(&ASTP(new)->loc, "only one procedure can be delcared as 'program_entry'");
+        report_range_info(&ASTP(old)->loc, "another 'program_entry' procedure defined here:");
+    });
 }
 
 int tag_is_string(ast_t *tag_expr, string_id id) {
@@ -773,13 +991,17 @@ static void check_specialization(check_context_t cxt, ast_t *tag, ast_t *node, a
     arg_decl = (ast_decl_t*)arg_ident->resolved_node;
 
     if (!(ASTP(arg_decl)->flags & AST_FLAG_POLYMORPH)) {
-        report_range_err_no_exit(&arg->loc, "can't make '%s' a specialization of something not polymorphic", get_string(decl->name));
-        report_range_info_no_context(&ASTP(arg_decl)->loc, "'%s', which is not polymorphic, is declared here", get_string(arg_decl->full_name));
+        EMBC(ASTP(arg_decl), {
+            report_range_err_no_exit(&arg->loc, "can't make '%s' a specialization of something not polymorphic", get_string(decl->name));
+            report_range_info_no_context(&ASTP(arg_decl)->loc, "'%s', which is not polymorphic, is declared here", get_string(arg_decl->full_name));
+        });
     }
 
     if (ASTP(decl)->flags & AST_FLAG_POLYMORPH) {
-        report_range_err_no_exit(&ASTP(decl)->loc, "specializations may not be polymorphic");
-        report_range_info_no_context(&tag->loc, "'%s' tagged as a specialization of '%s' here", get_string(decl->name), get_string(arg_decl->full_name));
+        EMBC(ASTP(decl), {
+            report_range_err_no_exit(&ASTP(decl)->loc, "specializations may not be polymorphic");
+            report_range_info_no_context(&tag->loc, "'%s' tagged as a specialization of '%s' here", get_string(decl->name), get_string(arg_decl->full_name));
+        });
     }
 
     if (decl->val_expr->kind == AST_PROC) {
@@ -811,8 +1033,10 @@ static void check_specialization(check_context_t cxt, ast_t *tag, ast_t *node, a
         monomorphed = array_item(arg_proc->monomorphs, idx);
 
         if (monomorphed->specialization != NULL) {
-            report_range_err_no_exit(&tag->loc, "specialization of '%s' with these parameters is already specified", get_string(arg_decl->full_name));
-            report_range_info_no_context(&monomorphed->specialization->loc, "previous specialization here:");
+            EMBC(monomorphed->specialization, {
+                report_range_err_no_exit(&tag->loc, "specialization of '%s' with these parameters is already specified", get_string(arg_decl->full_name));
+                report_range_info_no_context(&monomorphed->specialization->loc, "previous specialization here:");
+            });
         }
 
         monomorphed->specialization = ASTP(decl);
@@ -1114,6 +1338,14 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
 
     do_cycle_check = cxt.parent_decl == NULL || ASTP(cxt.parent_decl)->kind != AST_DECL_STRUCT_FIELD;
 
+    if (ASTP(decl)->kind == AST_DECL_MACRO) {
+        if (do_cycle_check) {
+            check_for_decl_cycle(ASTP(decl));
+        }
+        ASTP(decl)->type = TY_MACRO;
+        return;
+    }
+
     if (do_cycle_check) {
         check_for_decl_cycle(ASTP(decl));
         CYCLE_PATH_PUSH(ASTP(decl));
@@ -1139,10 +1371,12 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
         check_node(cxt, decl->type_expr);
 
         if (decl->type_expr->type != TY_TYPE) {
-            report_range_err_no_exit(&decl->type_expr->loc,
-                                     "expression declaring type of '%s' is not a type",
-                                     get_string(decl->name));
-            report_simple_info("got %s instead of type", get_string(get_type_string_id(decl->type_expr->type)));
+            EMBC(decl->type_expr, {
+                report_range_err_no_exit(&decl->type_expr->loc,
+                                         "expression declaring type of '%s' is not a type",
+                                         get_string(decl->name));
+                report_simple_info("got %s instead of type", get_string(get_type_string_id(decl->type_expr->type)));
+            });
         }
 
         decl_t = decl->type_expr->value.t;
@@ -1153,32 +1387,41 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
         val_t = decl->val_expr->type;
 
         if (val_t == TY_NOT_TYPED) {
-            report_range_err(&decl->val_expr->loc,
-                             "initialization expression of '%s' does not produce a value",
-                             get_string(decl->name));
+            EMBC(decl->val_expr, {
+                report_range_err(&decl->val_expr->loc,
+                                 "initialization expression of '%s' does not produce a value",
+                                 get_string(decl->name));
+
+            });
         }
 
         if (ASTP(decl)->flags & AST_FLAG_CONSTANT
         &&  !(decl->val_expr->flags & AST_FLAG_CONSTANT)) {
             if (ASTP(decl)->kind == AST_DECL_VAR) {
-                report_range_err_no_exit(&decl->val_expr->loc,
-                                        "'%s' is declared as a constant, but has a non-constant initialization",
-                                        get_string(decl->name));
-                report_fixit(ASTP(decl)->loc.beg,
-                            "if you meant for '%s' to be a variable, use this syntax:\a%s :=    OR    %s: <type> =",
-                            get_string(decl->name),
-                            get_string(decl->name),
-                            get_string(decl->name));
-            } else {
-                report_range_err(&decl->val_expr->loc,
-                                "'%s' is declared as a constant, but has a non-constant initialization",
+                EMBC(decl->val_expr, {
+                    report_range_err_no_exit(&decl->val_expr->loc,
+                                             "'%s' is declared as a constant, but has a non-constant initialization",
+                                             get_string(decl->name));
+                    report_fixit(ASTP(decl)->loc.beg,
+                                "if you meant for '%s' to be a variable, use this syntax:\a%s :=    OR    %s: <type> =",
+                                get_string(decl->name),
+                                get_string(decl->name),
                                 get_string(decl->name));
+                });
+            } else {
+                EMBC(decl->val_expr, {
+                    report_range_err(&decl->val_expr->loc,
+                                     "'%s' is declared as a constant, but has a non-constant initialization",
+                                     get_string(decl->name));
+                });
             }
         }
 
         if (decl->type_expr == NULL && type_kind(val_t) == _TY_TYPE_LIST) {
-            report_range_err(&decl->val_expr->loc,
-                             "expression which represents a list of types is not allowed here");
+            EMBC(decl->val_expr, {
+                report_range_err(&decl->val_expr->loc,
+                       "expression which represents a list of types is not allowed here");
+            });
         }
 
         ASTP(decl)->value = decl->val_expr->value;
@@ -1189,20 +1432,24 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
     }
 
     if (cxt.scope->in_proc && decl_t == TY_PROC) {
-        report_range_err(&ASTP(decl)->loc, "procedures may not be defined within another procedure");
+        EMBC(ASTP(decl), {
+            report_range_err(&ASTP(decl)->loc, "procedures may not be defined within another procedure");
+        });
         return;
     }
 
     if (decl->type_expr != NULL && decl->val_expr != NULL) {
         if (!types_are_compatible(decl_t, val_t)) {
-            report_range_err_no_exit(&decl->val_expr->loc,
-                                     "initialization of '%s' does not match declared type of %s",
-                                     get_string(decl->name),
-                                     get_string(get_type_string_id(decl_t)));
-            report_range_info_no_context(&decl->type_expr->loc,
-                                         "expected %s, but got %s",
-                                         get_string(get_type_string_id(decl_t)),
-                                         get_string(get_type_string_id(val_t)));
+            EMBC(decl->val_expr, {
+                report_range_err_no_exit(&decl->val_expr->loc,
+                                         "initialization of '%s' does not match declared type of %s",
+                                         get_string(decl->name),
+                                         get_string(get_type_string_id(decl_t)));
+                report_range_info_no_context(&decl->type_expr->loc,
+                                             "expected %s, but got %s",
+                                             get_string(get_type_string_id(decl_t)),
+                                             get_string(get_type_string_id(val_t)));
+            });
         }
 
         if (TYPE_IS_GENERIC(val_t)) {
@@ -1307,10 +1554,12 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
             check_node(cxt, proc->ret_type_expr);
             if (proc->ret_type_expr->type != TY_TYPE
             &&  proc->ret_type_expr->type != TY_POLY) {
-                report_range_err_no_exit(&proc->ret_type_expr->loc,
-                                    "expression must be a type since it declares the return type of procedure '%s'",
-                                    get_string(cxt.parent_decl->name));
-                report_simple_info("got %s instead", get_string(get_type_string_id(proc->ret_type_expr->type)));
+                EMBC(proc->ret_type_expr, {
+                    report_range_err_no_exit(&proc->ret_type_expr->loc,
+                                             "expression must be a type since it declares the return type of procedure '%s'",
+                                             get_string(cxt.parent_decl->name));
+                    report_simple_info("got %s instead", get_string(get_type_string_id(proc->ret_type_expr->type)));
+                });
                 return;
             }
 
@@ -1397,21 +1646,15 @@ static void check_param(check_context_t cxt, ast_param_t *param) {
         ASTP(param)->flags |= AST_FLAG_CONSTANT;
     }
 
-    if (ASTP(param)->flags & AST_FLAG_VARARGS) {
-        ASTP(param)->type = get_vargs_type(ASTP(param)->type);
-    }
-
-/*     if (ASTP(param)->flags & AST_FLAG_POLYMORPH) { */
-/*         ASTP(param)->value.t = TY_POLY; */
-/*     } else */
-
     if (param->val != NULL) {
         if (param->val->type != ASTP(param)->type) {
-            report_range_err(&param->val->loc,
-                             "default value for '%s' has type %s, which does not match declared type of %s",
-                             get_string(param->name),
-                             get_string(get_type_string_id(param->val->type)),
-                             get_string(get_type_string_id(ASTP(param)->type)));
+            EMBC(param->val, {
+                report_range_err(&param->val->loc,
+                                 "default value for '%s' has type %s, which does not match declared type of %s",
+                                 get_string(param->name),
+                                 get_string(get_type_string_id(param->val->type)),
+                                 get_string(get_type_string_id(ASTP(param)->type)));
+            });
         }
         ASTP(param)->value = param->val->value;
     }
@@ -1426,7 +1669,7 @@ static void check_int(check_context_t cxt, ast_int_t *integer) {
     s = get_string(integer->str_rep);
 
     if (s[0] == '0' && s[1] == 'x') {
-        ASTP(integer)->flags   |= AST_FLAG_HEX_INT;
+/*         ASTP(integer)->flags   |= AST_FLAG_HEX_INT; */
         ASTP(integer)->value.u  = strtoull(s, NULL, 16);
         ASTP(integer)->type     = TY_GENERIC_POSITIVE_INT;
     } else if (s[0] == '-') {
@@ -1588,10 +1831,12 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
 
         arg_p = array_item(arg_list->args, 0);
         if (arg_p->expr->type != TY_TYPE) {
-            report_range_err_no_exit(&arg_p->expr->loc,
-                                     "first argument in cast must be the destination type");
-            report_simple_info("expected a type, but got %s",
-                               get_string(get_type_string_id(arg_p->expr->type)));
+            EMBC(arg_p->expr, {
+                report_range_err_no_exit(&arg_p->expr->loc,
+                                         "first argument in cast must be the destination type");
+                report_simple_info("expected a type, but got %s",
+                                   get_string(get_type_string_id(arg_p->expr->type)));
+            });
         }
 
         ASTP(expr)->flags |= AST_FLAG_CALL_IS_CAST;
@@ -1641,10 +1886,12 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
 
         arg_p = array_item(arg_list->args, 0);
         if (type_kind(arg_p->expr->type) != TY_PTR) {
-            report_range_err_no_exit(&arg_p->expr->loc,
-                                     "first argument of _builtin_slice_from must be a pointer");
-            report_simple_info("expected a pointer type, but got %s",
-                               get_string(get_type_string_id(arg_p->expr->type)));
+            EMBC(arg_p->expr, {
+                report_range_err_no_exit(&arg_p->expr->loc,
+                                         "first argument of _builtin_slice_from must be a pointer");
+                report_simple_info("expected a pointer type, but got %s",
+                                   get_string(get_type_string_id(arg_p->expr->type)));
+            });
         }
 
         arg_p = array_item(arg_list->args, 1);
@@ -1652,10 +1899,12 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
             realize_generic(TY_U64, arg_p->expr);
         }
         if (arg_p->expr->type != TY_U64) {
-            report_range_err_no_exit(&arg_p->expr->loc,
-                                     "second argument of _builtin_slice_from must be of type u64");
-            report_simple_info("expected u64, but got %s",
-                               get_string(get_type_string_id(arg_p->expr->type)));
+            EMBC(arg_p->expr, {
+                report_range_err_no_exit(&arg_p->expr->loc,
+                                         "second argument of _builtin_slice_from must be of type u64");
+                report_simple_info("expected u64, but got %s",
+                                   get_string(get_type_string_id(arg_p->expr->type)));
+            });
         }
 
 
@@ -1685,7 +1934,6 @@ static void solve_poly_type_expr(array_t *constants, ast_t *type_expr, poly_arg_
         pt = texpr->value.t;
 
         if (ast_kind_is_leaf_expr(texpr->kind)) {
-            ASSERT(pt == TY_POLY, "type expression in polymorphic type pattern does not terminate in a polymorphic parameter");
             ASSERT(texpr->kind == AST_IDENT, "not an ident");
 
             memset(&constant, 0, sizeof(constant));
@@ -1707,9 +1955,11 @@ static void solve_poly_type_expr(array_t *constants, ast_t *type_expr, poly_arg_
 
 
         if (texpr->kind == AST_BIN_EXPR && ((ast_bin_expr_t*)texpr)->op == OP_CALL) {
-            report_range_err_no_exit(&type_expr->loc,
-                                     "invalid polymorphic type expression");
-            report_simple_info("parameterization not allowed here");
+            EMBC(type_expr, {
+                report_range_err_no_exit(&type_expr->loc,
+                                        "invalid polymorphic type expression");
+                report_simple_info("parameterization not allowed here");
+            });
             return;
         } else {
             if (type_kind(at) != type_kind(pt)) { goto err; }
@@ -1722,12 +1972,14 @@ static void solve_poly_type_expr(array_t *constants, ast_t *type_expr, poly_arg_
                 default:
                     if (at != pt) {
 err:;
-                        report_range_err_no_exit(&arg->node->loc,
-                                                "incorrect argument type: expected %s, but got %s",
-                                                get_string(get_type_string_id(type_expr->value.t)),
-                                                get_string(get_type_string_id(arg->type)));
-                        report_range_info_no_context(&type_expr->loc,
-                                                     "when solving for polymorphic parameters in a type pattern");
+                        EMBC(arg->node, {
+                            report_range_err_no_exit(&arg->node->loc,
+                                                     "incorrect argument type: expected %s, but got %s",
+                                                     get_string(get_type_string_id(type_expr->value.t)),
+                                                     get_string(get_type_string_id(arg->type)));
+                            report_range_info_no_context(&type_expr->loc,
+                                                         "when solving for polymorphic parameters in a type pattern");
+                        });
                         return;
                     }
             }
@@ -1795,31 +2047,19 @@ static void verify_polymorphic_args(u32 cxt_flags, array_t *params, poly_arg_t *
         if (!(param->type_expr->flags & AST_FLAG_POLYMORPH)
         &&  !types_are_compatible(ASTP(param)->type, arg->type)) {
 
-            report_range_err_no_exit(arg->node->kind == AST_PARAM ? &(((ast_param_t*)arg->node)->type_expr->loc) : &arg->node->loc,
-                                     "incorrect argument type: expected %s, but got %s",
-                                     get_string(get_type_string_id(ASTP(param)->type)),
-                                     get_string(get_type_string_id(arg->type)));
-            report_range_info_no_context(&param->type_expr->loc,
-                                    	 "%sparameter '%s' delcared as type %s here:",
-                                         (ASTP(param)->flags & AST_FLAG_POLYMORPH) ? "polymorphic " : "",
-                                         get_string(param->name),
-                                         get_string(get_type_string_id(ASTP(param)->type)));
+            EMBC(arg->node, {
+                report_range_err_no_exit(arg->node->kind == AST_PARAM ? &(((ast_param_t*)arg->node)->type_expr->loc) : &arg->node->loc,
+                                         "incorrect argument type: expected %s, but got %s",
+                                         get_string(get_type_string_id(ASTP(param)->type)),
+                                         get_string(get_type_string_id(arg->type)));
+                report_range_info_no_context(&param->type_expr->loc,
+                                        	 "%sparameter '%s' delcared as type %s here:",
+                                             (ASTP(param)->flags & AST_FLAG_POLYMORPH) ? "polymorphic " : "",
+                                             get_string(param->name),
+                                             get_string(get_type_string_id(ASTP(param)->type)));
+            });
 
         }
-
-#if 0 /* I don't remember why we had this code... */
-        if (is_poly_by_value_param && !arg->has_value) {
-            if (arg->node->kind == AST_PARAM) {
-                loc.beg = arg->node->loc.beg;
-                loc.end = ((ast_param_t*)arg->node)->type_expr->loc.end;
-                report_range_err_no_exit(&loc, "missing value for polymorph-by-value parameter");
-                report_fixit_no_exit(loc.end, "add a value to satisfy the parameter\a = <value>");
-            } else {
-                report_range_err_no_exit(&arg->node->loc, "missing value for polymorph-by-value parameter");
-            }
-            report_range_info_no_context(&ASTP(param)->loc, "polymorph-by-value parameter declared here:");
-        }
-#endif
 
         i += 1;
     }
@@ -2179,15 +2419,17 @@ static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
         struct_decl = struct_type_to_decl(expr->left->value.t);
 
         if (!(ASTP(struct_decl)->flags & AST_FLAG_POLYMORPH)) {
-            report_range_err_no_exit(&ASTP(expr)->loc,
-                                     "attempting to pass arguments to something that does not have parameters");
-            report_range_info_no_context_no_exit(&expr->left->loc,
-                                                 "expression has type %s, and value %s",
-                                                 get_string(get_type_string_id(proc_ty)),
-                                                 get_string(get_type_string_id(expr->left->value.t)));
-            report_range_info_no_context(&ASTP(struct_decl)->loc,
-                                         "%s is not polymorphic, so it does not take arguments",
-                                         get_string(struct_decl->full_name));
+            EMBC(expr->left, {
+                report_range_err_no_exit(&ASTP(expr)->loc,
+                                         "attempting to pass arguments to something that does not have parameters");
+                report_range_info_no_context_no_exit(&expr->left->loc,
+                                                     "expression has type %s, and value %s",
+                                                     get_string(get_type_string_id(proc_ty)),
+                                                     get_string(get_type_string_id(expr->left->value.t)));
+                report_range_info_no_context(&ASTP(struct_decl)->loc,
+                                             "%s is not polymorphic, so it does not take arguments",
+                                             get_string(struct_decl->full_name));
+            });
         }
 
         cxt.parent_decl = struct_decl;
@@ -2220,11 +2462,13 @@ static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
     }
 
     if (type_kind(proc_ty) != TY_PROC) {
-        report_range_err_no_exit(&ASTP(expr)->loc,
-                                 "attempting to pass arguments to something that does not have parameters");
-        report_range_info_no_context(&expr->left->loc,
-                                     "expression has type %s",
-                                     get_string(get_type_string_id(proc_ty)));
+        EMBC(expr->left, {
+            report_range_err_no_exit(&ASTP(expr)->loc,
+                                     "attempting to pass arguments to something that does not have parameters");
+            report_range_info_no_context(&expr->left->loc,
+                                         "expression has type %s",
+                                         get_string(get_type_string_id(proc_ty)));
+        });
         return;
     }
 
@@ -2349,35 +2593,39 @@ too_few:
 
         if (!types_are_compatible(param_type, arg_type)) {
             if (left_ident == NULL) {
-                report_range_err_no_exit(&arg_p->expr->loc,
-                                         "incorrect argument type: expected %s, but got %s",
-                                         get_string(get_type_string_id(param_type)),
-                                         get_string(get_type_string_id(arg_type)));
-                report_simple_info("indirect call with procedure type %s",
-                                   get_string(get_type_string_id(proc_ty)));
+                EMBC(arg_p->expr, {
+                    report_range_err_no_exit(&arg_p->expr->loc,
+                                             "incorrect argument type: expected %s, but got %s",
+                                             get_string(get_type_string_id(param_type)),
+                                             get_string(get_type_string_id(arg_type)));
+                    report_simple_info("indirect call with procedure type %s",
+                                       get_string(get_type_string_id(proc_ty)));
+                });
             } else {
-                report_range_err_no_exit(&arg_p->expr->loc,
-                                         "incorrect argument type: expected %s, but got %s",
-                                         get_string(get_type_string_id(param_type)),
-                                         get_string(get_type_string_id(arg_type)));
+                EMBC(arg_p->expr, {
+                    report_range_err_no_exit(&arg_p->expr->loc,
+                                             "incorrect argument type: expected %s, but got %s",
+                                             get_string(get_type_string_id(param_type)),
+                                             get_string(get_type_string_id(arg_type)));
 
-                if (proc_origin->kind == AST_BUILTIN) {
-                    if (left_ident->resolved_node == proc_origin) {
-                        report_simple_info("'%s' is a compiler builtin",
-                                            get_string(((ast_builtin_t*)proc_origin)->name));
+                    if (proc_origin->kind == AST_BUILTIN) {
+                        if (left_ident->resolved_node == proc_origin) {
+                            report_simple_info("'%s' is a compiler builtin",
+                                               get_string(((ast_builtin_t*)proc_origin)->name));
+                        } else {
+                            report_declaration_path(path);
+                        }
                     } else {
-                        report_declaration_path(path);
-                    }
-                } else {
-                    parm_decl = *(ast_t**)array_item(proc->params, i);
+                        parm_decl = *(ast_t**)array_item(proc->params, i);
 
-                    if (left_ident->resolved_node == proc_origin) {
-                        report_range_info_no_context(&parm_decl->loc, "parameter declared here:");
-                    } else {
-                        report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declared here:");
-                        report_declaration_path(path);
+                        if (left_ident->resolved_node == proc_origin) {
+                            report_range_info_no_context(&parm_decl->loc, "parameter declared here:");
+                        } else {
+                            report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declared here:");
+                            report_declaration_path(path);
+                        }
                     }
-                }
+                });
             }
 
             return;
@@ -2411,9 +2659,9 @@ too_few:
 
                 if (arg_p->name != ((ast_param_t*)parm_decl)->name) {
                     report_range_err_no_exit(&arg_p->expr->loc,
-                                                "argument name '%s' does not match parameter name '%s'",
-                                                get_string(arg_p->name),
-                                                get_string(((ast_param_t*)parm_decl)->name));
+                                             "argument name '%s' does not match parameter name '%s'",
+                                             get_string(arg_p->name),
+                                             get_string(((ast_param_t*)parm_decl)->name));
                     if (left_ident->resolved_node == proc_origin) {
                         report_range_info_no_context(&parm_decl->loc, "parameter declared here:");
                     } else {
@@ -2431,35 +2679,37 @@ too_few:
             arg_type = arg_p->expr->type;
 
             if (!types_are_compatible(varg_ty, arg_type) && !type_is_poly(varg_ty)) {
-                report_range_err_no_exit(&arg_p->expr->loc,
-                                         "incorrect argument type: expected %s, but got %s",
-                                         get_string(get_type_string_id(varg_ty)),
-                                         get_string(get_type_string_id(arg_type)));
-                report_simple_info_no_exit("argument belongs to a variadic parameter list");
+                EMBC(arg_p->expr, {
+                    report_range_err_no_exit(&arg_p->expr->loc,
+                                             "incorrect argument type: expected %s, but got %s",
+                                             get_string(get_type_string_id(varg_ty)),
+                                             get_string(get_type_string_id(arg_type)));
+                    report_simple_info_no_exit("argument belongs to a variadic parameter list");
 
-                if (left_ident == NULL) {
-                    report_simple_info("indirect call with procedure type %s",
-                                       get_string(get_type_string_id(proc_ty)));
-                } else {
-                    if (proc_origin->kind == AST_BUILTIN) {
+                    if (left_ident == NULL) {
+                        report_simple_info("indirect call with procedure type %s",
+                                           get_string(get_type_string_id(proc_ty)));
+                    } else {
+                        if (proc_origin->kind == AST_BUILTIN) {
+                            if (left_ident->resolved_node == proc_origin) {
+                                report_simple_info("'%s' is a compiler builtin",
+                                                   get_string(((ast_builtin_t*)proc_origin)->name));
+                            } else {
+                                report_declaration_path(path);
+                            }
+                            return;
+                        }
+
+                        parm_decl = *(ast_t**)array_last(proc->params);
+
                         if (left_ident->resolved_node == proc_origin) {
-                            report_simple_info("'%s' is a compiler builtin",
-                                               get_string(((ast_builtin_t*)proc_origin)->name));
-                        } else {
+                            report_range_info_no_context(&parm_decl->loc, "variadic parameter list declared here:");
+                        } else if (left_ident->resolved_node != proc_origin) {
+                            report_range_info_no_context_no_exit(&parm_decl->loc, "variadic parameter list declared here:");
                             report_declaration_path(path);
                         }
-                        return;
                     }
-
-                    parm_decl = *(ast_t**)array_last(proc->params);
-
-                    if (left_ident->resolved_node == proc_origin) {
-                        report_range_info_no_context(&parm_decl->loc, "variadic parameter list declared here:");
-                    } else if (left_ident->resolved_node != proc_origin) {
-                        report_range_info_no_context_no_exit(&parm_decl->loc, "variadic parameter list declared here:");
-                        report_declaration_path(path);
-                    }
-                }
+                });
             }
 
             if (arg_p->name != STRING_ID_NULL) {
@@ -2552,27 +2802,31 @@ static void check_expr_unsatisfied_poly(check_context_t cxt, ast_t *expr) {
     }
 
     if (expr->type == TY_TYPE && type_is_poly(expr->value.t)) {
-        GET_ERROR_MESSAGE_INFO();
-        report_range_err_no_exit(&expr->loc,
-                                 "struct '%s' is polymorphic, so it requires arguments to satisfy its polymorphic parameters",
-                                 resolved_name);
-        report_fixit_no_exit(expr->loc.end, "provide arguments for polymorphic parameters\a(...)");
-        report_range_info_no_context(loc, "'%s' defined with these polymorphic parameters:", resolved_name);
+        EMBC(expr, {
+            GET_ERROR_MESSAGE_INFO();
+            report_range_err_no_exit(&expr->loc,
+                                    "struct '%s' is polymorphic, so it requires arguments to satisfy its polymorphic parameters",
+                                    resolved_name);
+            report_fixit_no_exit(expr->loc.end, "provide arguments for polymorphic parameters\a(...)");
+            report_range_info_no_context(loc, "'%s' defined with these polymorphic parameters:", resolved_name);
+        });
 
     } else if (!(cxt.flags & CHECK_FLAG_ALLOW_REF_POLY_PROC)
            &&  type_kind(expr->type) == TY_PROC
            &&  type_is_poly(expr->type)) {
 
+        EMBC(expr, {
         GET_ERROR_MESSAGE_INFO();
-        report_range_err_no_exit(&expr->loc,
-                                 "procedure '%s' is polymorphic, so it requires arguments to satisfy its polymorphic parameters",
-                                 resolved_name);
-        /* @todo
-         * We should probably provide some way to reference a monomorphism of a procedure without actually calling it...
-         */
-/*         report_fixit_no_exit(expr->loc.end, "you may provide arguments for polymorphic parameters by calling the procedure" */
-/*                                             ", but keep in mind that this is probably different than what you had in mind\a(...)"); */
-        report_range_info_no_context(loc, "'%s' defined with these polymorphic parameters:", resolved_name);
+            report_range_err_no_exit(&expr->loc,
+                                    "procedure '%s' is polymorphic, so it requires arguments to satisfy its polymorphic parameters",
+                                    resolved_name);
+            /* @todo
+            * We should probably provide some way to reference a monomorphism of a procedure without actually calling it...
+            */
+    /*         report_fixit_no_exit(expr->loc.end, "you may provide arguments for polymorphic parameters by calling the procedure" */
+    /*                                             ", but keep in mind that this is probably different than what you had in mind\a(...)"); */
+            report_range_info_no_context(loc, "'%s' defined with these polymorphic parameters:", resolved_name);
+        });
     }
 }
 
@@ -2648,11 +2902,13 @@ static void check_proc_type(check_context_t cxt, ast_proc_type_t *proc_type) {
         expr = *it;
         check_node(cxt, expr);
         if (expr->type != TY_TYPE) {
-            report_range_err_no_exit(&expr->loc,
-                                     "parameter type expression must have type type");
-            report_range_info_no_context(&expr->loc,
-                                         "expression has type %s",
-                                         get_string(get_type_string_id(expr->type)));
+            EMBC(expr, {
+                report_range_err_no_exit(&expr->loc,
+                                         "parameter type expression must have type type");
+                report_range_info_no_context(&expr->loc,
+                                             "expression has type %s",
+                                             get_string(get_type_string_id(expr->type)));
+            });
             return;
         }
         param_types[n] = expr->value.t;
@@ -2665,11 +2921,13 @@ static void check_proc_type(check_context_t cxt, ast_proc_type_t *proc_type) {
         expr = proc_type->ret_type_expr;
         check_node(cxt, expr);
         if (expr->type != TY_TYPE) {
-            report_range_err_no_exit(&expr->loc,
-                                        "return type expression must have type type");
-            report_range_info_no_context(&expr->loc,
-                                            "expression has type %s",
-                                            get_string(get_type_string_id(expr->type)));
+            EMBC(expr, {
+                report_range_err_no_exit(&expr->loc,
+                                         "return type expression must have type type");
+                report_range_info_no_context(&expr->loc,
+                                             "expression has type %s",
+                                             get_string(get_type_string_id(expr->type)));
+            });
             return;
         }
         ret_type = expr->value.t;
@@ -2731,22 +2989,26 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     found_node  = find_in_scope(search_scope, right_ident->str_rep);
 
     if (found_node == NULL) {
-        report_range_err(&expr->right->loc,
-                         "nothing named '%s' in %s '%s'",
-                         get_string(right_ident->str_rep),
-                         s_kind,
-                         resolved_name);
+        EMBC(expr->right, {
+            report_range_err(&expr->right->loc,
+                             "nothing named '%s' in %s '%s'",
+                             get_string(right_ident->str_rep),
+                             s_kind,
+                             resolved_name);
+        });
         return;
     }
 
     if (found_node->kind == AST_DECL_STRUCT_FIELD) {
         ASSERT(expr->left->type == TY_TYPE, "found a field in a non-struct???");
-        report_range_err(&ASTP(expr)->loc,
-                         "struct '%s' has a field called '%s', "
-                         "but it must be accessed from an instance of type '%s', rather than the type itself",
-                         resolved_name,
-                         get_string(right_ident->str_rep),
-                         resolved_name);
+        EMBC(expr->right, {
+            report_range_err(&ASTP(expr)->loc,
+                             "struct '%s' has a field called '%s', "
+                             "but it must be accessed from an instance of type '%s', rather than the type itself",
+                             resolved_name,
+                             get_string(right_ident->str_rep),
+                             resolved_name);
+        });
         return;
     }
 
@@ -2758,9 +3020,6 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     ASTP(&new_ident)->type  = found_node->type;
     ASTP(&new_ident)->value = found_node->value;
     ASTP(&new_ident)->loc   = ASTP(expr)->loc;
-
-    /* @note -- are there any other flags we need to set/clear? */
-    ASTP(&new_ident)->flags |= AST_FLAG_CONSTANT;
 
     lname         = resolved_name;
     llen          = strlen(lname);
@@ -2793,8 +3052,10 @@ static void check_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     ast_struct_t *st;
 
     if (expr->right->kind != AST_IDENT) {
-        report_range_err(&expr->right->loc,
-                         "the '.' operator must be followed by an identifier");
+        EMBC(expr->right, {
+            report_range_err(&expr->right->loc,
+                             "the '.' operator must be followed by an identifier");
+        });
         return;
     }
 
@@ -2817,10 +3078,12 @@ static void check_dot(check_context_t cxt, ast_bin_expr_t *expr) {
             st_ty = expr->left->type;
             field_ty = get_struct_field_type(st_ty, ((ast_ident_t*)expr->right)->str_rep);
             if (field_ty == TY_UNKNOWN) {
-                report_range_err(&expr->right->loc,
-                                 "type %s does not have a field named '%s'",
-                                 get_string(get_type_string_id(st_ty)),
-                                 get_string(((ast_ident_t*)expr->right)->str_rep));
+                EMBC(expr->right, {
+                    report_range_err(&expr->right->loc,
+                                     "type %s does not have a field named '%s'",
+                                     get_string(get_type_string_id(st_ty)),
+                                     get_string(((ast_ident_t*)expr->right)->str_rep));
+                });
             }
             ASTP(expr)->type = field_ty;
 
@@ -2843,20 +3106,24 @@ static void check_dot(check_context_t cxt, ast_bin_expr_t *expr) {
 
             field_ty = get_struct_field_type(st_ty, ((ast_ident_t*)expr->right)->str_rep);
             if (field_ty == TY_UNKNOWN) {
-                report_range_err(&expr->right->loc,
-                                 "type %s does not have a field named '%s'",
-                                 get_string(get_type_string_id(st_ty)),
-                                 get_string(((ast_ident_t*)expr->right)->str_rep));
+                EMBC(expr->right, {
+                    report_range_err(&expr->right->loc,
+                                     "type %s does not have a field named '%s'",
+                                     get_string(get_type_string_id(st_ty)),
+                                     get_string(((ast_ident_t*)expr->right)->str_rep));
+                });
                 return;
             }
             ASTP(expr)->type = field_ty;
             break;
         does_not_apply:;
         default:
-            report_range_err(&ASTP(expr)->loc,
-                             "the '.' operator does not apply to left-hand-side operand %s%s",
-                             tk == TY_TYPE ? "" : "of type ",
-                             get_string(get_type_string_id(tk == TY_TYPE ? expr->left->value.t : expr->left->type)));
+            EMBC(expr->left, {
+                report_range_err(&ASTP(expr)->loc,
+                                 "the '.' operator does not apply to left-hand-side operand %s%s",
+                                 tk == TY_TYPE ? "" : "of type ",
+                                 get_string(get_type_string_id(tk == TY_TYPE ? expr->left->value.t : expr->left->type)));
+            });
             return;
     }
 }
@@ -2868,11 +3135,15 @@ static void binop_bad_type_error(ast_bin_expr_t *expr) {
     lt = expr->left->type;
     rt = expr->right->type;
 
-    report_range_err(&ASTP(expr)->loc,
-                     "operator '%s' does not apply to types %s and %s",
-                     OP_STR(expr->op),
-                     get_string(get_type_string_id(lt)),
-                     get_string(get_type_string_id(rt)));
+    EMBC(expr->left, {
+        EMBC(expr->right, {
+            report_range_err(&ASTP(expr)->loc,
+                            "operator '%s' does not apply to types %s and %s",
+                            OP_STR(expr->op),
+                            get_string(get_type_string_id(lt)),
+                            get_string(get_type_string_id(rt)));
+        });
+    });
 }
 
 #define BIN_EXPR_CONST(l, r) \
@@ -3080,11 +3351,13 @@ static void operand_not_typed_error(ast_t *expr, ast_t *operand) {
             ? ((ast_unary_expr_t*)expr)->op
             : ((ast_bin_expr_t*)expr)->op;
 
-    report_range_err_no_exit(&operand->loc,
-                             "invalid operand to %s '%s' expression",
-                             OP_IS_UNARY(op) ? "unary" : "binary",
-                             OP_STR(op));
-    report_simple_info("the expression does not have a type or value");
+    EMBC(operand, {
+        report_range_err_no_exit(&operand->loc,
+                                 "invalid operand to %s '%s' expression",
+                                 OP_IS_UNARY(op) ? "unary" : "binary",
+                                 OP_STR(op));
+        report_simple_info("the expression does not have a type or value");
+    });
 }
 
 static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
@@ -3144,20 +3417,24 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
             if (tkl == TY_SLICE) {
                 ASTP(expr)->type = get_under_type(expr->left->type);
             } else {
-                report_range_err_no_exit(&ASTP(expr)->loc,
-                                         "left-hand-side operand of '[]' operator must be a slice type");
-                report_range_info_no_context(&expr->left->loc,
-                                             "operand has type %s",
-                                             get_string(get_type_string_id(expr->left->type)));
+                EMBC(expr->left, {
+                    report_range_err_no_exit(&ASTP(expr)->loc,
+                                             "left-hand-side operand of '[]' operator must be a slice type");
+                    report_range_info_no_context(&expr->left->loc,
+                                                 "operand has type %s",
+                                                 get_string(get_type_string_id(expr->left->type)));
+                });
                 return;
             }
 
             if (!type_kind_is_int(tkr)) {
-                report_range_err_no_exit(&ASTP(expr)->loc,
-                                         "right-hand-side operand of '[]' operator must be an integer type");
-                report_range_info_no_context(&expr->right->loc,
-                                         "operand has type %s",
-                                         get_string(get_type_string_id(expr->right->type)));
+                EMBC(expr->right, {
+                    report_range_err_no_exit(&ASTP(expr)->loc,
+                                             "right-hand-side operand of '[]' operator must be an integer type");
+                    report_range_info_no_context(&expr->right->loc,
+                                             "operand has type %s",
+                                             get_string(get_type_string_id(expr->right->type)));
+                });
             }
 
             break;
@@ -3214,10 +3491,14 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
             break;
         case OP_ASSIGN:
             if (expr->left->type != expr->right->type) {
-                report_range_err(&ASTP(expr)->loc,
-                                "left-hand-side operand has type %s, but you're trying to assign it a value of type %s",
-                                get_string(get_type_string_id(expr->left->type)),
-                                get_string(get_type_string_id(expr->right->type)));
+                EMBC(expr->left, {
+                    EMBC(expr->right, {
+                        report_range_err(&ASTP(expr)->loc,
+                                         "left-hand-side operand has type %s, but you're trying to assign it a value of type %s",
+                                         get_string(get_type_string_id(expr->left->type)),
+                                         get_string(get_type_string_id(expr->right->type)));
+                    });
+                });
                 return;
             }
             ASTP(expr)->type  = expr->left->type;
@@ -3288,53 +3569,63 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
                 ASSERT(expr->child->flags & AST_FLAG_CONSTANT, "type not constant");
                 ASTP(expr)->flags |= AST_FLAG_CONSTANT;
             } else {
-                report_range_err_no_exit(&ASTP(expr)->loc,
-                                         "right-hand-side operand of '[' slice operator must be a type");
-                report_range_info_no_context(&expr->child->loc,
-                                             "operand has type %s",
-                                             get_string(get_type_string_id(expr->child->type)));
+                EMBC(expr->child, {
+                    report_range_err_no_exit(&ASTP(expr)->loc,
+                                             "right-hand-side operand of '[' slice operator must be a type");
+                    report_range_info_no_context(&expr->child->loc,
+                                                 "operand has type %s",
+                                                 get_string(get_type_string_id(expr->child->type)));
+                });
             }
             break;
         case OP_DEREF:
             if (expr->child->type == TY_TYPE) {
                 ASTP(expr)->type    = TY_TYPE;
                 if (type_kind(expr->child->value.t) != TY_PTR) {
-                    report_range_err_no_exit(&ASTP(expr)->loc,
-                                             "right-hand-side operand of '@' operator must be a pointer");
-                    report_range_info_no_context(&expr->child->loc,
-                                                 "operand is the type value %s",
-                                                 get_string(get_type_string_id(expr->child->value.t)));
+                    EMBC(expr->child, {
+                        report_range_err_no_exit(&ASTP(expr)->loc,
+                                                 "right-hand-side operand of '@' operator must be a pointer");
+                        report_range_info_no_context(&expr->child->loc,
+                                                     "operand is the type value %s",
+                                                     get_string(get_type_string_id(expr->child->value.t)));
+                    });
                 }
                 ASTP(expr)->value.t = get_under_type(expr->child->value.t);
             } else {
                 if (type_kind(expr->child->type) != TY_PTR) {
-                    report_range_err_no_exit(&ASTP(expr)->loc,
-                                             "right-hand-side operand of '@' operator must be a pointer");
-                    report_range_info_no_context(&expr->child->loc,
-                                                 "operand has type %s",
-                                                 get_string(get_type_string_id(expr->child->type)));
+                    EMBC(expr->child, {
+                        report_range_err_no_exit(&ASTP(expr)->loc,
+                                                 "right-hand-side operand of '@' operator must be a pointer");
+                        report_range_info_no_context(&expr->child->loc,
+                                                     "operand has type %s",
+                                                     get_string(get_type_string_id(expr->child->type)));
+                    });
                 }
                 ASTP(expr)->type = get_under_type(expr->child->type);
             }
             break;
         case OP_NOT:
             if (!type_kind_is_int(type_kind(expr->child->type))) {
-                report_range_err_no_exit(&ASTP(expr)->loc,
-                                         "right-hand-side operand of 'not' operator must be an integer");
-                report_range_info_no_context(&expr->child->loc,
-                                             "operand has type %s",
-                                             get_string(get_type_string_id(expr->child->type)));
+                EMBC(expr->child, {
+                    report_range_err_no_exit(&ASTP(expr)->loc,
+                                             "right-hand-side operand of 'not' operator must be an integer");
+                    report_range_info_no_context(&expr->child->loc,
+                                                 "operand has type %s",
+                                                 get_string(get_type_string_id(expr->child->type)));
+                });
             }
             ASTP(expr)->type   = expr->child->type;
             ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
             break;
         case OP_NEG:
             if (!type_kind_is_numeric(type_kind(expr->child->type))) {
-                report_range_err_no_exit(&ASTP(expr)->loc,
-                                         "right-hand-side operand of '-' operator must be numeric");
-                report_range_info_no_context(&expr->child->loc,
-                                             "operand has type %s",
-                                             get_string(get_type_string_id(expr->child->type)));
+                EMBC(expr->child, {
+                    report_range_err_no_exit(&ASTP(expr)->loc,
+                                             "right-hand-side operand of '-' operator must be numeric");
+                    report_range_info_no_context(&expr->child->loc,
+                                                 "operand has type %s",
+                                                 get_string(get_type_string_id(expr->child->type)));
+                });
             }
             ASTP(expr)->type   = expr->child->type;
             ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
@@ -3345,11 +3636,13 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
             break;
         case OP_LENOF:
             if (type_kind(expr->child->type) != TY_SLICE) {
-                report_range_err_no_exit(&ASTP(expr)->loc,
-                                         "right-hand-side operand of 'lenof' operator must be a slice");
-                report_range_info_no_context(&expr->child->loc,
-                                             "operand has type %s",
-                                             get_string(get_type_string_id(expr->child->type)));
+                EMBC(expr->child, {
+                    report_range_err_no_exit(&ASTP(expr)->loc,
+                                             "right-hand-side operand of 'lenof' operator must be a slice");
+                    report_range_info_no_context(&expr->child->loc,
+                                                 "operand has type %s",
+                                                 get_string(get_type_string_id(expr->child->type)));
+                });
             }
             ASTP(expr)->type   = TY_U64;
             ASTP(expr)->flags |= expr->child->flags;
@@ -3503,8 +3796,10 @@ static void check_if(check_context_t cxt, ast_if_t *_if) {
     check_node(cxt, _if->expr);
 
     if (!type_kind_is_int(type_kind(_if->expr->type))) {
-        report_range_err_no_exit(&_if->expr->loc, "'if' condition must have an integer type");
-        report_simple_info("got %s", get_string(get_type_string_id(_if->expr->type)));
+        EMBC(_if->expr, {
+            report_range_err_no_exit(&_if->expr->loc, "'if' condition must have an integer type");
+            report_simple_info("got %s", get_string(get_type_string_id(_if->expr->type)));
+        });
         return;
     }
 
@@ -3533,8 +3828,10 @@ static void check_loop(check_context_t cxt, ast_loop_t *loop) {
     if (loop->cond != NULL) {
         check_node(cxt, loop->cond);
         if (!type_kind_is_int(type_kind(loop->cond->type))) {
-            report_range_err_no_exit(&loop->cond->loc, "loop condition must have an integer type");
-            report_simple_info("got %s", get_string(get_type_string_id(loop->cond->type)));
+            EMBC(loop->cond, {
+                report_range_err_no_exit(&loop->cond->loc, "loop condition must have an integer type");
+                report_simple_info("got %s", get_string(get_type_string_id(loop->cond->type)));
+            });
             return;
         }
     }
@@ -3586,10 +3883,12 @@ static void check_return(check_context_t cxt, ast_return_t *ret) {
 
         if (!types_are_compatible(cxt.proc->ret_type_expr->value.t, ret->expr->type)
         &&  cxt.proc->ret_type_expr->value.t != TY_POLY) {
-            report_range_err(&ret->expr->loc,
-                             "incorrect type of returned expression: expected %s, but got %s",
-                             get_string(get_type_string_id(cxt.proc->ret_type_expr->value.t)),
-                             get_string(get_type_string_id(ret->expr->type)));
+            EMBC(ret->expr, {
+                report_range_err(&ret->expr->loc,
+                                 "incorrect type of returned expression: expected %s, but got %s",
+                                 get_string(get_type_string_id(cxt.proc->ret_type_expr->value.t)),
+                                 get_string(get_type_string_id(ret->expr->type)));
+            });
             return;
         }
     } else if (cxt.proc->ret_type_expr != NULL) {
@@ -3654,6 +3953,10 @@ static void check_node(check_context_t cxt, ast_t *node) {
     */
 /*     if (node->type != TY_UNKNOWN && !(cxt.flags & CHECK_FLAG_FORCE_RECHECK)) { return; } */
     if (node->flags & AST_FLAG_CHECKED) { return; }
+
+    if (node->macro_decl != NULL) {
+        push_macro_breadcrumb(node);
+    }
 
     switch (node->kind) {
 #define X(_kind) case _kind:
@@ -3766,4 +4069,8 @@ static void check_node(check_context_t cxt, ast_t *node) {
     }
     ASSERT(node->type != TY_UNKNOWN, "did not resolve type");
 #endif
+
+    if (node->macro_decl != NULL) {
+        pop_breadcrumb();
+    }
 }

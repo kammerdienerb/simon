@@ -1,0 +1,42 @@
+[[ program_entry ]]
+main :: proc() {
+    defer { exit(0); }
+
+    defer {
+        printf("goodbye\n");
+    }
+
+    printf("hello\n");
+
+    defer {
+        printf("zap\n");
+    }
+    defer {
+        defer {
+            printf("bar\n");
+        }
+        printf("foo\n");
+    }
+
+    loop i := 0; i < 10; i += 1 {
+        defer { printf("<- {}\n", i); }
+        if i > 4 {
+            defer { printf("INNER IF\n"); }
+            break;
+        }
+        printf("{} ->\n", i);
+    }
+
+    if 1 {
+        defer {
+            printf("A\n");
+            printf("B\n");
+            printf("C\n");
+        }
+        defer {
+            printf("D\n");
+            printf("E\n");
+            printf("F\n");
+        }
+    }
+}

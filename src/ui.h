@@ -8,11 +8,19 @@
 
 #define BREADCRUMB_POINT (1)
 #define BREADCRUMB_RANGE (2)
+#define BREADCRUMB_MACRO (3)
 
 typedef struct {
-    int         kind;
-    src_range_t range;
-    char        buff[1024];
+    int                  kind;
+    union {
+        struct {
+            src_range_t  range;
+            char         buff[1024];
+        };
+        struct {
+            ast_t       *node;
+        };
+    };
 } breadcrumb_t;
 
 void init_ui(void);
@@ -32,6 +40,7 @@ void _report_fixit(int should_exit, src_point_t pt, const char *fmt, ...);
 void report_file_err(const char *path, int err);
 void push_loc_breadcrumb(src_point_t pt, const char *fmt, ...);
 void push_range_breadcrumb(src_range_t *range, const char *fmt, ...);
+void push_macro_breadcrumb(ast_t *node);
 void pop_breadcrumb(void);
 void print_node(ast_t *node);
 void common_exit(int status);

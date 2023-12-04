@@ -17,6 +17,7 @@ extern ast_decl_t      *program_entry;
 extern array_t          all_types;
 extern array_t          all_procs;
 extern array_t          all_vars;
+extern int              expanding_macros;
 
 #define ROOTS_LOCK()                             \
 do {                                             \

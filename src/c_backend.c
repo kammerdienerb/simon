@@ -9,8 +9,56 @@
 #include "parse.h"
 #include "array.h"
 
-static u32 which_varg;
+static ast_proc_t *current_proc;
+static u32         which_varg;
+static array_t     defer_stack;
+static u64         defer_label_counter;
+static array_t     defer_label_stack;
+static array_t     loop_label_stack;
 
+enum {
+    BLOCK_NORMAL,
+    BLOCK_PROC_BODY,
+    BLOCK_LOOP,
+    BLOCK_SYNTHETIC,
+};
+
+#define PUSH_DEFER_SCOPE(bk)                               \
+do {                                                       \
+    array_t defers = array_make(ast_t*);                   \
+    array_push(defer_stack, defers);                       \
+    array_push(defer_label_stack, defer_label_counter);    \
+    if ((bk) == BLOCK_LOOP) {                              \
+        array_push(loop_label_stack, defer_label_counter); \
+    }                                                      \
+    defer_label_counter += 1;                              \
+} while (0)
+
+#define POP_DEFER_SCOPE(bk)                                \
+do {                                                       \
+    array_t *old_defers = array_last(defer_stack);         \
+    if (old_defers == NULL) { break; }                     \
+    array_free(*old_defers);                               \
+    array_pop(defer_stack);                                \
+    array_pop(defer_label_stack);                          \
+    if ((bk) == BLOCK_LOOP) {                              \
+        array_pop(loop_label_stack);                       \
+    }                                                      \
+} while (0)
+
+#define PUSH_DEFER(_defer)                                 \
+do {                                                       \
+    array_t *top = array_last(defer_stack);                \
+    if (top == NULL) { break; }                            \
+    array_push(*top, (_defer));                            \
+} while (0)
+
+
+#define DEFER_STACK_LEN()    (array_len(defer_stack))
+#define HAVE_DEFERS()        (array_len(defer_stack) && array_last(*(array_t*)array_last(defer_stack)))
+#define TOP_DEFER_LABEL()    (*(u64*)array_last(defer_label_stack))
+#define TOP_LOOP_LABEL()     (*(u64*)array_last(loop_label_stack))
+#define BOTTOM_DEFER_LABEL() (*(u64*)array_item(defer_label_stack, 0))
 typedef struct {
     string_id string;
     u32       ty;
@@ -83,8 +131,10 @@ static void emit_name(ast_t *node, i32 poly_idx) {
 
     if (node->kind == AST_DECL_VAR) {
         decl = (ast_decl_t*)node;
+        if (!decl->containing_scope->in_proc) { goto long_name; }
         EMIT_STRING_ID(decl->name);
     } else if (ast_kind_is_decl(node->kind)) {
+long_name:;
         decl = (ast_decl_t*)node;
 
         full_name = get_string(decl->full_name);
@@ -279,18 +329,14 @@ static void emit_param(ast_param_t *param, const char *lazy_comma) {
     type_t list_type;
     int    i;
 
-    if (ASTP(param)->flags & AST_FLAG_VARARGS) {
-        if (ASTP(param)->flags & AST_FLAG_POLY_VARARGS) {
-            list_type  = get_type_t(ASTP(param)->type);
-            for (i = 0; i < list_type.list_len; i += 1) {
-                EMIT_STRING(lazy_comma);
-                emit_type(list_type.id_list[i]);
-                EMIT_C(' ');
-                EMIT_STRING_F("__varg%d", i);
-                lazy_comma = ", ";
-            }
-        } else {
-            ASSERT(0, "TODO");
+    if (ASTP(param)->flags & AST_FLAG_POLY_VARARGS) {
+        list_type  = get_type_t(ASTP(param)->type);
+        for (i = 0; i < list_type.list_len; i += 1) {
+            EMIT_STRING(lazy_comma);
+            emit_type(list_type.id_list[i]);
+            EMIT_C(' ');
+            EMIT_STRING_F("__varg%d", i);
+            lazy_comma = ", ";
         }
     } else {
         EMIT_STRING(lazy_comma);
@@ -304,6 +350,8 @@ static void emit_proc_pre_decl(ast_decl_t *decl, ast_proc_t *proc, i32 poly_idx)
     const char   *lazy_comma;
     ast_t       **pit;
     ast_param_t  *param;
+
+    current_proc = proc;
 
     if (proc->ret_type_expr != NULL) {
         emit_type(proc->ret_type_expr->value.t);
@@ -591,9 +639,11 @@ static void emit_binary_expr(ast_t *expr) {
                     EMIT_STRING_F(" << %dULL) & 0x%"PRIx64")", field->bitfield_shift, field->bitfield_mask);
                 }
             } else {
+                EMIT_C('(');
                 emit_expr(l);
                 EMIT_STRING_F(" %s ", OP_STR(op));
                 emit_expr(r);
+                EMIT_C(')');
             }
             break;
         case OP_PLUS:
@@ -702,7 +752,67 @@ enum {
     FMT_NO_END     = 1 << 1,
 };
 
-static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags) {
+static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind);
+
+static void emit_defers(int lvl) {
+    array_t  *scope;
+    ast_t   **stmt_it;
+
+    scope = array_last(defer_stack);
+    if (scope == NULL) { return; }
+
+    if (array_len(*scope) == 0) { return; }
+
+    INDENT(lvl); EMIT_STRING_F("{ /* DEFER SCOPE %"PRIu64" */\n", TOP_DEFER_LABEL());
+    array_rtraverse(*scope, stmt_it) {
+        emit_stmt(*stmt_it, lvl + 1, FMT_FLAGS_NONE, BLOCK_NORMAL);
+    }
+    INDENT(lvl); EMIT_STRING("}\n");
+}
+
+static void emit_all_defers_except_return(int lvl) {
+    array_t  *scope;
+    ast_t   **stmt_it;
+
+    array_rtraverse(defer_stack, scope) {
+        if (scope == array_item(defer_stack, 0)) { break; }
+
+        if (array_len(*scope) == 0) { continue; }
+
+        INDENT(lvl); EMIT_STRING_F("{ /* DEFER SCOPE %"PRIu64" */\n", TOP_DEFER_LABEL());
+        array_rtraverse(*scope, stmt_it) {
+            emit_stmt(*stmt_it, lvl + 1, FMT_FLAGS_NONE, BLOCK_NORMAL);
+        }
+        INDENT(lvl); EMIT_STRING("}\n");
+    }
+}
+
+static void emit_all_defers_for_loop(int lvl) {
+    int       i;
+    array_t  *scope;
+    int       stop;
+    ast_t   **stmt_it;
+
+    i = array_len(defer_stack) - 1;
+    array_rtraverse(defer_stack, scope) {
+        stop = *(u64*)array_item(defer_label_stack, i) == TOP_LOOP_LABEL();
+
+        if (array_len(*scope) == 0) { goto next; }
+
+        INDENT(lvl); EMIT_STRING_F("{ /* DEFER SCOPE %"PRIu64" */\n", TOP_DEFER_LABEL());
+        array_rtraverse(*scope, stmt_it) {
+            emit_stmt(*stmt_it, lvl + 1, FMT_FLAGS_NONE, BLOCK_NORMAL);
+        }
+        INDENT(lvl); EMIT_STRING("}\n");
+
+next:;
+        if (stop) { break; }
+
+        i -= 1;
+    }
+}
+
+static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
     ast_t **it;
     ast_t  *s;
 
@@ -716,13 +826,46 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags) {
 
     switch (stmt->kind) {
         case AST_BLOCK:
-            EMIT_STRING("{\n");
+            if (stmt->flags & AST_FLAG_SYNTHETIC_BLOCK) {
+                ASSERT(block_kind == BLOCK_NORMAL, "non-normal synthetic block???");
+                block_kind = BLOCK_SYNTHETIC;
+            }
+
+            if (block_kind != BLOCK_SYNTHETIC) {
+                EMIT_STRING("{\n");
+            }
+            if (block_kind != BLOCK_SYNTHETIC) {
+                PUSH_DEFER_SCOPE(block_kind);
+            }
+
+            if (block_kind == BLOCK_PROC_BODY && current_proc->ret_type_expr != NULL) {
+                INDENT(lvl + 1);
+                emit_type(current_proc->ret_type_expr->value.t);
+                EMIT_STRING(" __si_ret;\n\n");
+            }
+
             array_traverse(((ast_block_t*)stmt)->stmts, it) {
                 s = *it;
-                emit_stmt(s, lvl + 1, FMT_FLAGS_NONE);
+                emit_stmt(s, lvl + 1, FMT_FLAGS_NONE, BLOCK_NORMAL);
             }
+
+            if (block_kind != BLOCK_SYNTHETIC) {
+                if (block_kind == BLOCK_PROC_BODY || HAVE_DEFERS()) {
+                    EMIT_STRING_F("\n__si_scope_%"PRIu64"_exit:;\n", TOP_DEFER_LABEL());
+                    emit_defers(lvl + 1);
+                }
+                POP_DEFER_SCOPE(block_kind);
+            }
+
+            if (block_kind == BLOCK_PROC_BODY && current_proc->ret_type_expr != NULL) {
+                INDENT(lvl + 1);
+                EMIT_STRING("return __si_ret;\n");
+            }
+
             INDENT(lvl);
-            EMIT_STRING("}");
+            if (block_kind != BLOCK_SYNTHETIC) {
+                EMIT_STRING("}");
+            }
             if (!(fmt_flags & FMT_NO_END)) {
                 EMIT_STRING("\n\n");
             }
@@ -731,7 +874,7 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags) {
         case AST_VARGS_BLOCK:
             which_varg = 0;
             array_traverse(((ast_vargs_block_t*)stmt)->new_blocks, it) {
-                emit_stmt(*it, lvl, FMT_FLAGS_NONE);
+                emit_stmt(*it, lvl, FMT_FLAGS_NONE, BLOCK_SYNTHETIC);
                 which_varg += 1;
             }
             break;
@@ -755,10 +898,10 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags) {
             EMIT_STRING("if (");
             emit_expr(((ast_if_t*)stmt)->expr);
             EMIT_STRING(") ");
-            emit_stmt(((ast_if_t*)stmt)->then_block, lvl, FMT_NO_INDENT | FMT_NO_END);
+            emit_stmt(((ast_if_t*)stmt)->then_block, lvl, FMT_NO_INDENT | FMT_NO_END, BLOCK_NORMAL);
             if (((ast_if_t*)stmt)->els != NULL) {
                 EMIT_STRING(" else ");
-                emit_stmt(((ast_if_t*)stmt)->els, lvl, FMT_NO_INDENT);
+                emit_stmt(((ast_if_t*)stmt)->els, lvl, FMT_NO_INDENT, BLOCK_NORMAL);
             } else {
                 EMIT_STRING("\n\n");
             }
@@ -768,40 +911,46 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags) {
             EMIT_STRING("for (");
 
             if (((ast_loop_t*)stmt)->init != NULL) {
-                emit_stmt(((ast_loop_t*)stmt)->init, lvl, FMT_NO_INDENT | FMT_NO_END);
+                emit_stmt(((ast_loop_t*)stmt)->init, lvl, FMT_NO_INDENT | FMT_NO_END, BLOCK_NORMAL);
             }
             EMIT_STRING("; ");
 
             if (((ast_loop_t*)stmt)->cond != NULL) {
-                emit_stmt(((ast_loop_t*)stmt)->cond, lvl + 1, FMT_NO_INDENT | FMT_NO_END);
+                emit_stmt(((ast_loop_t*)stmt)->cond, lvl + 1, FMT_NO_INDENT | FMT_NO_END, BLOCK_NORMAL);
             }
             EMIT_STRING("; ");
 
             if (((ast_loop_t*)stmt)->post != NULL) {
-                emit_stmt(((ast_loop_t*)stmt)->post, lvl, FMT_NO_INDENT | FMT_NO_END);
+                emit_stmt(((ast_loop_t*)stmt)->post, lvl, FMT_NO_INDENT | FMT_NO_END, BLOCK_NORMAL);
             }
             EMIT_STRING(")");
 
-            emit_stmt(((ast_loop_t*)stmt)->block, lvl, FMT_NO_INDENT);
+            emit_stmt(((ast_loop_t*)stmt)->block, lvl, FMT_NO_INDENT, BLOCK_LOOP);
+
             break;
 
         case AST_RETURN:
-            EMIT_STRING("return");
             if (((ast_return_t*)stmt)->expr != NULL) {
-                EMIT_C(' ');
+                EMIT_STRING("__si_ret = ");
                 emit_expr(((ast_return_t*)stmt)->expr);
+                EMIT_STRING(";\n");
+                INDENT(lvl);
             }
-            EMIT_STRING(";\n");
+            emit_all_defers_except_return(lvl);
+            EMIT_STRING_F("goto __si_scope_%"PRIu64"_exit;\n", BOTTOM_DEFER_LABEL());
             break;
 
-/*         case AST_DEFER: */
-/*             break; */
+        case AST_DEFER:
+            PUSH_DEFER(((ast_defer_t*)stmt)->block);
+            break;
 
         case AST_BREAK:
+            emit_all_defers_for_loop(lvl + 1);
             EMIT_STRING("break;\n");
             break;
 
         case AST_CONTINUE:
+            emit_all_defers_for_loop(lvl + 1);
             EMIT_STRING("continue;\n");
             break;
 
@@ -824,6 +973,8 @@ static void emit_proc(ast_decl_t *decl, ast_proc_t *proc, i32 poly_idx) {
     const char   *lazy_comma;
     ast_t       **pit;
     ast_param_t  *param;
+
+    current_proc = proc;
 
     if (proc->ret_type_expr != NULL) {
         emit_type(proc->ret_type_expr->value.t);
@@ -855,7 +1006,7 @@ static void emit_proc(ast_decl_t *decl, ast_proc_t *proc, i32 poly_idx) {
         EMIT_C(' ');
     }
 
-    emit_stmt(proc->block, 0, FMT_NO_INDENT);
+    emit_stmt(proc->block, 0, FMT_NO_INDENT, BLOCK_PROC_BODY);
 }
 
 static void emit_procs(void) {
@@ -894,6 +1045,10 @@ void do_c_backend(void) {
     char cmd_buff[4096];
 
     start_us = measure_time_now_us();
+
+    defer_stack       = array_make(array_t);
+    defer_label_stack = array_make(u64);
+    loop_label_stack  = array_make(u64);
 
     emit_prelude();          EMIT_STRING("\n\n");
     emit_struct_pre_decls(); EMIT_STRING("\n\n");

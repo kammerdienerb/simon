@@ -24,8 +24,8 @@ static array_t breadcrumbs;
 #define TERM_BOLD    "\e[1m"
 
 #define ERR_ATTR   TERM_BOLD
-#define INFO_ATTR  TERM_BOLD
-#define FIXIT_ATTR TERM_BOLD
+#define INFO_ATTR  ""
+#define FIXIT_ATTR ""
 #define LOC_ATTR   ""
 #define RANGE_ATTR TERM_RESET
 
@@ -72,17 +72,32 @@ void verb_message(const char *fmt, ...) {
 }
 
 static void print_breadcrumbs(void) {
+    int           seen_macro;
     breadcrumb_t *it;
+    string_id     name;
+    src_range_t   loc;
 
     if (array_len(breadcrumbs) == 0) { return; }
 
     UNLOCK_OUTPUT();
 
+    seen_macro = 0;
     array_rtraverse(breadcrumbs, it) {
         if (it->kind == BREADCRUMB_RANGE) {
             report_range_info_no_context_no_exit(&it->range, "%s", it->buff);
-        } else {
+        } else if (it->kind == BREADCRUMB_POINT) {
             report_loc_info_no_context_no_exit(it->range.beg, "%s", it->buff);
+        } else if (it->kind == BREADCRUMB_MACRO) {
+            name = ((ast_decl_t*)it->node->macro_decl)->full_name;
+            if (!seen_macro) {
+                report_range_info_no_exit(&it->node->loc, "during expanion of macro '%s':", get_string(name));
+                loc.beg = it->node->macro_decl->loc.beg;
+                loc.end = ((ast_decl_t*)it->node->macro_decl)->val_expr->loc.end;
+                report_range_info_no_context_no_exit(&loc, "macro '%s', defined here:", get_string(name));
+                seen_macro = 1;
+            } else {
+                report_range_info_no_exit(&it->node->loc, "during expanion of macro '%s':", get_string(name));
+            }
         }
     }
 }
@@ -655,6 +670,17 @@ void push_range_breadcrumb(src_range_t *range, const char *fmt, ...) {
     memset(b.buff, 0, sizeof(b.buff));
     vsnprintf(b.buff, sizeof(b.buff) - 1, fmt, va);
     va_end(va);
+
+    array_push(breadcrumbs, b);
+}
+
+void push_macro_breadcrumb(ast_t *node) {
+    breadcrumb_t b;
+
+    ASSERT(node->macro_decl != NULL, "no macro decl!");
+
+    b.kind = BREADCRUMB_MACRO;
+    b.node = node;
 
     array_push(breadcrumbs, b);
 }

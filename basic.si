@@ -33,6 +33,7 @@ Allocator :: module {
 }
 
 Heap_Allocator :: struct {}
+
 [[ specialization(Allocator.alloc) ]]
 heap_alloc :: proc(allocator: *Heap_Allocator, n_bytes: u64): *u8 { return NULL; }
 
@@ -120,6 +121,7 @@ singleton_bundle :: proc(allocator: *Singleton_Allocator): Allocator.Bundle {
 [[ extern ]] open  :: proc(path: *u8, oflag: s32): s32;
 [[ extern ]] read  :: proc(fd: s32, bytes: *u8, len: u64): s32;
 [[ extern ]] write :: proc(fd: s32, bytes: *u8, len: u64): s32;
+[[ extern ]] close :: proc(fd: s32): s32;
 [[ extern ]] exit  :: proc(code: s64);
 
 write_string :: proc(s: [u8]) {
@@ -135,7 +137,7 @@ String_Builder :: struct {
     len:        u64;
 }
 
-string_builder_reset :: proc(sb: *%sb_type) {
+string_builder_reset :: proc(sb: *String_Builder) {
     sb.data   = NULL;
     sb.cursor = NULL;
     sb.len    = 0;
@@ -148,7 +150,14 @@ string_builder_new :: proc(allocator: *%allocator_type): String_Builder {
     return ret;
 }
 
-string_builder_append :: proc(sb: *%sb_type, c: u8): s64 {
+string_builder_free :: proc(sb: *String_Builder) {
+    if sb.data != NULL {
+        Allocator.bundle_free(*sb.allocator, sb.data);
+    }
+    string_builder_reset(sb);
+}
+
+string_builder_append :: proc(sb: *String_Builder, c: u8): s64 {
     was_null := sb.data == NULL;
 
     sb.data = Allocator.bundle_realloc(*sb.allocator, sb.data, sb.len + 1);
@@ -169,7 +178,7 @@ string_builder_append :: proc(sb: *%sb_type, c: u8): s64 {
     return SUCCESS;
 }
 
-string_builder_get :: proc(sb: *%sb_type): [u8] {
+string_builder_get :: proc(sb: *String_Builder): [u8] {
     return _builtin_slice_from(sb.data, sb.len);
 }
 
@@ -337,12 +346,9 @@ Format :: module {
     #     return ERR_TOO_SMALL;
     # }
 
-    _fmt :: proc(allocator: *%allocator_type, fmt: [u8], args: %...): s64 {
-        sb        := string_builder_new(allocator);
+    _sbfmt :: proc(sb: *String_Builder, fmt: [u8], args: %...): s64 {
         fmt_len   := lenof fmt;
         which_arg := 0;
-
-#         defer { Allocator.free(allocator, buff); }
 
         loop i: u64 = 0; i < fmt_len; i += 1 {
             if fmt[i] == '{' {
@@ -357,11 +363,11 @@ Format :: module {
                 a := 0;
                 vargs![] {
                     if a == which_arg {
-                        err := to_formatted_str(*sb, _builtin_varg(), info);
+                        err := to_formatted_str(sb, _builtin_varg(), info);
                         if err { return err; }
 
-                        write_string(string_builder_get(*sb));
-                        string_builder_reset(*sb);
+                        write_string(string_builder_get(sb));
+                        string_builder_reset(sb);
                     }
                     a += 1;
                 }
@@ -374,8 +380,22 @@ Format :: module {
 
         return SUCCESS;
     }
+
+    _fmt :: proc(allocator: *%allocator_type, fmt: [u8], args: %...): s64 {
+        sb := string_builder_new(allocator);
+        defer { string_builder_free(*sb); }
+
+        return _sbfmt(*sb, fmt, args);
+
+    }
 }
 
 aprintf :: proc(allocator: *%allocator_type, fmt: [u8], args: %...): s64 {
     return Format._fmt(allocator, fmt, args);
+}
+
+printf :: proc(fmt: [u8], args: %...): s64 {
+    N: u64 = 4096;
+    mem := singleton_allocator_new(_builtin_stack_alloc(N), N);
+    return aprintf(*mem, fmt, args);
 }

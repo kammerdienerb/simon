@@ -138,9 +138,11 @@ void do_parse(void) {
         wait_for_parsing_async();
     }
 
+    expanding_macros = 1;
     array_traverse(macro_calls, macro_it) {
         expand_macro(*macro_it);
     }
+    expanding_macros = 0;
 
     parse_time = measure_time_now_us() - start_us;
 

@@ -26,6 +26,8 @@ typedef struct {
     int           allow_poly_idents;
     int           poly_expr_pattern;
     int           in_struct;
+    int           in_macro_def;
+    ast_macro_t  *current_macro_def;
     array_t       macro_calls;
 } parse_context_t;
 
@@ -939,6 +941,22 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
         result->loc = loc;
 
         INSTALL(cxt, str_rep, result);
+    } else if (OPTIONAL_NO_EAT_CHAR(cxt, '$')) {
+        eat(cxt, 1);
+        EXPECT_IDENT(cxt, &str_rep, "expected identifier in macro argument expansion");
+
+        if (!cxt->in_macro_def) {
+            loc.end = GET_END_POINT(cxt);
+            report_range_err(&loc, "macro argument expansion is only valid within a macro");
+        }
+
+        result                                 = AST_ALLOC(cxt, ast_ident_t);
+        result->kind                           = AST_IDENT;
+        result->flags                         |= AST_FLAG_MACRO_EXPAND_ARG;
+        ((ast_ident_t*)result)->str_rep        = str_rep;
+        ((ast_ident_t*)result)->resolved_node  = NULL;
+        ((ast_ident_t*)result)->poly_idx       = -1;
+        ((ast_ident_t*)result)->varg_idx       = -1;
     }
 
     if (result != NULL) {
@@ -1188,7 +1206,7 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
         result->params_loc.beg = GET_BEG_POINT(cxt);
 
         while (!OPTIONAL_NO_EAT_CHAR(cxt, ')')
-        ||     (((result->params_loc.end = GET_END_POINT(cxt)), 1) && (eat(cxt, 1) /* ) */, 0))) {
+        ||     (((result->params_loc.end = GET_END_POINT(cxt)), 1) && (eat(cxt, 1) /* ) */, clean(cxt, 1), 0))) {
 
             cxt->poly_expr_pattern = 0;
 
@@ -1311,12 +1329,42 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
 
 static ast_t * parse_macro_body(parse_context_t *cxt, string_id name) {
     ast_macro_t *result;
+    string_id    param_name;
+    src_range_t  loc;
+    string_id   *it;
 
     result                = AST_ALLOC(cxt, ast_macro_t);
     ASTP(result)->kind    = AST_MACRO;
     ASTP(result)->loc.beg = GET_BEG_POINT(cxt);
+    result->param_names   = array_make(string_id);
+
+    cxt->in_macro_def      = 1;
+    cxt->current_macro_def = result;
+
 
     ASTP(result)->flags |= AST_FLAG_CONSTANT;
+
+    EXPECT_CHAR(cxt, '(', "expected '(' to open the parameter list for macro '%s'", get_string(name));
+    while (!OPTIONAL_CHAR(cxt, ')')) {
+        loc.beg = GET_BEG_POINT(cxt);
+        EXPECT_IDENT(cxt, &param_name, "expected parameter name");
+        loc.end = GET_END_POINT(cxt);
+
+        array_traverse(result->param_names, it) {
+            if (*it == param_name) {
+                report_range_err(&loc, "reuse of macro parameter name '%s'", get_string(param_name));
+                cxt->in_macro_def = 0;
+                return NULL;
+            }
+        }
+
+        array_push(result->param_names, param_name);
+
+        if (!OPTIONAL_CHAR(cxt, ',')) {
+            EXPECT_CHAR(cxt, ')', "expected ')' to close the parameter list for macro '%s'", get_string(name));
+            break;
+        }
+    }
 
     result->block = parse_block(cxt);
     if (result->block == NULL) {
@@ -1326,6 +1374,9 @@ static ast_t * parse_macro_body(parse_context_t *cxt, string_id name) {
     ASTP(result)->loc.end = result->block->loc.end;
 
     ASTP(result)->value.a = ASTP(result);
+
+    cxt->current_macro_def = NULL;
+    cxt->in_macro_def      = 0;
 
     return ASTP(result);
 }
@@ -1638,7 +1689,7 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
 
     seen_vargs = 0;
     while (!OPTIONAL_NO_EAT_CHAR(cxt, ')')
-    ||     (((result->params_loc.end = GET_END_POINT(cxt)), 1) && (eat(cxt, 1) /* ) */, 0))) {
+    ||     (((result->params_loc.end = GET_END_POINT(cxt)), 1) && (eat(cxt, 1) /* ) */, clean(cxt, 1), 0))) {
 
         cxt->poly_expr_pattern = 0;
 
@@ -1668,15 +1719,9 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
 
         if (OPTIONAL_LIT(cxt, "%...")) {
             seen_vargs            = 1;
-            ASTP(param)->flags   |= AST_FLAG_VARARGS | AST_FLAG_POLY_VARARGS;
-            ASTP(result)->flags  |= AST_FLAG_VARARGS | AST_FLAG_POLYMORPH | AST_FLAG_POLY_VARARGS;
+            ASTP(param)->flags   |= AST_FLAG_POLY_VARARGS;
+            ASTP(result)->flags  |= AST_FLAG_POLYMORPH | AST_FLAG_POLY_VARARGS;
         } else {
-            if (OPTIONAL_LIT(cxt, "...")) {
-                seen_vargs            = 1;
-                ASTP(param)->flags   |= AST_FLAG_VARARGS;
-                ASTP(result)->flags  |= AST_FLAG_VARARGS;
-            }
-
             param->type_expr = parse_expr_prec(cxt, ASSIGNMENT_PREC + 1);
 
             if (cxt->poly_expr_pattern) {
@@ -1821,10 +1866,12 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
         return NULL;
     }
 
+    result = AST_ALLOC(cxt, ast_decl_t);
+
     ASSERT(OPTIONAL_IDENT(cxt, &name), "parse_declaration_begin must be wrong");
+    result->name_end = GET_END_POINT(cxt);
     ASSERT(OPTIONAL_CHAR(cxt, ':'), "parse_declaration_begin must be wrong");
 
-    result = AST_ALLOC(cxt, ast_decl_t);
 
     result->containing_scope = SCOPE(cxt);
     if (result->containing_scope == cxt->global_scope) {
@@ -1946,6 +1993,9 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
                 ((ast_struct_t*)result->val_expr)->parent_decl = result;
                 break;
             case AST_DECL_MACRO:
+                if (cxt->in_macro_def) {
+                    report_range_err(&ASTP(result)->loc, "macros may not be defined within other macros");
+                }
                 result->val_expr = parse_macro_body(cxt, name);
                 OPTIONAL_CHAR(cxt, ';');
                 ((ast_macro_t*)result->val_expr)->parent_decl = result;

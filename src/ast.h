@@ -29,58 +29,58 @@ typedef union {
 } value_t;
 
 typedef struct ast {
-    u16         kind;  /*        +2 bytes                  */
-    u16         flags; /*        +2 bytes                  */
-    u32         type;  /*        +4 bytes                  */
-    value_t     value; /*        +8 bytes                  */
-    src_range_t loc;   /*        48 bytes                  */
-                       /* Total: 64 bytes (one cache line) */
+    u16          kind;
+    u16          flags;
+    u32          type;
+    value_t      value;
+    src_range_t  loc;
+    struct ast  *macro_decl;
 } ast_t;
 
 AST_DEFINE(dummy);
 
-#define X_AST                                         \
-    X(AST_INVALID,                     dummy)         \
-                                                      \
-    X(AST_GLOBAL_SCOPE,                dummy)         \
-                                                      \
-    X(AST_IGNORE_NODE,                 dummy)         \
-                                                      \
-    X(AST_COMPILE_ERROR,               compile_error) \
-                                                      \
-    X(AST_VARGS_BLOCK,                 vargs_block)   \
-                                                      \
-    X(AST_BUILTIN,                     dummy)         \
-                                                      \
-    X(AST_MODULE,                      module)        \
-    X(AST_PROC,                        proc)          \
-    X(AST_STRUCT,                      struct)        \
-    X(AST_MACRO,                       macro)         \
-    X(AST_DECL_VAR,                    decl)          \
-    X(AST_DECL_PROC,                   decl)          \
-    X(AST_DECL_STRUCT,                 decl)          \
-    X(AST_DECL_STRUCT_FIELD,           decl)          \
-    X(AST_DECL_MACRO,                  decl)          \
-    X(AST_DECL_MODULE,                 decl)          \
-    X(AST_PARAM,                       param)         \
-    X(AST_INT,                         int)           \
-    X(AST_FLOAT,                       float)         \
-    X(AST_STRING,                      string)        \
-    X(AST_CHAR,                        char)          \
-    X(AST_IDENT,                       ident)         \
-    X(AST_PROC_TYPE,                   proc_type)     \
-    X(AST_UNARY_EXPR,                  unary_expr)    \
-    X(AST_BIN_EXPR,                    bin_expr)      \
-    X(AST_BLOCK,                       block)         \
-    X(AST_ARG_LIST,                    arg_list)      \
-    X(AST_IF,                          if)            \
-    X(AST_LOOP,                        loop)          \
-    X(AST_RETURN,                      return)        \
-    X(AST_DEFER,                       defer)         \
-    X(AST_BREAK,                       break)         \
-    X(AST_CONTINUE,                    continue)      \
-    X(AST_MACRO_CALL,                  macro_call)    \
-    X(AST_POLYMORPHIC_CONSTANT,        poly_constant) \
+#define X_AST                                            \
+    X(AST_INVALID,                     dummy)            \
+                                                         \
+    X(AST_GLOBAL_SCOPE,                dummy)            \
+                                                         \
+    X(AST_IGNORE_NODE,                 dummy)            \
+                                                         \
+    X(AST_COMPILE_ERROR,               compile_error)    \
+                                                         \
+    X(AST_VARGS_BLOCK,                 vargs_block)      \
+                                                         \
+    X(AST_BUILTIN,                     dummy)            \
+                                                         \
+    X(AST_MODULE,                      module)           \
+    X(AST_PROC,                        proc)             \
+    X(AST_STRUCT,                      struct)           \
+    X(AST_MACRO,                       macro)            \
+    X(AST_DECL_VAR,                    decl)             \
+    X(AST_DECL_PROC,                   decl)             \
+    X(AST_DECL_STRUCT,                 decl)             \
+    X(AST_DECL_STRUCT_FIELD,           decl)             \
+    X(AST_DECL_MACRO,                  decl)             \
+    X(AST_DECL_MODULE,                 decl)             \
+    X(AST_PARAM,                       param)            \
+    X(AST_INT,                         int)              \
+    X(AST_FLOAT,                       float)            \
+    X(AST_STRING,                      string)           \
+    X(AST_CHAR,                        char)             \
+    X(AST_IDENT,                       ident)            \
+    X(AST_PROC_TYPE,                   proc_type)        \
+    X(AST_UNARY_EXPR,                  unary_expr)       \
+    X(AST_BIN_EXPR,                    bin_expr)         \
+    X(AST_BLOCK,                       block)            \
+    X(AST_ARG_LIST,                    arg_list)         \
+    X(AST_IF,                          if)               \
+    X(AST_LOOP,                        loop)             \
+    X(AST_RETURN,                      return)           \
+    X(AST_DEFER,                       defer)            \
+    X(AST_BREAK,                       break)            \
+    X(AST_CONTINUE,                    continue)         \
+    X(AST_MACRO_CALL,                  macro_call)       \
+    X(AST_POLYMORPHIC_CONSTANT,        poly_constant)    \
     X(AST_POLYMORPHIC_CONSTANTS_SCOPE, dummy)
 
 #define X_AST_DECLARATIONS             \
@@ -129,6 +129,15 @@ AST_DEFINE(dummy);
     X(AST_BREAK)                       \
     X(AST_CONTINUE)
 
+#define X_AST_ONLY_STATEMENTS          \
+    X(AST_BLOCK)                       \
+    X(AST_IF)                          \
+    X(AST_LOOP)                        \
+    X(AST_RETURN)                      \
+    X(AST_DEFER)                       \
+    X(AST_BREAK)                       \
+    X(AST_CONTINUE)
+
 enum {
 #define X(kind, name) kind,
 X_AST
@@ -138,7 +147,7 @@ X_AST
 enum {
     AST_FLAG_POLYMORPH                  = (1 <<  0),
     AST_FLAG_MONOMORPH                  = (1 <<  1),
-    AST_FLAG_VARARGS                    = (1 <<  2),
+    AST_FLAG_SYNTHETIC_BLOCK            = (1 <<  2),
     AST_FLAG_POLY_VARARGS               = (1 <<  3),
     AST_FLAG_CALL_IS_CAST               = (1 <<  4),
     AST_FLAG_CALL_IS_BUILTIN_VARG       = (1 <<  5),
@@ -148,7 +157,7 @@ enum {
     AST_FLAG_IS_COPY                    = (1 <<  9),
     AST_FLAG_PAREN_EXPR                 = (1 << 10),
     AST_FLAG_BITFIELD_DOT               = (1 << 11),
-    AST_FLAG_HEX_INT                    = (1 << 12),
+    AST_FLAG_MACRO_EXPAND_ARG           = (1 << 12),
     AST_FLAG_CONSTANT                   = (1 << 13),
     AST_FLAG_POLY_IDENT                 = (1 << 14),
     AST_FLAG_CHECKED                    = (1 << 15),
@@ -200,16 +209,17 @@ AST_DEFINE(builtin,
 );
 
 AST_DEFINE(decl,
-    scope_t   *containing_scope;
-    string_id  name;
-    string_id  full_name;
-    ast_t     *type_expr;
-    ast_t     *val_expr;
-    ast_t     *poly_constant_dependant;
-    array_t    tags;
+    scope_t     *containing_scope;
+    string_id    name;
+    string_id    full_name;
+    src_point_t  name_end;
+    ast_t       *type_expr;
+    ast_t       *val_expr;
+    ast_t       *poly_constant_dependant;
+    array_t      tags;
     /* For bitfield struct field. */
-    u64        bitfield_mask;
-    u32        bitfield_shift;
+    u64          bitfield_mask;
+    u32          bitfield_shift;
 );
 
 AST_DEFINE(module,
@@ -254,6 +264,7 @@ AST_DEFINE(struct,
 AST_DEFINE(macro,
     ast_decl_t *parent_decl;
     ast_t      *block;
+    array_t     param_names;
 );
 
 AST_DEFINE(int,
@@ -337,6 +348,7 @@ AST_DEFINE(macro_call,
     ast_t       *block;
     scope_t     *scope;
     int          expected_kind;
+    char         _padding[sizeof(ast_decl_t)];
 );
 
 AST_DEFINE(compile_error,
