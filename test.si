@@ -1,27 +1,10 @@
-# require!("basic.si");
-
-the_lock: u32;
-
-lock :: macro(lockptr) {
-    printf("lock\n");
-    @$lockptr = 1;
-}
-
-unlock :: macro(lockptr) {
-    printf("unlock\n");
-    @$lockptr = 0;
-}
-
-scoped_lock :: macro(lockptr) {
-    lock!($lockptr);
-    defer { unlock!($lockptr); }
-}
-
 [[ program_entry ]]
 main :: proc() {
     defer { exit(0); }
-
-    scoped_lock!(*the_lock);
-
-    printf("doing work with the lock\n");
+    loop i := 1; i <= 40; i += 1 {
+        printf("{}", i % 10);
+    }
+    printf("\n");
+    my_width := -20;
+    printf("{=*}|\n", my_width, "hello, world!");
 }

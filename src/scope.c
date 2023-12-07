@@ -102,6 +102,7 @@ void init_scopes(void) {
     insert_builtin_macro("require");
     insert_builtin_macro("static_if");
     insert_builtin_macro("vargs");
+    insert_builtin_macro("code_to_string");
 }
 
 scope_t *create_scope(scope_t *parent, int kind, ast_t *node) {

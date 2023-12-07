@@ -55,3 +55,6 @@ build/
 tests/bin
 .yedrc
 /*.c
+.cache
+compile_commands.json
+tags

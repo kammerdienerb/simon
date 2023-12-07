@@ -732,7 +732,7 @@ static ast_t *parse_macro_call(parse_context_t *cxt, int expected_kind) {
     ASSERT(OPTIONAL_IDENT(cxt, &((ast_ident_t*)ident)->str_rep), "parse_macro_call_begin must be wrong");
     ident->loc.end = GET_END_POINT(cxt);
 
-    result->ident = (ast_ident_t*)ident;
+    result->ident = ident;
 
     ASSERT(OPTIONAL_CHAR(cxt, '!'), "parse_macro_call_begin must be wrong");
 
@@ -756,7 +756,9 @@ static ast_t *parse_macro_call(parse_context_t *cxt, int expected_kind) {
         return NULL;
     }
 
-    array_push(cxt->macro_calls, result);
+    if (!cxt->in_macro_def) {
+        array_push(cxt->macro_calls, result);
+    }
 
     return ASTP(result);
 }
@@ -918,7 +920,7 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
             report_loc_err(GET_BEG_POINT(cxt), "expected valid expression after opening '('");
             return NULL;
         }
-        result->flags |= AST_FLAG_PAREN_EXPR;
+/*         result->flags |= AST_FLAG_PAREN_EXPR; */
         EXPECT_CHAR(cxt, ')', "expected closing ')'");
     } else if (OPTIONAL_CHAR(cxt, '%')) {
         EXPECT_IDENT(cxt, &str_rep, "expected valid identifier after '%%', which indicates the declaration of a polymorphic parameter");
@@ -1003,13 +1005,6 @@ static ast_t * parse_operand(parse_context_t *cxt) {
     ASTP(unary)->loc.end = unary->child->loc.end;
 
     if (op == OP_SLICE) {
-        if (OPTIONAL_CHAR(cxt, ',')) {
-            unary->slice_size_expr = parse_expr(cxt);
-            if (unary->slice_size_expr == NULL) {
-                report_loc_err(GET_BEG_POINT(cxt), "expected valid size expression or closing ']' for slice operator");
-                return NULL;
-            }
-        }
         EXPECT_CHAR(cxt, ']', "expected ']'");
         ASTP(unary)->loc.end = GET_END_POINT(cxt);
     }
@@ -1026,6 +1021,7 @@ static ast_t * parse_expr_more(parse_context_t *cxt, ast_t *left, int min_prec) 
     ast_t          *result;
     ast_t          *right;
     int             op;
+    src_point_t     op_loc;
     int             split;
     src_point_t     split_end;
     int             op_prec;
@@ -1048,6 +1044,8 @@ static ast_t * parse_expr_more(parse_context_t *cxt, ast_t *left, int min_prec) 
         ** advance to next token
         ** rhs := parse_primary()
         */
+
+        op_loc = GET_BEG_POINT(cxt);
 
         split = 0;
 
@@ -1120,6 +1118,7 @@ static ast_t * parse_expr_more(parse_context_t *cxt, ast_t *left, int min_prec) 
 
         bin_result                = (ast_bin_expr_t*)result;
         bin_result->op            = op;
+        bin_result->op_loc        = op_loc;
         bin_result->left          = left;
         bin_result->right         = right;
         ASTP(bin_result)->kind    = AST_BIN_EXPR;
@@ -1434,7 +1433,7 @@ static ast_t * _parse_block(parse_context_t *cxt, int do_scope) {
     }
     result->scope = SCOPE(cxt);
 
-    while (!OPTIONAL_CHAR(cxt, '}')) {
+    while (!OPTIONAL_NO_EAT_CHAR(cxt, '}')) {
         stmt = parse_stmt(cxt);
         if (stmt == NULL) {
             report_loc_err(GET_BEG_POINT(cxt), "expected valid statement");
@@ -1442,6 +1441,8 @@ static ast_t * _parse_block(parse_context_t *cxt, int do_scope) {
         }
         array_push(result->stmts, stmt);
     }
+    result->end_brace_loc = GET_BEG_POINT(cxt);
+    ASSERT(OPTIONAL_CHAR(cxt, '}'), "eat");
 
     if (do_scope) {
         SCOPE_POP(cxt);

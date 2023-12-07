@@ -96,7 +96,7 @@ static void print_breadcrumbs(void) {
                 report_range_info_no_context_no_exit(&loc, "macro '%s', defined here:", get_string(name));
                 seen_macro = 1;
             } else {
-                report_range_info_no_exit(&it->node->loc, "during expanion of macro '%s':", get_string(name));
+                report_range_info_no_context_no_exit(&it->node->loc, "during expanion of macro '%s':", get_string(name));
             }
         }
     }

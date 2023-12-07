@@ -23,6 +23,7 @@ void do_backend(void);
 
 int main(int argc, char **argv) {
     u64 start_us;
+    u64 elapsed_us;
 
     start_us = measure_time_now_us();
 
@@ -48,19 +49,21 @@ int main(int argc, char **argv) {
 
     do_check();
 
-    do_backend();
-
-    verb_message("total time: %lu us\n", measure_time_now_us() - start_us);
-
     if (options.verbose) {
         report_type_stats();
     }
+
+    do_backend();
+
+    elapsed_us = measure_time_now_us() - start_us;
+    verb_message("Total time: %lu us (%lu lines/s)\n", elapsed_us, (u64)(((double)n_lines) / (((double)elapsed_us) / 1000000.0)));
+    verb_message("Compilation succeeded.\n");
 
     return 0;
 }
 
 void do_sanity_checks(void) {
-    ASSERT(sizeof(ast_ident_t) <= sizeof(ast_bin_expr_t), "ident doesn't fit into bin_expr");
+    ASSERT(sizeof(ast_ident_t) == sizeof(ast_bin_expr_t), "ident doesn't fit into bin_expr");
 
     ASSERT(offsetof(ast_module_t, scope) == offsetof(ast_scoped_t, scope), "scope misalign");
     ASSERT(offsetof(ast_proc_t,   scope) == offsetof(ast_scoped_t, scope), "scope misalign");
@@ -113,7 +116,7 @@ void do_init(void) {
     all_procs   = array_make(ast_decl_t*);
     all_vars    = array_make(ast_decl_t*);
 
-    verb_message("init took %lu us\n", measure_time_now_us() - start_us);
+    verb_message("Initialization took %lu us.\n", measure_time_now_us() - start_us);
 }
 
 void do_parse(void) {
@@ -123,7 +126,7 @@ void do_parse(void) {
     ast_macro_call_t **macro_it;
     int                n_files;
 
-    verb_message("parsing...\n");
+    verb_message("Parsing...\n");
 
     start_us = measure_time_now_us();
 
@@ -138,20 +141,19 @@ void do_parse(void) {
         wait_for_parsing_async();
     }
 
-    expanding_macros = 1;
+    macro_expand_stack = array_make(ast_t*);
     array_traverse(macro_calls, macro_it) {
         expand_macro(*macro_it);
     }
-    expanding_macros = 0;
 
     parse_time = measure_time_now_us() - start_us;
 
     n_files = num_ifiles();
 
-    verb_message("parsed       %d file%s\n", n_files, n_files > 1 ? "s" : "");
-    verb_message("total lines: %lu\n", n_lines);
-    verb_message("parsing took %lu us\n", parse_time);
-    verb_message("parse speed: %lu lines/s\n", (u64)(((double)n_lines) / (((double)parse_time) / 1000000.0)));
+    verb_message("Parsed       %d file%s.\n", n_files, n_files > 1 ? "s" : "");
+    verb_message("Total lines: %lu\n", n_lines);
+    verb_message("Parsing took %lu us.\n", parse_time);
+    verb_message("Parse speed: %lu lines/s\n", (u64)(((double)n_lines) / (((double)parse_time) / 1000000.0)));
 }
 
 void do_check(void) {
@@ -161,7 +163,7 @@ void do_check(void) {
 
     check_all();
 
-    verb_message("type-checking and semantic analysis took %lu us\n", measure_time_now_us() - start_us);
+    verb_message("Type-checking and semantic analysis took %lu us.\n", measure_time_now_us() - start_us);
 }
 
 void do_backend(void) {
@@ -190,5 +192,5 @@ void do_backend(void) {
 
     fclose(output_file);
 
-    verb_message("backend took %lu us\n", measure_time_now_us() - start_us);
+    verb_message("Backend took %lu us.\n", measure_time_now_us() - start_us);
 }

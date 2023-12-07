@@ -29,6 +29,7 @@
     X(TY_F32)                  \
     X(TY_F64)                  \
     X(TY_PTR)                  \
+    X(TY_ARRAY)                \
     X(TY_SLICE)                \
     X(TY_GENERIC_POSITIVE_INT) \
     X(TY_GENERIC_NEGATIVE_INT) \
@@ -47,16 +48,20 @@
     || (_t) == TY_GENERIC_NEGATIVE_INT \
     || (_t) == TY_GENERIC_FLOAT)
 
-#define INT_TYPE_IS_SIGNED(_t)         \
-       ((_t) == TY_S64                 \
-    ||  (_t) == TY_S32                 \
-    ||  (_t) == TY_S16                 \
-    ||  (_t) == TY_S8)
+#define INT_TYPE_IS_SIGNED(_t)           \
+       ((_t) == TY_S64                   \
+    ||  (_t) == TY_S32                   \
+    ||  (_t) == TY_S16                   \
+    ||  (_t) == TY_S8                    \
+    ||  (_t) == TY_GENERIC_NEGATIVE_INT)
 
 #define TKINDPAIR_INT_INT ((((u64)TY_GENERIC_INT)   << 32ULL) + TY_GENERIC_INT)
 #define TKINDPAIR_FLT_FLT ((((u64)TY_GENERIC_FLOAT) << 32ULL) + TY_GENERIC_FLOAT)
 #define TKINDPAIR_FLT_INT ((((u64)TY_GENERIC_FLOAT) << 32ULL) + TY_GENERIC_INT)
+#define TKINDPAIR_PTR_PTR ((((u64)TY_PTR)           << 32ULL) + TY_PTR)
 #define TKINDPAIR_PTR_INT ((((u64)TY_PTR)           << 32ULL) + TY_GENERIC_INT)
+#define TKINDPAIR_TYP_TYP ((((u64)TY_TYPE)          << 32ULL) + TY_TYPE)
+#define TKINDPAIR_MOD_MOD ((((u64)TY_MODULE)        << 32ULL) + TY_MODULE)
 
 #define TY_INT_PTR (TY_U64)
 
@@ -76,6 +81,7 @@ enum {
 
 #define X_HAVE_UNDER_TYPES     \
     X(TY_PTR)                  \
+    X(TY_ARRAY)                \
     X(TY_SLICE)                \
     X(TY_VARGS)
 
@@ -122,10 +128,10 @@ typedef struct type {
         u32 mono_constants_idx;
     };
     union {
-        /* Generic types with underlying types (like pointers or arrays) */
+        /* Generic types with underlying types (like pointers, arrays, or slices) */
         struct {
             u32 under_id;
-            u32 _pad;
+            u32 array_length;
         };
         /* Struct type */
         ast_decl_t *decl;
@@ -154,9 +160,11 @@ int type_kind_is_float(u32 kind);
 int type_kind_is_numeric(u32 kind);
 int type_kind(u32 ty);
 u32 get_ptr_type(u32 ty);
+u32 get_array_type(u32 ty, u32 len);
 u32 get_slice_type(u32 ty);
 u32 get_vargs_type(u32 ty);
 u32 get_under_type(u32 ty);
+u32 get_array_length(u32 ty);
 u32 get_struct_type(ast_decl_t *st);
 u32 get_struct_mono_type(ast_decl_t *st, u32 constants_idx);
 u32 get_struct_field_type(u32 ty, string_id field_name);

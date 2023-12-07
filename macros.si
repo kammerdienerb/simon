@@ -1,0 +1,25 @@
+the_lock: u32;
+
+lock :: macro(lockptr) {
+    printf("lock\n");
+    @$lockptr = 1;
+}
+
+unlock :: macro(lockptr) {
+    printf("unlock\n");
+    @$lockptr = 0;
+}
+
+scoped_lock :: macro(lockptr) {
+    lock!($lockptr);
+    defer { unlock!($lockptr); }
+}
+
+[[ program_entry ]]
+main :: proc() {
+    defer { exit(0); }
+
+    scoped_lock!(*the_lock);
+
+    printf("doing work with the lock\n");
+}

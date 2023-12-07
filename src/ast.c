@@ -49,13 +49,12 @@ static inline ast_t *get_arg(ast_arg_list_t *arg_list, int idx) {
 
 #define CPY_WHOLE(dst, src) (memcpy((void*)(dst), (void*)(src), sizeof(__typeof(*(dst)))))
 
-#define ALLOC_CPY(dst, src)                 \
-do {                                        \
-    dst = AST_ALLOC(__typeof(*dst));        \
-    CPY_WHOLE(dst, src);                    \
-    ASTP(dst)->flags   |= AST_FLAG_IS_COPY; \
-    ASTP(dst)->type     = TY_UNKNOWN;       \
-    ASTP(dst)->value.a  = NULL;             \
+#define ALLOC_CPY(dst, src)           \
+do {                                  \
+    dst = AST_ALLOC(__typeof(*dst));  \
+    CPY_WHOLE(dst, src);              \
+    ASTP(dst)->type     = TY_UNKNOWN; \
+    ASTP(dst)->value.a  = NULL;       \
 } while (0)
 
 #define CPY_FIELD(dst, src, nm, scp) ((dst)->nm = _copy_tree(((__typeof(dst))(src))->nm, (scp), collect_macro_expand_args));
@@ -222,8 +221,7 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
         case AST_UNARY_EXPR: {
             ast_unary_expr_t *expr; ALLOC_CPY(expr, node);
 
-            CPY_FIELD(expr, node, child,           insert_scope);
-            CPY_FIELD(expr, node, slice_size_expr, insert_scope);
+            CPY_FIELD(expr, node, child, insert_scope);
 
             return ASTP(expr);
         }
@@ -315,13 +313,15 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
 
             return ASTP(vargs_block);
         }
-        case AST_MACRO_CALL:
-            if (expanding_macros) {
-                report_range_err(&node->loc, "encountered a recursive macro situation");
-            } else {
-                goto unhandled;
-            }
-            break;
+        case AST_MACRO_CALL: {
+            ast_macro_call_t *macro_call; ALLOC_CPY(macro_call, node);
+
+            CPY_FIELD(macro_call, node, ident,    insert_scope);
+            CPY_FIELD(macro_call, node, arg_list, insert_scope);
+            CPY_FIELD(macro_call, node, block,    insert_scope);
+
+            return ASTP(macro_call);
+        }
         default:
         unhandled:;
     }
@@ -340,6 +340,122 @@ static ast_t *copy_tree(ast_t *node, scope_t *insert_scope) {
 
 static ast_t *copy_tree_collect_macro_expand_args(ast_t *node, scope_t *insert_scope, array_t *collect_macro_expand_args) {
     return _copy_tree(node, insert_scope, collect_macro_expand_args);
+}
+
+static void collect_macro_calls(ast_t *node, array_t *collect) {
+    ast_t **it;
+    arg_t  *arg_it;
+
+    if (node == NULL) { return; }
+
+    switch (node->kind) {
+#define X(_kind) case _kind:
+        X_AST_DECLARATIONS
+#undef X
+            collect_macro_calls(((ast_decl_t*)node)->type_expr, collect);
+            collect_macro_calls(((ast_decl_t*)node)->val_expr, collect);
+            break;
+
+        case AST_MODULE:
+            array_traverse(((ast_module_t*)node)->children, it) {
+                collect_macro_calls(*it, collect);
+            }
+            break;
+
+        case AST_PROC:
+            array_traverse(((ast_proc_t*)node)->params, it) {
+                collect_macro_calls(*it, collect);
+            }
+            collect_macro_calls(((ast_proc_t*)node)->ret_type_expr, collect);
+            collect_macro_calls(((ast_proc_t*)node)->block, collect);
+            break;
+
+        case AST_STRUCT:
+            array_traverse(((ast_struct_t*)node)->params, it) {
+                collect_macro_calls(*it, collect);
+            }
+            array_traverse(((ast_struct_t*)node)->fields, it) {
+                collect_macro_calls(*it, collect);
+            }
+            array_traverse(((ast_struct_t*)node)->children, it) {
+                collect_macro_calls(*it, collect);
+            }
+            break;
+
+        case AST_MACRO: goto unhandled;
+
+        case AST_PARAM:
+            collect_macro_calls(((ast_param_t*)node)->type_expr, collect);
+            collect_macro_calls(((ast_param_t*)node)->val, collect);
+            break;
+
+        case AST_INT:    break;
+        case AST_FLOAT:  break;
+        case AST_STRING: break;
+        case AST_CHAR:   break;
+        case AST_IDENT:  break;
+
+        case AST_UNARY_EXPR:
+            collect_macro_calls(((ast_unary_expr_t*)node)->child, collect);
+            break;
+
+        case AST_BIN_EXPR:
+            collect_macro_calls(((ast_bin_expr_t*)node)->left, collect);
+            collect_macro_calls(((ast_bin_expr_t*)node)->right, collect);
+            break;
+
+        case AST_BLOCK:
+            array_traverse(((ast_block_t*)node)->stmts, it) {
+                collect_macro_calls(*it, collect);
+            }
+            break;
+
+        case AST_ARG_LIST:
+            array_traverse(((ast_arg_list_t*)node)->args, arg_it) {
+                collect_macro_calls(arg_it->expr, collect);
+            }
+            break;
+
+        case AST_IF:
+            collect_macro_calls(((ast_if_t*)node)->expr,       collect);
+            collect_macro_calls(((ast_if_t*)node)->then_block, collect);
+            collect_macro_calls(((ast_if_t*)node)->els,        collect);
+            break;
+
+        case AST_LOOP:
+            collect_macro_calls(((ast_loop_t*)node)->init,  collect);
+            collect_macro_calls(((ast_loop_t*)node)->cond,  collect);
+            collect_macro_calls(((ast_loop_t*)node)->post,  collect);
+            collect_macro_calls(((ast_loop_t*)node)->block, collect);
+            break;
+
+        case AST_RETURN:
+            collect_macro_calls(((ast_return_t*)node)->expr, collect);
+            break;
+
+        case AST_DEFER:
+            collect_macro_calls(((ast_defer_t*)node)->block, collect);
+            break;
+
+        case AST_BREAK:    break;
+        case AST_CONTINUE: break;
+
+        case AST_COMPILE_ERROR: break;
+
+        case AST_VARGS_BLOCK:
+            collect_macro_calls(((ast_vargs_block_t*)node)->block, collect);
+            break;
+
+        case AST_MACRO_CALL:
+            array_push(*collect, node);
+            break;
+        default:
+        unhandled:;
+#ifdef SIMON_DO_ASSERTIONS
+            report_range_err_no_exit(&node->loc, "INTERNAL ERROR: AST_%s unhandled in collect_macro_calls()", ast_get_kind_str(node->kind));
+            ASSERT(0, "unhandled AST node kind in collect_macro_calls()");
+#endif
+    }
 }
 
 static void push_breadcrumb_for_poly_constants(src_range_t *range, string_id decl_name_id, array_t *constants) {
@@ -470,9 +586,47 @@ static void expand_vargs_macro(ast_macro_call_t *call) {
     REPLACE_NODE(ASTP(call), ASTP(&vargs_block));
 }
 
+static void expand_code_to_string_macro(ast_macro_call_t *call) {
+    ast_arg_list_t *arg_list;
+    ast_t          *arg;
+    u64             len;
+    char           *buff;
+    string_id       id;
+    ast_string_t    string;
+
+    arg_list = (ast_arg_list_t*)call->arg_list;
+    if (num_args(arg_list) <= 0) {
+        report_range_err(&ASTP(arg_list)->loc, "built in macro 'code_to_string' requires at least one argument");
+        return;
+    }
+
+    arg = get_arg(arg_list, 0);
+    validate_range(&arg->loc);
+    len = arg->loc.end.buff_ptr - arg->loc.beg.buff_ptr;
+
+    buff = mem_alloc(1 + 2 + len);
+    buff[0] = '"';
+    memcpy(buff + 1, arg->loc.beg.buff_ptr, len);
+    buff[1 + len] = '"';
+    buff[2 + len] = 0;
+    id = get_string_id_n(buff, 2 + len);
+    mem_free(buff);
+
+    memset(&string, 0, sizeof(string));
+    ASTP(&string)->kind    = AST_STRING;
+    ASTP(&string)->flags   = ASTP(call)->flags | AST_FLAG_CONSTANT;
+    ASTP(&string)->type    = TY_U8;
+    ASTP(&string)->value.s = id;
+    ASTP(&string)->loc     = ASTP(call)->loc;
+    string.str_rep         = id;
+
+    REPLACE_NODE(ASTP(call), ASTP(&string));
+}
+
 static void check_ident(check_context_t cxt, ast_ident_t *ident);
 
 void expand_macro(ast_macro_call_t *call) {
+    ast_ident_t     *ident;
     check_context_t  cxt;
     ast_arg_list_t  *arg_list;
     src_range_t      call_loc;
@@ -490,24 +644,31 @@ void expand_macro(ast_macro_call_t *call) {
     src_range_t      expand_arg_loc;
     u32              idx;
     string_id       *param_name_it;
+    array_t          macro_calls;
     const char      *err_str;
 
-    if (call->ident->str_rep == COMPILE_ERROR_ID) {
+    ident = (ast_ident_t*)call->ident;
+
+    if (ident->str_rep == COMPILE_ERROR_ID) {
         expand_compile_error_macro(call);
         return;
-    } else if (call->ident->str_rep == VARGS_ID) {
+    } else if (ident->str_rep == VARGS_ID) {
         expand_vargs_macro(call);
+        return;
+    } else if (ident->str_rep == CODE_TO_STRING_ID) {
+        expand_code_to_string_macro(call);
         return;
     }
 
     /* I'm not sure if this is the right time/way to do this... */
     memset(&cxt, 0, sizeof(cxt));
     cxt.scope = call->scope;
-    check_ident(cxt, call->ident);
+    check_ident(cxt, ident);
 
     arg_list   = (ast_arg_list_t*)call->arg_list;
     call_loc   = ASTP(call)->loc;
-    found_node = call->ident->resolved_node;
+    found_node = ident->resolved_node;
+
 
     ASSERT(ast_kind_is_decl(found_node->kind) || found_node->kind == AST_PARAM, "ident does not resolve to a declaration");
 
@@ -525,6 +686,14 @@ void expand_macro(ast_macro_call_t *call) {
 
     ASTP(call)->macro_decl = found_node;
     push_macro_breadcrumb(ASTP(call));
+
+    array_traverse(macro_expand_stack, it) {
+        if (*it == found_node) {
+            report_range_err(&call_loc, "encountered a recursive macro situation");
+        }
+    }
+
+    array_push(macro_expand_stack, found_node);
 
     macro = (ast_macro_t*)((ast_decl_t*)found_node)->val_expr;
 
@@ -613,6 +782,16 @@ found:;
                 ASSERT(0, "bad node kind for macro expand arg");
         }
     }
+
+    macro_calls = array_make(ast_t*);
+
+    collect_macro_calls(new_node, &macro_calls);
+
+    array_traverse(macro_calls, it) {
+        expand_macro((ast_macro_call_t*)*it);
+    }
+
+    array_free(macro_calls);
 
     pop_breadcrumb();
 
@@ -728,6 +907,8 @@ install:;
     pop_breadcrumb();
 
     array_free(macro_expand_args);
+
+    array_pop(macro_expand_stack);
 }
 
 void check_all(void) {
@@ -1475,6 +1656,25 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
 
     ASTP(decl)->type = decl_t;
 
+    if (!(ASTP(decl)->flags & AST_FLAG_CONSTANT)) {
+        switch (decl_t) {
+            case TY_MODULE:
+            case TY_TYPE:
+            case TY_MACRO:
+                EMBC(ASTP(decl), {
+                    report_range_err_no_exit(&ASTP(decl)->loc,
+                                             "declaration of runtime variable '%s' has type '%s', which is only available at compile time",
+                                             get_string(decl->name), get_string(get_type_string_id(decl_t)));
+                    report_fixit(ASTP(decl)->loc.beg,
+                                 "if you meant for '%s' to be a constant, use this syntax:\a%s ::",
+                                 get_string(decl->name),
+                                 get_string(decl->name));
+                });
+                break;
+            default:;
+        }
+    }
+
     if (do_cycle_check) {
         CYCLE_PATH_POP();
     }
@@ -1512,14 +1712,15 @@ static u32 current_poly_vargs_type(check_context_t cxt) {
 }
 
 static void check_proc(check_context_t cxt, ast_proc_t *proc) {
-    scope_t  *new_scope;
-    u32       n_params;
-    type_t    list_type;
-    u32      *param_types;
-    int       i;
-    ast_t   **it;
-    int       j;
-    u32       ret_type;
+    scope_t      *new_scope;
+    u32           n_params;
+    type_t        list_type;
+    u32          *param_types;
+    int           i;
+    ast_t       **it;
+    int           j;
+    u32           ret_type;
+    src_point_t   pt;
 
     new_scope = proc->scope;
 
@@ -1602,6 +1803,14 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
 
     if (proc->block != NULL) {
         check_node(cxt, proc->block);
+
+        if (ret_type != TY_NOT_TYPED && !(proc->block->flags & AST_FLAG_CF_MUST_RETURN)) {
+            pt = ((ast_block_t*)proc->block)->end_brace_loc;
+            report_loc_err(pt,
+                           "procedure '%s' should return a value of type '%s', but control flow does not guarantee that a value is returned",
+                           get_string(cxt.parent_decl->name),
+                           get_string(get_type_string_id(ret_type)));
+        }
     } else {
         ASSERT(ASTP(proc)->flags & AST_FLAG_IS_EXTERN,
             "proc is not extern, but has no body");
@@ -1680,7 +1889,7 @@ static void check_int(check_context_t cxt, ast_int_t *integer) {
         ASTP(integer)->value.u  = strtoull(s, NULL, 16);
         ASTP(integer)->type     = TY_GENERIC_POSITIVE_INT;
     } else if (s[0] == '-') {
-        ASTP(integer)->value.u = strtoll(s + 1, NULL, 10);
+        ASTP(integer)->value.s = -strtoll(s + 1, NULL, 10);
         ASTP(integer)->type     = TY_GENERIC_NEGATIVE_INT;
     } else {
         ASTP(integer)->value.u = strtoll(s, NULL, 10);
@@ -1817,6 +2026,8 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
     ASSERT(builtin_origin != NULL,              "didn't get builtin_origin");
     ASSERT(builtin_origin->kind == AST_BUILTIN, "builtin_origin is not an AST_BUILTIN");
 
+    expr->call_decl = builtin_origin;
+
     builtin = (ast_builtin_t*)builtin_origin;
 
     ASSERT(expr->right->kind == AST_ARG_LIST, "expr->right is not an AST_ARG_LIST in call");
@@ -1846,8 +2057,7 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
             });
         }
 
-        ASTP(expr)->flags |= AST_FLAG_CALL_IS_CAST;
-        ASTP(expr)->type   = arg_p->expr->value.t;
+        ASTP(expr)->type = arg_p->expr->value.t;
 
         /* @todo -- do real value casting in expr->value */
         arg_p = array_item(arg_list->args, 1);
@@ -1874,8 +2084,7 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
             report_simple_info("expected 0, but got %d", array_len(arg_list->args));
         }
 
-        ASTP(expr)->flags |= AST_FLAG_CALL_IS_BUILTIN_VARG;
-        ASTP(expr)->type   = cxt.varg_ty;
+        ASTP(expr)->type = cxt.varg_ty;
     } else if (builtin->name == _BUILTIN_SLICE_FROM_ID) {
 
 
@@ -1903,13 +2112,13 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
 
         arg_p = array_item(arg_list->args, 1);
         if (TYPE_IS_GENERIC(arg_p->expr->type)) {
-            realize_generic(TY_U64, arg_p->expr);
+            realize_generic(TY_S64, arg_p->expr);
         }
-        if (arg_p->expr->type != TY_U64) {
+        if (arg_p->expr->type != TY_S64) {
             EMBC(arg_p->expr, {
                 report_range_err_no_exit(&arg_p->expr->loc,
-                                         "second argument of _builtin_slice_from must be of type u64");
-                report_simple_info("expected u64, but got %s",
+                                         "second argument of _builtin_slice_from must be of type s64");
+                report_simple_info("expected s64, but got %s",
                                    get_string(get_type_string_id(arg_p->expr->type)));
             });
         }
@@ -1917,7 +2126,6 @@ static void check_builtin_special_call(check_context_t cxt, ast_bin_expr_t *expr
 
         arg_p = array_item(arg_list->args, 0);
 
-        ASTP(expr)->flags |= AST_FLAG_CALL_IS_BUILTIN_SLICE_FROM;
         ASTP(expr)->flags &= ~AST_FLAG_CONSTANT;
         ASTP(expr)->type   = get_slice_type(get_under_type(arg_p->expr->type));
     } else {
@@ -1973,6 +2181,7 @@ static void solve_poly_type_expr(array_t *constants, ast_t *type_expr, poly_arg_
 
             switch (type_kind(pt)) {
                 case TY_PTR:
+                case TY_SLICE:
                     texpr = ((ast_unary_expr_t*)texpr)->child;
                     at    = get_under_type(at);
                     break;
@@ -2115,7 +2324,12 @@ static void extract_polymorph_constants_from_arg(array_t *constants, int i, ast_
         arg = args + i;
 
         if (TYPE_IS_GENERIC(arg->type)) {
-            force_generic_realization(arg->node);
+            if (!type_is_poly(ASTP(param)->type)
+            &&  type_kind_is_int(type_kind(ASTP(param)->type))) {
+                realize_generic(ASTP(param)->type, arg->node);
+            } else {
+                force_generic_realization(arg->node);
+            }
             arg->type = arg->node->type;
         }
 
@@ -2244,8 +2458,6 @@ static u32 get_monomorph_type(check_context_t cxt, ast_t *node, array_t *monomor
     ast_t                **node_it;
     int                    i;
     poly_backlog_entry_t   backlog_entry;
-
-/*     ASSERT(!(node->flags & AST_FLAG_IS_COPY), "polymorph should not be a copy"); */
 
     kind             = node->kind;
     params_loc       = kind == AST_PROC ? ((ast_proc_t*)node)->params_loc : ((ast_struct_t*)node)->params_loc;
@@ -2483,8 +2695,11 @@ static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
     proc        = NULL;
     if (left_ident != NULL) {
         proc_origin = try_get_decl_and_path(left_ident, &path);
-        if (proc_origin != NULL && proc_origin->kind == AST_DECL_PROC) {
-            proc = (ast_proc_t*)((ast_decl_t*)proc_origin)->val_expr;
+        if (proc_origin != NULL) {
+            expr->call_decl = proc_origin;
+            if (proc_origin->kind == AST_DECL_PROC) {
+                proc = (ast_proc_t*)((ast_decl_t*)proc_origin)->val_expr;
+            }
         }
     }
 
@@ -2893,6 +3108,12 @@ static void check_ident(check_context_t cxt, ast_ident_t *ident) {
     }
 
     ASSERT(ident->resolved_node != NULL, "did not resolve ident?");
+
+    if ((ident->resolved_node->kind == AST_DECL_VAR || ident->resolved_node->kind == AST_PARAM)
+    &&  !(ident->resolved_node->flags & (AST_FLAG_POLYMORPH | AST_FLAG_CONSTANT))) {
+
+        ASTP(ident)->flags |= AST_FLAG_EXPR_CAN_BE_LVAL;
+    }
 }
 
 static void check_proc_type(check_context_t cxt, ast_proc_type_t *proc_type) {
@@ -3022,6 +3243,7 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
     cxt.scope  = search_scope;
     cxt.flags &= ~CHECK_FLAG_MONOMORPH;
 
+    memset(&new_ident, 0, sizeof(new_ident));
     ASTP(&new_ident)->kind  = AST_IDENT;
     ASTP(&new_ident)->flags = ASTP(expr)->flags;
     ASTP(&new_ident)->type  = found_node->type;
@@ -3101,6 +3323,8 @@ static void check_dot(check_context_t cxt, ast_bin_expr_t *expr) {
 
             if (st->bitfield_struct_bits) { ASTP(expr)->flags |= AST_FLAG_BITFIELD_DOT; }
 
+            ASTP(expr)->flags |= (expr->left->flags & AST_FLAG_EXPR_CAN_BE_LVAL);
+
             break;
         case TY_PTR:
             st_ty = get_under_type(expr->left->type);
@@ -3122,6 +3346,9 @@ static void check_dot(check_context_t cxt, ast_bin_expr_t *expr) {
                 return;
             }
             ASTP(expr)->type = field_ty;
+
+            ASTP(expr)->flags |= AST_FLAG_EXPR_CAN_BE_LVAL;
+
             break;
         does_not_apply:;
         default:
@@ -3168,6 +3395,8 @@ static void check_add(check_context_t cxt, ast_bin_expr_t *expr) {
     tk1 = type_kind(t1);
     tk2 = type_kind(t2);
 
+    ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
+
     /*
     ** tk_both is the combo of tk1 and tk2 in sorted order so that we can do the
     ** below checks without considering right/left.
@@ -3181,14 +3410,29 @@ static void check_add(check_context_t cxt, ast_bin_expr_t *expr) {
             /* @todo check for width incompat */
             /* @todo How to handle this case? Do we promote the type? */
             ASTP(expr)->type = t1;
+
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                if (INT_TYPE_IS_SIGNED(ASTP(expr)->type)) {
+                    ASTP(expr)->value.i = expr->left->value.i + expr->right->value.i;
+                } else {
+                    ASTP(expr)->value.u = expr->left->value.u + expr->right->value.u;
+                }
+            }
+
             break;
         case TKINDPAIR_FLT_FLT:
             /* @todo check for width incompat */
             /* @todo How to handle this case? Do we promote the type? */
             ASTP(expr)->type = t1;
+
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                ASTP(expr)->value.f = expr->left->value.f + expr->right->value.f;
+            }
+
             break;
         case TKINDPAIR_PTR_INT:
-            ASTP(expr)->type = (tk1 == TY_PTR ? t1 : t2);
+            ASTP(expr)->type   = (tk1 == TY_PTR ? t1 : t2);
+            ASTP(expr)->flags &= ~AST_FLAG_CONSTANT;
             break;
         default:
             binop_bad_type_error(expr);
@@ -3208,6 +3452,8 @@ static void check_sub(check_context_t cxt, ast_bin_expr_t *expr) {
     tk1 = type_kind(t1);
     tk2 = type_kind(t2);
 
+    ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
+
     /*
     ** tk_both is the combo of tk1 and tk2 in sorted order so that we can do the
     ** below checks without considering right/left.
@@ -3221,23 +3467,33 @@ static void check_sub(check_context_t cxt, ast_bin_expr_t *expr) {
             /* @todo check for width incompat */
             /* @todo How to handle this case? Do we promote the type? */
             ASTP(expr)->type = t1;
+
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                if (INT_TYPE_IS_SIGNED(ASTP(expr)->type)) {
+                    ASTP(expr)->value.i = expr->left->value.i - expr->right->value.i;
+                } else {
+                    ASTP(expr)->value.u = expr->left->value.u - expr->right->value.u;
+                }
+            }
+
             break;
         case TKINDPAIR_FLT_FLT:
             /* @todo check for width incompat */
             /* @todo How to handle this case? Do we promote the type? */
             ASTP(expr)->type = t1;
+
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                ASTP(expr)->value.f = expr->left->value.f - expr->right->value.f;
+            }
+
             break;
         case TKINDPAIR_PTR_INT:
-            ASTP(expr)->type = (tk1 == TY_PTR ? t1 : t2);
+            ASTP(expr)->type   = (tk1 == TY_PTR ? t1 : t2);
+            ASTP(expr)->flags &= ~AST_FLAG_CONSTANT;
             break;
         default:
             binop_bad_type_error(expr);
             break;
-    }
-
-    if (tk1 == TY_GENERIC_INT && tk2 == TY_GENERIC_INT) {
-    } else {
-        return;
     }
 }
 
@@ -3246,23 +3502,51 @@ static void check_mul(check_context_t cxt, ast_bin_expr_t *expr) {
     u32 t2;
     u32 tk1;
     u32 tk2;
+    u64 tk_both;
 
     t1  = expr->left->type;
     t2  = expr->right->type;
     tk1 = type_kind(t1);
     tk2 = type_kind(t2);
 
-    if (!(
-           (tk1 == TY_GENERIC_INT   && tk2 == TY_GENERIC_INT)
-        || (tk1 == TY_GENERIC_FLOAT && tk2 == TY_GENERIC_FLOAT))) {
+    ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
 
-        binop_bad_type_error(expr);
-        return;
+    /*
+    ** tk_both is the combo of tk1 and tk2 in sorted order so that we can do the
+    ** below checks without considering right/left.
+    */
+    tk_both = tk1 < tk2
+                ? (((u64)tk1) << 32ULL) + tk2
+                : (((u64)tk2) << 32ULL) + tk1;
+
+    switch (tk_both) {
+        case TKINDPAIR_INT_INT:
+            /* @todo check for width incompat */
+            /* @todo How to handle this case? Do we promote the type? */
+            ASTP(expr)->type = t1;
+
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                if (INT_TYPE_IS_SIGNED(ASTP(expr)->type)) {
+                    ASTP(expr)->value.i = expr->left->value.i * expr->right->value.i;
+                } else {
+                    ASTP(expr)->value.u = expr->left->value.u * expr->right->value.u;
+                }
+            }
+            break;
+        case TKINDPAIR_FLT_FLT:
+            /* @todo check for width incompat */
+            /* @todo How to handle this case? Do we promote the type? */
+            ASTP(expr)->type = t1;
+
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                ASTP(expr)->value.f = expr->left->value.f * expr->right->value.f;
+            }
+
+            break;
+        default:
+            binop_bad_type_error(expr);
+            break;
     }
-
-    /* @todo check for width incompat */
-    /* @todo How to handle this case? Do we promote the type? */
-    ASTP(expr)->type = t1;
 }
 
 static void check_div(check_context_t cxt, ast_bin_expr_t *expr) {
@@ -3270,23 +3554,58 @@ static void check_div(check_context_t cxt, ast_bin_expr_t *expr) {
     u32 t2;
     u32 tk1;
     u32 tk2;
+    u64 tk_both;
 
     t1  = expr->left->type;
     t2  = expr->right->type;
     tk1 = type_kind(t1);
     tk2 = type_kind(t2);
 
-    if (!(
-           (tk1 == TY_GENERIC_INT   && tk2 == TY_GENERIC_INT)
-        || (tk1 == TY_GENERIC_FLOAT && tk2 == TY_GENERIC_FLOAT))) {
+    ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
 
-        binop_bad_type_error(expr);
-        return;
+    /*
+    ** tk_both is the combo of tk1 and tk2 in sorted order so that we can do the
+    ** below checks without considering right/left.
+    */
+    tk_both = tk1 < tk2
+                ? (((u64)tk1) << 32ULL) + tk2
+                : (((u64)tk2) << 32ULL) + tk1;
+
+    switch (tk_both) {
+        case TKINDPAIR_INT_INT:
+            /* @todo check for width incompat */
+            /* @todo How to handle this case? Do we promote the type? */
+            ASTP(expr)->type = t1;
+
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                if (expr->left->value.u == 0) {
+                    EMBC(expr->right, {
+                        report_range_err_no_exit(&ASTP(expr)->loc, "division by zero in a constant expression");
+                        report_range_info(&expr->right->loc, "expression evaluates to zero");
+                    });
+                }
+
+                if (INT_TYPE_IS_SIGNED(ASTP(expr)->type)) {
+                    ASTP(expr)->value.i = expr->left->value.i / expr->right->value.i;
+                } else {
+                    ASTP(expr)->value.u = expr->left->value.u / expr->right->value.u;
+                }
+            }
+            break;
+        case TKINDPAIR_FLT_FLT:
+            /* @todo check for width incompat */
+            /* @todo How to handle this case? Do we promote the type? */
+            ASTP(expr)->type = t1;
+
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                ASTP(expr)->value.f = expr->left->value.f / expr->right->value.f;
+            }
+
+            break;
+        default:
+            binop_bad_type_error(expr);
+            break;
     }
-
-    /* @todo check for width incompat */
-    /* @todo How to handle this case? Do we promote the type? */
-    ASTP(expr)->type = t1;
 }
 
 static void check_mod(check_context_t cxt, ast_bin_expr_t *expr) {
@@ -3294,21 +3613,48 @@ static void check_mod(check_context_t cxt, ast_bin_expr_t *expr) {
     u32 t2;
     u32 tk1;
     u32 tk2;
+    u64 tk_both;
 
     t1  = expr->left->type;
     t2  = expr->right->type;
     tk1 = type_kind(t1);
     tk2 = type_kind(t2);
 
-    if (!((tk1 == TY_GENERIC_INT && tk2 == TY_GENERIC_INT))) {
+    ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
 
-        binop_bad_type_error(expr);
-        return;
+    /*
+    ** tk_both is the combo of tk1 and tk2 in sorted order so that we can do the
+    ** below checks without considering right/left.
+    */
+    tk_both = tk1 < tk2
+                ? (((u64)tk1) << 32ULL) + tk2
+                : (((u64)tk2) << 32ULL) + tk1;
+
+    switch (tk_both) {
+        case TKINDPAIR_INT_INT:
+            /* @todo check for width incompat */
+            /* @todo How to handle this case? Do we promote the type? */
+            ASTP(expr)->type = t1;
+
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                if (expr->left->value.u == 0) {
+                    EMBC(expr->right, {
+                        report_range_err_no_exit(&ASTP(expr)->loc, "modulus by zero in a constant expression");
+                        report_range_info(&expr->right->loc, "expression evaluates to zero");
+                    });
+                }
+
+                if (INT_TYPE_IS_SIGNED(ASTP(expr)->type)) {
+                    ASTP(expr)->value.i = expr->left->value.i % expr->right->value.i;
+                } else {
+                    ASTP(expr)->value.u = expr->left->value.u % expr->right->value.u;
+                }
+            }
+            break;
+        default:
+            binop_bad_type_error(expr);
+            break;
     }
-
-    /* @todo check for width incompat */
-    /* @todo How to handle this case? Do we promote the type? */
-    ASTP(expr)->type = t1;
 }
 
 static void check_cmp(check_context_t cxt, ast_bin_expr_t *expr) {
@@ -3316,17 +3662,95 @@ static void check_cmp(check_context_t cxt, ast_bin_expr_t *expr) {
     u32 t2;
     u32 tk1;
     u32 tk2;
+    u64 tk_both;
 
-    t1  = expr->left->type;
-    t2  = expr->right->type;
+    t1 = expr->left->type;
+    t2 = expr->right->type;
+
+    if (t1 != t2) { goto bad; }
+
     tk1 = type_kind(t1);
     tk2 = type_kind(t2);
 
-    if (!((tk1 == TY_GENERIC_INT && tk2 == TY_GENERIC_INT) || (tk1 == TY_PTR && tk2 == TY_PTR))
-    ||  t1 != t2) {
+    ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
 
-        binop_bad_type_error(expr);
-        return;
+    /*
+    ** tk_both is the combo of tk1 and tk2 in sorted order so that we can do the
+    ** below checks without considering right/left.
+    */
+    tk_both = tk1 < tk2
+                ? (((u64)tk1) << 32ULL) + tk2
+                : (((u64)tk2) << 32ULL) + tk1;
+
+    switch (tk_both) {
+        case TKINDPAIR_PTR_PTR:
+            ASTP(expr)->flags &= ~AST_FLAG_EXPR_CAN_BE_LVAL;
+            break;
+        case TKINDPAIR_INT_INT:
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                if (INT_TYPE_IS_SIGNED(ASTP(expr)->type)) {
+                    switch (expr->op) {
+                        case OP_EQU: ASTP(expr)->value.i = expr->left->value.i == expr->right->value.i; break;
+                        case OP_NEQ: ASTP(expr)->value.i = expr->left->value.i != expr->right->value.i; break;
+                        case OP_LSS: ASTP(expr)->value.i = expr->left->value.i <  expr->right->value.i; break;
+                        case OP_LEQ: ASTP(expr)->value.i = expr->left->value.i <= expr->right->value.i; break;
+                        case OP_GTR: ASTP(expr)->value.i = expr->left->value.i >  expr->right->value.i; break;
+                        case OP_GEQ: ASTP(expr)->value.i = expr->left->value.i >= expr->right->value.i; break;
+                        default: ASSERT(0, "bad op");
+                    }
+                } else {
+                    switch (expr->op) {
+                        case OP_EQU: ASTP(expr)->value.i = expr->left->value.u == expr->right->value.u; break;
+                        case OP_NEQ: ASTP(expr)->value.i = expr->left->value.u != expr->right->value.u; break;
+                        case OP_LSS: ASTP(expr)->value.i = expr->left->value.u <  expr->right->value.u; break;
+                        case OP_LEQ: ASTP(expr)->value.i = expr->left->value.u <= expr->right->value.u; break;
+                        case OP_GTR: ASTP(expr)->value.i = expr->left->value.u >  expr->right->value.u; break;
+                        case OP_GEQ: ASTP(expr)->value.i = expr->left->value.u >= expr->right->value.u; break;
+                        default: ASSERT(0, "bad op");
+                    }
+                }
+            }
+            break;
+        case TKINDPAIR_FLT_FLT:
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                switch (expr->op) {
+                    case OP_EQU: ASTP(expr)->value.i = expr->left->value.f == expr->right->value.f; break;
+                    case OP_NEQ: ASTP(expr)->value.i = expr->left->value.f != expr->right->value.f; break;
+                    case OP_LSS: ASTP(expr)->value.i = expr->left->value.f <  expr->right->value.f; break;
+                    case OP_LEQ: ASTP(expr)->value.i = expr->left->value.f <= expr->right->value.f; break;
+                    case OP_GTR: ASTP(expr)->value.i = expr->left->value.f >  expr->right->value.f; break;
+                    case OP_GEQ: ASTP(expr)->value.i = expr->left->value.f >= expr->right->value.f; break;
+                    default: ASSERT(0, "bad op");
+                }
+            }
+            break;
+        case TKINDPAIR_TYP_TYP:
+            ASSERT(ASTP(expr)->flags & AST_FLAG_CONSTANT, "type comparison should always have constant operands");
+            switch (expr->op) {
+                case OP_EQU:
+                    ASTP(expr)->value.i = expr->left->value.t == expr->right->value.t;
+                    break;
+                case OP_NEQ:
+                    ASTP(expr)->value.i = expr->left->value.t != expr->right->value.t;
+                    break;
+                default: goto bad;
+                    break;
+            }
+            break;
+        case TKINDPAIR_MOD_MOD:
+            ASSERT(ASTP(expr)->flags & AST_FLAG_CONSTANT,
+                   "type comparison should always have constant operands");
+            switch (expr->op) {
+                case OP_EQU: ASTP(expr)->value.i = expr->left->value.a == expr->right->value.a; break;
+                case OP_NEQ: ASTP(expr)->value.i = expr->left->value.a != expr->right->value.a; break;
+                default: goto bad;
+                    break;
+            }
+            break;
+        default:
+bad:;
+            binop_bad_type_error(expr);
+            return;
     }
 
     ASTP(expr)->type = TY_S64;
@@ -3348,7 +3772,7 @@ static void check_logical(check_context_t cxt, ast_bin_expr_t *expr) {
         return;
     }
 
-    ASTP(expr)->type = TY_U64;
+    ASTP(expr)->type = TY_S64;
 }
 
 static void operand_not_typed_error(ast_t *expr, ast_t *operand) {
@@ -3370,6 +3794,7 @@ static void operand_not_typed_error(ast_t *expr, ast_t *operand) {
 static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
     u32 tkl;
     u32 tkr;
+    u32 array_length;
 
     /*
     ** OP_DOT is special because the right operand could fail in symbol resolution
@@ -3421,12 +3846,12 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
             break;
 
         case OP_SUBSCRIPT:
-            if (tkl == TY_SLICE) {
+            if (tkl == TY_SLICE || tkl == TY_ARRAY) {
                 ASTP(expr)->type = get_under_type(expr->left->type);
             } else {
                 EMBC(expr->left, {
                     report_range_err_no_exit(&ASTP(expr)->loc,
-                                             "left-hand-side operand of '[]' operator must be a slice type");
+                                             "left-hand-side operand of '[]' operator must be a slice or array type");
                     report_range_info_no_context(&expr->left->loc,
                                                  "operand has type %s",
                                                  get_string(get_type_string_id(expr->left->type)));
@@ -3444,27 +3869,100 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
                 });
             }
 
+            if (TYPE_IS_GENERIC(expr->right->type)) {
+                push_range_breadcrumb(&ASTP(expr)->loc, "forcing integer literal to s64 since it is being used as a subscript index");
+                realize_generic(TY_S64, expr->right);
+                pop_breadcrumb();
+            }
+
+            if (tkl == TY_ARRAY && (expr->right->flags & AST_FLAG_CONSTANT)) {
+                if (INT_TYPE_IS_SIGNED(expr->right->type)) {
+                    if (expr->right->value.i > UINT32_MAX) {
+                        EMBC(expr->right, {
+                            report_range_err_no_exit(&expr->right->loc, "index operand in array subscript expression is too large");
+                            report_simple_info("operand has value %"PRIi64", but the maximum is %u",
+                                            expr->right->value.i, UINT32_MAX);
+                        });
+                    }
+                    if (expr->right->value.i < 0) {
+                        EMBC(expr->right, {
+                            report_range_err_no_exit(&expr->right->loc, "index operand in array subscript expression is less than zero");
+                            report_simple_info("operand has value %"PRIi64, expr->right->value.i);
+                        });
+                    }
+                } else {
+                    if (expr->right->value.u > UINT32_MAX) {
+                        EMBC(expr->right, {
+                            report_range_err_no_exit(&expr->right->loc, "index operand in array subscript expression is too large");
+                            report_simple_info("operand has value %"PRIu64", but the maximum is %u",
+                                            expr->right->value.u, UINT32_MAX);
+                        });
+                    }
+                }
+
+                array_length = get_array_length(expr->left->type);
+
+                if (expr->right->value.u >= array_length) {
+                    EMBC(expr->right, {
+                        report_range_err_no_exit(&expr->right->loc, "array subscript expression will result in out of bounds access");
+                        report_simple_info("index has value %"PRIu64", but the maximum is %u",
+                                           expr->right->value.u, array_length - 1);
+                    });
+                }
+            }
+
+            ASTP(expr)->flags |= (expr->left->flags & AST_FLAG_EXPR_CAN_BE_LVAL);
+
             break;
 
         case OP_PLUS:
             check_add(cxt, expr);
-            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
         case OP_MINUS:
             check_sub(cxt, expr);
-            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
         case OP_MULT:
-            check_mul(cxt, expr);
-            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
+            if (tkr == TY_TYPE && tkl == TY_GENERIC_INT) {
+                if (INT_TYPE_IS_SIGNED(expr->left->type)) {
+                    EMBC(expr->left, {
+                        report_range_err_no_exit(&expr->left->loc, "size operand in array type expression must be unsigned");
+                        report_simple_info("operand has type %s",
+                                           get_string(get_type_string_id(expr->left->type)));
+                    });
+                }
+
+                ASSERT(expr->right->flags & AST_FLAG_CONSTANT, "type operand should be constant");
+                if (!(expr->left->flags & AST_FLAG_CONSTANT)) {
+                    EMBC(expr->left, {
+                        report_range_err(&expr->left->loc, "size operand in array type expression must be known at compile time");
+                    });
+                }
+
+                if (expr->left->value.u > UINT32_MAX) {
+                    EMBC(expr->left, {
+                        report_range_err_no_exit(&expr->left->loc, "size operand in array type expression is too large");
+                        report_range_info_no_context(&expr->right->loc,
+                                                "operand has value %"PRIu64", but the maximum is %u",
+                                                expr->left->value.u, UINT32_MAX);
+                    });
+                } else if (expr->left->value.u == 0) {
+                    EMBC(expr->left, {
+                        report_range_err(&expr->left->loc, "size operand in array type expression is zero, which is not allowed");
+                    });
+                }
+
+                ASTP(expr)->flags |= AST_FLAG_CONSTANT;
+                ASTP(expr)->type   = TY_TYPE;
+                ASTP(expr)->value.t = get_array_type(expr->right->value.t, (u32)expr->left->value.u);
+            } else {
+                check_mul(cxt, expr);
+            }
             break;
         case OP_DIV:
             check_div(cxt, expr);
-            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
         case OP_MOD:
             check_mod(cxt, expr);
-            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
 
         case OP_EQU:
@@ -3474,27 +3972,33 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
         case OP_GTR:
         case OP_GEQ:
             check_cmp(cxt, expr);
+            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
             break;
 
         case OP_PLUS_ASSIGN:
             check_add(cxt, expr);
             ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
+            goto lval_check;
             break;
         case OP_MINUS_ASSIGN:
             check_sub(cxt, expr);
             ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
+            goto lval_check;
             break;
         case OP_MULT_ASSIGN:
             check_mul(cxt, expr);
             ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
+            goto lval_check;
             break;
         case OP_DIV_ASSIGN:
             check_div(cxt, expr);
             ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
+            goto lval_check;
             break;
         case OP_MOD_ASSIGN:
             check_mod(cxt, expr);
             ASSERT(ASTP(expr)->type == expr->left->type, "type should not change in assignment");
+            goto lval_check;
             break;
         case OP_ASSIGN:
             if (expr->left->type != expr->right->type) {
@@ -3510,6 +4014,23 @@ static void check_bin_expr(check_context_t cxt, ast_bin_expr_t *expr) {
             }
             ASTP(expr)->type  = expr->left->type;
             ASTP(expr)->value = expr->right->value;
+
+lval_check:;
+            if (!(expr->left->flags & AST_FLAG_EXPR_CAN_BE_LVAL)) {
+                EMBC(expr->left, {
+                    if (expr->op == OP_ASSIGN) {
+                        report_range_err_no_exit(&ASTP(expr)->loc,
+                                                 "left-hand-side of assignment operator can not be assigned to");
+                        report_fixit(expr->op_loc, "did you mean to write an equality comparison?\a==");
+                    } else {
+                        report_range_err(&ASTP(expr)->loc,
+                                         "left-hand-side of assignment operator can not be assigned to");
+                    }
+                });
+            }
+
+            ASTP(expr)->flags &= ~AST_FLAG_CONSTANT;
+
             break;
 
         case OP_AND:
@@ -3564,7 +4085,12 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
                 ASSERT(expr->child->flags & AST_FLAG_CONSTANT, "type not constant");
                 ASTP(expr)->flags |= AST_FLAG_CONSTANT;
             } else {
-                /* @todo -- check if rhs is addressable */
+                if (!(expr->child->flags & AST_FLAG_EXPR_CAN_BE_LVAL)) {
+                    EMBC(expr->child, {
+                        report_range_err(&ASTP(expr)->loc,
+                                        "can't take the address of a non-addressable expression");
+                    });
+                }
                 ASTP(expr)->type = get_ptr_type(expr->child->type);
             }
             break;
@@ -3608,7 +4134,8 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
                                                      get_string(get_type_string_id(expr->child->type)));
                     });
                 }
-                ASTP(expr)->type = get_under_type(expr->child->type);
+                ASTP(expr)->type   = get_under_type(expr->child->type);
+                ASTP(expr)->flags |= AST_FLAG_EXPR_CAN_BE_LVAL;
             }
             break;
         case OP_NOT:
@@ -3623,6 +4150,13 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
             }
             ASTP(expr)->type   = expr->child->type;
             ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
+
+            if (INT_TYPE_IS_SIGNED(expr->child->type)) {
+                ASTP(expr)->value.i = !expr->child->value.i;
+            } else {
+                ASTP(expr)->value.u = !expr->child->value.u;
+            }
+
             break;
         case OP_NEG:
             if (!type_kind_is_numeric(type_kind(expr->child->type))) {
@@ -3634,25 +4168,46 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
                                                  get_string(get_type_string_id(expr->child->type)));
                 });
             }
-            ASTP(expr)->type   = expr->child->type;
-            ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
-            break;
-        case OP_SIZEOF:
-            ASTP(expr)->type   = TY_U64;
-            ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
-            break;
-        case OP_LENOF:
-            if (type_kind(expr->child->type) != TY_SLICE) {
+
+            if (type_kind_is_int(type_kind(expr->child->type))
+            &&  !INT_TYPE_IS_SIGNED(expr->child->type)) {
                 EMBC(expr->child, {
                     report_range_err_no_exit(&ASTP(expr)->loc,
-                                             "right-hand-side operand of 'lenof' operator must be a slice");
+                                             "right-hand-side operand of '-' operator must be signed");
                     report_range_info_no_context(&expr->child->loc,
                                                  "operand has type %s",
                                                  get_string(get_type_string_id(expr->child->type)));
                 });
             }
-            ASTP(expr)->type   = TY_U64;
+
+            ASTP(expr)->type   = expr->child->type;
+            ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
+
+            ASTP(expr)->value.i = -expr->child->value.i;
+
+            break;
+        case OP_SIZEOF:
+            ASTP(expr)->type   = TY_S64;
+            ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
+            break;
+        case OP_LENOF:
+            if (type_kind(expr->child->type) != TY_ARRAY && type_kind(expr->child->type) != TY_SLICE) {
+                EMBC(expr->child, {
+                    report_range_err_no_exit(&ASTP(expr)->loc,
+                                             "right-hand-side operand of 'lenof' operator must be an array or slice");
+                    report_range_info_no_context(&expr->child->loc,
+                                                 "operand has type %s",
+                                                 get_string(get_type_string_id(expr->child->type)));
+                });
+            }
+            ASTP(expr)->type   = TY_S64;
             ASTP(expr)->flags |= expr->child->flags;
+
+            if (type_kind(expr->child->type) == TY_ARRAY) {
+                ASTP(expr)->value.u = get_array_length(expr->child->type);
+                ASTP(expr)->flags |= AST_FLAG_CONSTANT;
+            }
+
             break;
         default:
             report_loc_err_no_exit(ASTP(expr)->loc.beg, "UNHANDLED OPERATOR: %s", OP_STR(expr->op));
@@ -3747,6 +4302,83 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
 skip_children:;
 }
 
+static void check_block(check_context_t cxt, ast_block_t *block) {
+    int     cf_must_return;
+    int     cf_must_skip_loop;
+    u32     idx;
+    u32     j;
+    ast_t **it;
+    ast_t  *next;
+
+    ASTP(block)->type = TY_NOT_TYPED;
+    cxt.scope  = ((ast_block_t*)ASTP(block))->scope;
+
+    cf_must_return    = 0;
+    cf_must_skip_loop = 0;
+
+    idx = 0;
+    array_traverse(((ast_block_t*)ASTP(block))->stmts, it) {
+        check_node(cxt, *it);
+
+        next = NULL;
+
+        for (j = idx + 1; next == NULL && j < array_len(((ast_block_t*)ASTP(block))->stmts); j += 1) {
+            if ((*(ast_t**)array_item(((ast_block_t*)ASTP(block))->stmts, j))->kind != AST_DEFER) {
+                next = *(ast_t**)array_item(((ast_block_t*)ASTP(block))->stmts, j);
+            }
+        }
+
+        switch ((*it)->kind) {
+            case AST_BLOCK:
+            case AST_IF:
+            case AST_LOOP:
+            case AST_DEFER:
+            case AST_RETURN:
+                cf_must_return |= (*it)->flags & AST_FLAG_CF_MUST_RETURN;
+                if (cf_must_return && (*it)->kind != AST_DEFER && next != NULL) {
+                    switch (next->kind) {
+                        case AST_BLOCK:
+                            if (array_len(((ast_block_t*)next)->stmts) > 0) {
+                                report_loc_err(next->loc.beg, "this statement is unreachable because previous statement always returns");
+                            }
+                            break;
+                        default:
+                            report_range_err(&next->loc, "this statement is unreachable because previous statement always returns");
+                            break;
+                    }
+                }
+                break;
+        }
+
+        switch ((*it)->kind) {
+            case AST_BLOCK:
+            case AST_IF:
+            case AST_LOOP:
+            case AST_DEFER:
+            case AST_RETURN:
+            case AST_BREAK:
+            case AST_CONTINUE:
+                cf_must_skip_loop |= (*it)->flags & AST_FLAG_CF_MUST_SKIP_LOOP_BODY;
+                if (cxt.flags & CHECK_FLAG_IN_LOOP && cf_must_skip_loop && (*it)->kind != AST_DEFER && next != NULL) {
+                    switch (next->kind) {
+                        case AST_BLOCK:
+                            if (array_len(((ast_block_t*)next)->stmts) > 0) {
+                                report_loc_err(next->loc.beg, "this statement is unreachable because previous statement always exits the loop body");
+                            }
+                            break;
+                        default:
+                            report_range_err(&next->loc, "this statement is unreachable because previous statement always exits the loop body");
+                            break;
+                    }
+                }
+                break;
+        }
+        idx += 1;
+    }
+
+    ASTP(block)->flags |= cf_must_return | cf_must_skip_loop;
+}
+
 static void check_arg_list(check_context_t cxt, ast_arg_list_t *arg_list) {
     int     i;
     arg_t  *arg;
@@ -3792,6 +4424,8 @@ again:;
 static void check_if(check_context_t cxt, ast_if_t *_if) {
     scope_t *orig_scope;
     scope_t *new_scope;
+    int      cf_must_return;
+    int      cf_must_skip_loop;
 
     ASTP(_if)->type = TY_NOT_TYPED;
 
@@ -3812,9 +4446,21 @@ static void check_if(check_context_t cxt, ast_if_t *_if) {
 
     check_node(cxt, _if->then_block);
 
+    cf_must_return    = _if->then_block->flags & AST_FLAG_CF_MUST_RETURN;
+    cf_must_skip_loop = _if->then_block->flags & AST_FLAG_CF_MUST_SKIP_LOOP_BODY;
+
     if (_if->els != NULL) {
         cxt.scope = orig_scope;
         check_node(cxt, _if->els);
+
+        cf_must_return &= _if->els->flags & AST_FLAG_CF_MUST_RETURN;
+        if (cf_must_return) {
+            ASTP(_if)->flags |= cf_must_return;
+        }
+        cf_must_skip_loop &= _if->els->flags & AST_FLAG_CF_MUST_SKIP_LOOP_BODY;
+        if (cf_must_skip_loop) {
+            ASTP(_if)->flags |= cf_must_skip_loop;
+        }
     }
 }
 
@@ -3822,6 +4468,7 @@ static void check_loop(check_context_t cxt, ast_loop_t *loop) {
     scope_t *new_scope;
 
     cxt.flags |= CHECK_FLAG_IN_LOOP;
+    cxt.flags &= ~CHECK_FLAG_DEFER_IN_LOOP;
 
     ASTP(loop)->type = TY_NOT_TYPED;
 
@@ -3853,30 +4500,44 @@ static void check_break(check_context_t cxt, ast_continue_t *brk) {
     ASTP(brk)->type = TY_NOT_TYPED;
 
     if (!(cxt.flags & CHECK_FLAG_IN_LOOP)) {
-        report_range_err(&ASTP(brk)->loc, "break statement only valid within a loop");
+        report_range_err(&ASTP(brk)->loc, "break statement only allowed within a loop");
         return;
     }
+
+    if (cxt.flags & CHECK_FLAG_DEFER_IN_LOOP) {
+        report_range_err(&ASTP(brk)->loc, "break statements are not allowed in a defer block");
+        return;
+    }
+
+    ASTP(brk)->flags |= AST_FLAG_CF_MUST_SKIP_LOOP_BODY;
 }
 
 static void check_continue(check_context_t cxt, ast_continue_t *cont) {
     ASTP(cont)->type = TY_NOT_TYPED;
 
     if (!(cxt.flags & CHECK_FLAG_IN_LOOP)) {
-        report_range_err(&ASTP(cont)->loc, "continue statement only valid within a loop");
+        report_range_err(&ASTP(cont)->loc, "continue statement only allowed within a loop");
         return;
     }
+
+    if (cxt.flags & CHECK_FLAG_DEFER_IN_LOOP) {
+        report_range_err(&ASTP(cont)->loc, "break statements are not allowed in a defer block");
+        return;
+    }
+
+    ASTP(cont)->flags |= AST_FLAG_CF_MUST_SKIP_LOOP_BODY;
 }
 
 static void check_return(check_context_t cxt, ast_return_t *ret) {
     if (cxt.proc == NULL) {
-        report_range_err(&ASTP(ret)->loc, "return statement only valid in a procedure body");
+        report_range_err(&ASTP(ret)->loc, "return statement only allowed in a procedure body");
         return;
     }
 
-/*     if (cxt.flags & CHECK_FLAG_IN_DEFER) { */
-/*         report_range_err(&ASTP(ret)->loc, "return statements are not valid in a defer block"); */
-/*         return; */
-/*     } */
+    if (cxt.flags & CHECK_FLAG_IN_DEFER) {
+        report_range_err(&ASTP(ret)->loc, "return statements are not allowed in a defer block");
+        return;
+    }
 
     if (ret->expr != NULL) {
         check_node(cxt, ret->expr);
@@ -3904,7 +4565,8 @@ static void check_return(check_context_t cxt, ast_return_t *ret) {
         return;
     }
 
-    ASTP(ret)->type = TY_NOT_TYPED;
+    ASTP(ret)->type   = TY_NOT_TYPED;
+    ASTP(ret)->flags |= AST_FLAG_CF_MUST_RETURN | AST_FLAG_CF_MUST_SKIP_LOOP_BODY;
 }
 
 static void check_defer(check_context_t cxt, ast_defer_t *defer) {
@@ -3912,7 +4574,14 @@ static void check_defer(check_context_t cxt, ast_defer_t *defer) {
 
     cxt.flags |= CHECK_FLAG_IN_DEFER;
 
+    if (cxt.flags & CHECK_FLAG_IN_LOOP) {
+        cxt.flags |= CHECK_FLAG_DEFER_IN_LOOP;
+    }
+
     check_node(cxt, defer->block);
+
+    ASTP(defer)->flags |= defer->block->flags & AST_FLAG_CF_MUST_RETURN;
+    ASTP(defer)->flags |= defer->block->flags & AST_FLAG_CF_MUST_SKIP_LOOP_BODY;
 }
 
 static void check_vargs_block(check_context_t cxt, ast_vargs_block_t *vargs_block) {
@@ -3988,6 +4657,7 @@ static void check_node(check_context_t cxt, ast_t *node) {
                     check_node(cxt, *it);
                 }
             }
+
             break;
         case AST_MACRO:
             /* @todo */
@@ -4003,11 +4673,7 @@ static void check_node(check_context_t cxt, ast_t *node) {
             check_struct(cxt, (ast_struct_t*)node);
             break;
         case AST_BLOCK:
-            node->type = TY_NOT_TYPED;
-            cxt.scope  = ((ast_block_t*)node)->scope;
-            array_traverse(((ast_block_t*)node)->stmts, it) {
-                check_node(cxt, *it);
-            }
+            check_block(cxt, (ast_block_t*)node);
             break;
         case AST_BIN_EXPR:
         case AST_UNARY_EXPR:

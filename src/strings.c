@@ -24,6 +24,7 @@ string_id COMPILE_ERROR_ID;
 string_id REQUIRE_ID;
 string_id STATIC_IF_ID;
 string_id VARGS_ID;
+string_id CODE_TO_STRING_ID;
 
 static char *cstr_dup(const char *str) {
     u64   len;
@@ -123,6 +124,7 @@ void init_strings(void) {
     REQUIRE_ID              = get_string_id("require");
     STATIC_IF_ID            = get_string_id("static_if");
     VARGS_ID                = get_string_id("vargs");
+    CODE_TO_STRING_ID       = get_string_id("code_to_string");
 }
 
 string_id get_string_id(const char *string) {

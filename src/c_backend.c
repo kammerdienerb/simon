@@ -95,7 +95,7 @@ static void emit_prelude(void) {
 "typedef float              f32;\n"
 "typedef double             f64;\n"
 "\n"
-"typedef struct { void *data; u64 len; } __si_slice;\n"
+"typedef struct { void *data; s64 len; } __si_slice;\n"
 "\n"
 "#define __si_slice_data(_s)         ((_s).data)\n"
 "#define __si_slice_len(_s)          ((_s).len)\n"
@@ -183,6 +183,9 @@ static void emit_type(u32 ty) {
             }
             emit_type(under);
             EMIT_C('*');
+            break;
+        case TY_ARRAY:
+            EMIT_STRING_F("__array_type_%u", ty);
             break;
         case TY_SLICE:
             EMIT_STRING("__si_slice");
@@ -281,6 +284,21 @@ static void emit_structs(void) {
         } else {
             emit_struct(decl, st, -1);
         }
+    }
+}
+
+static void emit_array_types(void) {
+    u32     ty;
+    type_t *it;
+
+    ty = 0;
+    array_traverse(type_table, it) {
+        if (ty != TY_ARRAY && it->kind == TY_ARRAY && !type_is_poly(ty)) {
+            EMIT_STRING("typedef ");
+            emit_type(it->under_id);
+            EMIT_STRING_F(" __array_type_%u[%u];", ty, it->array_length);
+        }
+        ty += 1;
     }
 }
 
@@ -469,13 +487,18 @@ static void emit_unary_expr(ast_t *expr) {
             EMIT_STRING("))");
             break;
         case OP_SIZEOF:
-            EMIT_STRING("sizeof ");
+            EMIT_STRING("sizeof (");
             emit_expr(child);
+            EMIT_C(')');
             break;
         case OP_LENOF:
-        	EMIT_C('(');
-            emit_expr(child);
-        	EMIT_STRING(").len");
+            if (type_kind(child->type) == TY_ARRAY) {
+                EMIT_STRING_F("%"PRIi64, (i64)get_array_length(child->type));
+            } else if (type_kind(child->type) == TY_SLICE) {
+            	EMIT_C('(');
+                emit_expr(child);
+            	EMIT_STRING(").len");
+            }
             break;
         default:
             report_simple_err_no_exit("INTERNAL ERROR: unhandled expression in emit_unary_expr(): %s", OP_STR(op));
@@ -487,6 +510,7 @@ static void emit_binary_expr(ast_t *expr) {
     int              op;
     ast_t           *l;
     ast_t           *r;
+    ast_t           *call_decl;
     ast_arg_list_t  *arg_list;
     arg_t           *arg;
     arg_t           *it;
@@ -505,20 +529,28 @@ static void emit_binary_expr(ast_t *expr) {
     (void)l;
     (void)r;
 
+    EMIT_C('(');
+
     switch (op) {
         case OP_CALL:
-            if (expr->flags & AST_FLAG_CALL_IS_CAST) {
-                EMIT_STRING("((");
-                arg_list = (ast_arg_list_t*)r;
-                arg      = array_item(arg_list->args, 0);
-                emit_type(arg->expr->value.t);
-                EMIT_STRING(")(");
-                arg = array_item(arg_list->args, 1);
-                emit_expr(arg->expr);
-                EMIT_STRING("))");
-            } else if (expr->flags & AST_FLAG_CALL_IS_BUILTIN_VARG) {
-                EMIT_STRING_F("__varg%d", which_varg);
+            call_decl = ((ast_bin_expr_t*)expr)->call_decl;
+            if (call_decl != NULL && call_decl->kind == AST_BUILTIN) {
+                if (((ast_builtin_t*)call_decl)->name == CAST_ID) {
+                    EMIT_STRING("((");
+                    arg_list = (ast_arg_list_t*)r;
+                    arg      = array_item(arg_list->args, 0);
+                    emit_type(arg->expr->value.t);
+                    EMIT_STRING(")(");
+                    arg = array_item(arg_list->args, 1);
+                    emit_expr(arg->expr);
+                    EMIT_STRING("))");
+                } else if (((ast_builtin_t*)call_decl)->name == _BUILTIN_VARG_ID) {
+                    EMIT_STRING_F("__varg%d", which_varg);
+                } else {
+                    goto normal_call;
+                }
             } else {
+normal_call:;
                 emit_expr(l);
                 EMIT_C('(');
                 array_traverse(((ast_arg_list_t*)r)->args, it) {
@@ -530,13 +562,22 @@ static void emit_binary_expr(ast_t *expr) {
             }
             break;
         case OP_SUBSCRIPT:
-            EMIT_STRING("(*__si_slice_idx(");
-            emit_expr(l);
-            EMIT_STRING(", ");
-            emit_expr(r);
-            EMIT_STRING(", ");
-            emit_type(get_under_type(l->type));
-            EMIT_STRING("))");
+            if (type_kind(l->type) == TY_ARRAY) {
+                emit_expr(l);
+                EMIT_C('[');
+                emit_expr(r);
+                EMIT_C(']');
+            } else if (type_kind(l->type) == TY_SLICE) {
+                EMIT_STRING("(*__si_slice_idx(");
+                emit_expr(l);
+                EMIT_STRING(", ");
+                emit_expr(r);
+                EMIT_STRING(", ");
+                emit_type(get_under_type(l->type));
+                EMIT_STRING("))");
+            } else {
+                ASSERT(0, "bad type to emit subscript");
+            }
             break;
         case OP_DOT:
             if (expr->flags & AST_FLAG_BITFIELD_DOT) {
@@ -680,6 +721,8 @@ static void emit_binary_expr(ast_t *expr) {
             report_simple_err_no_exit("INTERNAL ERROR: unhandled expression in emit_binary_expr(): %s", OP_STR(op));
             ASSERT(0, "don't know how to emit this expression");
     }
+
+    EMIT_C(')');
 }
 
 static void emit_expr(ast_t *expr) {
@@ -688,6 +731,24 @@ static void emit_expr(ast_t *expr) {
     ast_decl_t    *decl;
     ast_proc_t    *proc;
     monomorphed_t *spec_monomorphed;
+
+    if (expr->flags & AST_FLAG_CONSTANT) {
+        switch (expr->type) {
+        #define X(ty) case ty:
+            X_INT_TYPES
+        #undef X
+                if (INT_TYPE_IS_SIGNED(expr->type)) {
+                    EMIT_STRING_F("%"PRIi64, expr->value.i);
+                } else {
+                    EMIT_STRING_F("%"PRIu64, expr->value.u);
+                }
+                return;
+            case TY_F32:
+            case TY_F64:
+                EMIT_STRING_F("%f", expr->value.f);
+                return;
+        }
+    }
 
     switch (expr->kind) {
         case AST_UNARY_EXPR:
@@ -722,7 +783,6 @@ static void emit_expr(ast_t *expr) {
             &&  resolved_node->kind == AST_DECL_VAR) {
 
                 emit_expr(((ast_decl_t*)resolved_node)->val_expr);
-
             } else if (resolved_node->kind == AST_DECL_PROC
                    && resolved_node->flags & AST_FLAG_POLYMORPH
                    &&  ident->poly_idx >= 0) {
@@ -846,7 +906,15 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
 
             array_traverse(((ast_block_t*)stmt)->stmts, it) {
                 s = *it;
-                emit_stmt(s, lvl + 1, FMT_FLAGS_NONE, BLOCK_NORMAL);
+                if (s->kind == AST_DEFER) {
+                    PUSH_DEFER(((ast_defer_t*)s)->block);
+                }
+            }
+            array_traverse(((ast_block_t*)stmt)->stmts, it) {
+                s = *it;
+                if (s->kind != AST_DEFER) {
+                    emit_stmt(s, lvl + 1, FMT_FLAGS_NONE, BLOCK_NORMAL);
+                }
             }
 
             if (block_kind != BLOCK_SYNTHETIC) {
@@ -941,7 +1009,7 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
             break;
 
         case AST_DEFER:
-            PUSH_DEFER(((ast_defer_t*)stmt)->block);
+            /* Done at the start when we emit a block. */
             break;
 
         case AST_BREAK:
@@ -1052,6 +1120,7 @@ void do_c_backend(void) {
 
     emit_prelude();          EMIT_STRING("\n\n");
     emit_struct_pre_decls(); EMIT_STRING("\n\n");
+    emit_array_types();      EMIT_STRING("\n\n");
     emit_proc_types();       EMIT_STRING("\n\n");
     emit_structs();          EMIT_STRING("\n\n");
     emit_proc_pre_decls();   EMIT_STRING("\n\n");
@@ -1072,10 +1141,10 @@ void do_c_backend(void) {
 
 /*     sprintf(cmd_buff, "cat %s && cc -o %s %s -std=c99 -O0 -g -nostdlib -ffreestanding -fno-builtin -Wall -Wextra -Werror -Wno-unused-variable -Wno-unused-parameter -Wl,-e,%s", */
 /*             options.output_name, exe_name, options.output_name, get_string(program_entry->full_name)); */
-    sprintf(cmd_buff, "cc -o %s %s -std=c99 -O0 -g -nostdlib -ffreestanding -fno-builtin -fno-stack-protector %s -Wl,-e,%s",
+    sprintf(cmd_buff, "cc -o %s %s -std=c99 -O0 -g -nostdlib -ffreestanding -fno-builtin -fno-stack-protector -Wno-parentheses-equality %s -Wl,-e,%s",
             exe_name, options.output_name, options.with_libc ? "-lc" : "", get_string(program_entry->full_name));
 
-    verb_message("C COMPILER COMMAND:\n%s\n", cmd_buff);
+    verb_message("C compiler command:\n  %s\n", cmd_buff);
 
 #ifdef __APPLE__
     strcat(cmd_buff, " -lSystem");

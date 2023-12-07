@@ -72,6 +72,6 @@ extern const char *op_str_table[];
 #define OP_STRLEN(_op)        (strlen(OP_STR((_op))))
 #define ASSIGNMENT_PREC       (OP_PREC(OP_ASSIGN))
 #define HIGHEST_BIN_PREC      (12)
-#define LOWEST_TYPE_EXPR_PREC (11)
+#define LOWEST_TYPE_EXPR_PREC (10)
 
 #endif

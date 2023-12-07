@@ -34,6 +34,7 @@ extern string_id COMPILE_ERROR_ID;
 extern string_id REQUIRE_ID;
 extern string_id STATIC_IF_ID;
 extern string_id VARGS_ID;
+extern string_id CODE_TO_STRING_ID;
 
 void        init_strings(void);
 string_id   get_string_id(const char *string);

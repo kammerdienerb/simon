@@ -8,7 +8,7 @@ array_t type_table;
 static u32     empty_type_list;
 
 void report_type_stats(void) {
-    printf("%d total types in the type table\n", array_len(type_table));
+    printf("%d total types in the type table.\n", array_len(type_table));
 }
 
 static type_t * get_type_structure(u32 ty) {
@@ -195,7 +195,18 @@ u32 get_ptr_type(u32 ty) {
     new_t.kind     = TY_PTR;
     new_t.flags    = type_is_poly(ty) ? TY_FLAG_IS_POLY : 0;
     new_t.under_id = ty;
-    new_t._pad     = 0;
+    new_t.array_length     = 0;
+
+    return get_or_insert_type(new_t);
+}
+
+u32 get_array_type(u32 ty, u32 len) {
+    type_t new_t;
+
+    new_t.kind         = TY_ARRAY;
+    new_t.flags        = type_is_poly(ty) ? TY_FLAG_IS_POLY : 0;
+    new_t.under_id     = ty;
+    new_t.array_length = len;
 
     return get_or_insert_type(new_t);
 }
@@ -203,10 +214,10 @@ u32 get_ptr_type(u32 ty) {
 u32 get_slice_type(u32 ty) {
     type_t new_t;
 
-    new_t.kind     = TY_SLICE;
-    new_t.flags    = type_is_poly(ty) ? TY_FLAG_IS_POLY : 0;
-    new_t.under_id = ty;
-    new_t._pad     = 0;
+    new_t.kind         = TY_SLICE;
+    new_t.flags        = type_is_poly(ty) ? TY_FLAG_IS_POLY : 0;
+    new_t.under_id     = ty;
+    new_t.array_length = 0;
 
     return get_or_insert_type(new_t);
 }
@@ -214,10 +225,10 @@ u32 get_slice_type(u32 ty) {
 u32 get_vargs_type(u32 ty) {
     type_t new_t;
 
-    new_t.kind     = TY_VARGS;
-    new_t.flags    = type_is_poly(ty) ? TY_FLAG_IS_POLY : 0;
-    new_t.under_id = ty;
-    new_t._pad     = 0;
+    new_t.kind         = TY_VARGS;
+    new_t.flags        = type_is_poly(ty) ? TY_FLAG_IS_POLY : 0;
+    new_t.under_id     = ty;
+    new_t.array_length = 0;
 
     return get_or_insert_type(new_t);
 }
@@ -226,6 +237,16 @@ u32 get_under_type(u32 ty) {
     ASSERT(type_kind_has_under(type_kind(ty)), "ty does not have underlying type");
 
     return get_type_structure(ty)->under_id;
+}
+
+u32 get_array_length(u32 ty) {
+    type_t *t;
+
+    t = get_type_structure(ty);
+
+    ASSERT(t->kind == TY_ARRAY, "must be an array type");
+
+    return t->array_length;
 }
 
 u32 get_struct_type(ast_decl_t *st) {
@@ -360,6 +381,10 @@ static void build_type_string(u32 ty, char *buff) {
 
     t = *tp;
 
+    if (t.kind == TY_ARRAY) {
+        snprintf(buff, sizeof(buff) - strlen(buff), "%u", t.array_length);
+    }
+
     switch (t.kind) {
         case TY_UNKNOWN:              strncat(buff, "<unknown type>",              TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_NOT_TYPED:            strncat(buff, "<not typed>",                 TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
@@ -368,6 +393,7 @@ static void build_type_string(u32 ty, char *buff) {
         case TY_TYPE:                 strncat(buff, "type",                        TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_PROC:                 strncat(buff, "procedure",                   TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_PTR:                  strncat(buff, "*",                           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
+        case TY_ARRAY:                strncat(buff, "*",                           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_SLICE:                strncat(buff, "[",                           TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_VARGS:                strncat(buff, "...",                         TYPE_STRING_BUFF_SIZE - strlen(buff) - 1); break;
         case TY_GENERIC_POSITIVE_INT:
@@ -585,13 +611,29 @@ void realize_generic(u32 real, ast_t *expr) {
             }
         }
 
-        if (expr->value.u > max_mag
-        ||  (expr->type == TY_GENERIC_NEGATIVE_INT && expr->value.u > min_mag)) {
-
-            report_range_err(&expr->loc,
-                             "integer literal is being used as type %s, but is not in the range [%s%"PRIu64",%"PRIu64"]",
-                             get_string(get_type_string_id(real)), INT_TYPE_IS_SIGNED(real) ? "-" : "", min_mag, max_mag);
-            return;
+        if (INT_TYPE_IS_SIGNED(real)) {
+            if (expr->type == TY_GENERIC_POSITIVE_INT) {
+                if (expr->value.u > max_mag) {
+                    report_range_err(&expr->loc,
+                                    "integer literal is being used as type %s, but is not in the range [-%"PRIu64",%"PRIu64"]",
+                                    get_string(get_type_string_id(real)), min_mag, max_mag);
+                    return;
+                }
+            } else {
+                if (-expr->value.i > min_mag) {
+                    report_range_err(&expr->loc,
+                                    "integer literal is being used as type %s, but is not in the range [-%"PRIu64",%"PRIu64"]",
+                                    get_string(get_type_string_id(real)), min_mag, max_mag);
+                    return;
+                }
+            }
+        } else {
+            if (expr->type == TY_GENERIC_NEGATIVE_INT || expr->value.u > max_mag) {
+                report_range_err(&expr->loc,
+                                "integer literal is being used as type %s, but is not in the range [%"PRIu64",%"PRIu64"]",
+                                get_string(get_type_string_id(real)), min_mag, max_mag);
+                return;
+            }
         }
     } else if (tkreal == TY_GENERIC_FLOAT) {
         /* @bad @todo

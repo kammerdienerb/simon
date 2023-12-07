@@ -11,12 +11,21 @@ void print_usage(void) {
 "\n"
 "options:\n"
 "\n"
-"--verbose, -v\n"
-"    Print additional information about the compilation.\n"
+"--quiet\n"
+"    Do not print additional information about the compilation.\n"
 "--dump-symbols\n"
 "    Print a textual representation of the symbol tables.\n"
 "--threads=NUM\n"
 "    Run compilation with NUM threads.\n"
+"--backend=NAME, -b NAME\n"
+"    Use backend NAME.\n"
+"    Available options are:\n"
+"        c    Use the C language as a backend.\n"
+"--c-source\n"
+"    When using --backend=c, output C source code instead of invoking\n"
+"    the C compiler and producing an executable.\n"
+"--with-libc\n"
+"    When using --backend=c, instruct the C compiler to link with libc.\n"
 "--output=NAME, -o NAME\n"
 "    Output to file NAME.\n"
 "    If not provided, the basename of the first input file\n"
@@ -36,7 +45,7 @@ int parse_options(int argc, char **argv) {
     int         j;
 
     options.input_files  = array_make(char*);
-    options.verbose      = 0;
+    options.verbose      = 1;
     options.dump_symbols = 0;
     options.n_threads    = platform_get_num_hw_threads();
     options.backend      = "c";
@@ -45,10 +54,8 @@ int parse_options(int argc, char **argv) {
     for (i = 1; i < argc; i += 1) {
         if (strcmp(argv[i], "--help") == 0) {
             options.help = 1;
-        } else if (strcmp(argv[i], "--verbose") == 0) {
-            options.verbose = 1;
-        } else if (strcmp(argv[i], "-v") == 0) {
-            options.verbose = 1;
+        } else if (strcmp(argv[i], "--quiet") == 0) {
+            options.verbose = 0;
         } else if (strcmp(argv[i], "--dump-symbols") == 0) {
             options.dump_symbols = 1;
         } else if (strncmp(argv[i], "--threads=", 10) == 0) {

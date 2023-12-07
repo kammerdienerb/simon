@@ -149,13 +149,13 @@ enum {
     AST_FLAG_MONOMORPH                  = (1 <<  1),
     AST_FLAG_SYNTHETIC_BLOCK            = (1 <<  2),
     AST_FLAG_POLY_VARARGS               = (1 <<  3),
-    AST_FLAG_CALL_IS_CAST               = (1 <<  4),
-    AST_FLAG_CALL_IS_BUILTIN_VARG       = (1 <<  5),
-    AST_FLAG_CALL_IS_BUILTIN_SLICE_FROM = (1 <<  6),
+    AST_FLAG_CF_MUST_RETURN             = (1 <<  4),
+    AST_FLAG_CF_MUST_SKIP_LOOP_BODY     = (1 <<  5),
+/*     AST_FLAG_CALL_IS_BUILTIN_SLICE_FROM = (1 <<  6), */
     AST_FLAG_IS_EXTERN                  = (1 <<  7),
     AST_FLAG_EXPR_TOP                   = (1 <<  8),
-    AST_FLAG_IS_COPY                    = (1 <<  9),
-    AST_FLAG_PAREN_EXPR                 = (1 << 10),
+    AST_FLAG_EXPR_CAN_BE_LVAL           = (1 <<  9),
+/*     AST_FLAG_PAREN_EXPR                 = (1 << 10), */
     AST_FLAG_BITFIELD_DOT               = (1 << 11),
     AST_FLAG_MACRO_EXPAND_ARG           = (1 << 12),
     AST_FLAG_CONSTANT                   = (1 << 13),
@@ -236,8 +236,9 @@ AST_DEFINE(param,
 );
 
 AST_DEFINE(block,
-    scope_t *scope;
-    array_t  stmts;
+    scope_t     *scope;
+    array_t      stmts;
+    src_point_t  end_brace_loc;
 );
 
 AST_DEFINE(proc,
@@ -288,6 +289,7 @@ AST_DEFINE(ident,
     ast_t     *resolved_node;
     int        poly_idx;
     int        varg_idx;
+    char       _padding[sizeof(ast_decl_t) - sizeof(ast_t)];
 );
 
 AST_DEFINE(proc_type,
@@ -297,14 +299,22 @@ AST_DEFINE(proc_type,
 
 AST_DEFINE(unary_expr,
     ast_t *child;
-    ast_t *slice_size_expr;
     int    op;
 );
 
 AST_DEFINE(bin_expr,
-    ast_t *left;
-    ast_t *right;
-    int    op;
+    ast_t       *left;
+    ast_t       *right;
+    src_point_t  op_loc;
+    ast_t       *call_decl;
+    int          op;
+    char         _padding[   sizeof(ast_ident_t) - sizeof(ast_t)
+                           - sizeof(ast_t*)
+                           - sizeof(ast_t*)
+                           - sizeof(int)
+                           - sizeof(src_point_t)
+                           - sizeof(ast_t*)
+                         ];
 );
 
 typedef struct {
@@ -343,12 +353,12 @@ AST_DEFINE(break);
 AST_DEFINE(continue);
 
 AST_DEFINE(macro_call,
-    ast_ident_t *ident;
-    ast_t       *arg_list;
-    ast_t       *block;
-    scope_t     *scope;
-    int          expected_kind;
-    char         _padding[sizeof(ast_decl_t)];
+    ast_t   *ident;
+    ast_t   *arg_list;
+    ast_t   *block;
+    scope_t *scope;
+    int      expected_kind;
+    char     _padding[sizeof(ast_decl_t)];
 );
 
 AST_DEFINE(compile_error,
@@ -377,12 +387,13 @@ enum {
     CHECK_FLAG_IN_PARAM             = (1 <<  2),
     CHECK_FLAG_IN_VARGS             = (1 <<  3),
     CHECK_FLAG_IN_DEFER             = (1 <<  4),
-    CHECK_FLAG_POLY_PROC_TYPE_ONLY  = (1 <<  5),
-    CHECK_FLAG_FORCE_RECHECK        = (1 <<  6),
-    CHECK_FLAG_ALLOW_REF_POLY_PROC  = (1 <<  7),
-    CHECK_FLAG_MONOMORPH            = (1 <<  8),
-    CHECK_FLAG_POLY_BACKLOG         = (1 <<  9),
-    CHECK_FLAG_SPECIALIZATION       = (1 << 10),
+    CHECK_FLAG_DEFER_IN_LOOP        = (1 <<  5),
+    CHECK_FLAG_POLY_PROC_TYPE_ONLY  = (1 <<  6),
+    CHECK_FLAG_FORCE_RECHECK        = (1 <<  7),
+    CHECK_FLAG_ALLOW_REF_POLY_PROC  = (1 <<  8),
+    CHECK_FLAG_MONOMORPH            = (1 <<  9),
+    CHECK_FLAG_POLY_BACKLOG         = (1 << 10),
+    CHECK_FLAG_SPECIALIZATION       = (1 << 11),
 };
 
 void expand_macro(ast_macro_call_t *call);
