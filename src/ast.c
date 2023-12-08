@@ -218,6 +218,22 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
 
             return ASTP(ident);
         }
+        case AST_PROC_TYPE: {
+            ast_proc_type_t  *proc_type; ALLOC_CPY(proc_type, node);
+            ast_t           **it;
+            ast_t            *new;
+
+            proc_type->param_type_exprs = array_make(ast_t*);
+
+            array_traverse(((ast_proc_type_t*)node)->param_type_exprs, it) {
+                new = _copy_tree(*it, insert_scope, collect_macro_expand_args);
+                array_push(proc_type->param_type_exprs, new);
+            }
+
+            CPY_FIELD(proc_type, node, ret_type_expr, insert_scope);
+
+            return ASTP(proc_type);
+        }
         case AST_UNARY_EXPR: {
             ast_unary_expr_t *expr; ALLOC_CPY(expr, node);
 
@@ -458,7 +474,7 @@ static void collect_macro_calls(ast_t *node, array_t *collect) {
     }
 }
 
-static void push_breadcrumb_for_poly_constants(src_range_t *range, string_id decl_name_id, array_t *constants) {
+static void push_breadcrumb_for_poly_constants(src_range_t *range, string_id decl_name_id, array_t *constants, int call) {
     char                  buff[512];
     const char           *lazy_comma;
     ast_poly_constant_t  *it;
@@ -474,7 +490,8 @@ static void push_breadcrumb_for_poly_constants(src_range_t *range, string_id dec
     }
 
     push_range_breadcrumb(range,
-                          "... in %s (which is polymorphic), where [ %s ] from these arguments:",
+                          "... %s %s (which is polymorphic), where [ %s ] from these arguments:",
+                          call ? "when calling" : "in",
                           get_string(decl_name_id),
                           buff);
 }
@@ -504,7 +521,7 @@ void check_poly_backlog(void) {
 
         if (monomorphed->specialization != NULL) { continue; }
 
-        push_breadcrumb_for_poly_constants(&backlog_entry.range, backlog_entry.cxt.parent_decl->full_name, &monomorphed->constants);
+        push_breadcrumb_for_poly_constants(&backlog_entry.range, backlog_entry.cxt.parent_decl->full_name, &monomorphed->constants, 0);
         check_node(backlog_entry.cxt, backlog_entry.node);
         pop_breadcrumb();
     }
@@ -967,13 +984,15 @@ int tag_is_string(ast_t *tag_expr, string_id id) {
 }
 
 string_id value_to_string_id(value_t val, u32 type) {
-    string_id ret;
-    char      buff[128];
-    int       ast_kind;
+    string_id   ret;
+    char        buff[128];
+    int         ast_kind;
+    ast_decl_t *decl;
 
     ret = 0;
 
     switch (type_kind(type)) {
+        case TY_POLY: goto unknown;
         case TY_GENERIC_INT:
             switch (type) {
                 case TY_U8:
@@ -1010,14 +1029,17 @@ string_id value_to_string_id(value_t val, u32 type) {
         case TY_TYPE:
             ret = get_type_string_id(val.t);
             break;
-        case TY_MODULE: ast_kind = AST_MODULE; goto ast;
-        case TY_PROC:   ast_kind = AST_PROC;   goto ast;
-        case TY_STRUCT: ast_kind = AST_STRUCT; goto ast;
+        case TY_MODULE: ast_kind = AST_MODULE; decl = ((ast_module_t*)val.a)->parent_decl; goto ast;
+        case TY_PROC:   ast_kind = AST_PROC;   decl = ((ast_proc_t*)val.a)->parent_decl;   goto ast;
+        case TY_STRUCT: ast_kind = AST_STRUCT; decl = ((ast_struct_t*)val.a)->parent_decl; goto ast;
 ast:;
-            snprintf(buff, sizeof(buff), "%s at %p", ast_get_kind_str(ast_kind), val.a);
+/*             snprintf(buff, sizeof(buff), "%s at %p", ast_get_kind_str(ast_kind), val.a); */
+            (void)ast_kind;
+            snprintf(buff, sizeof(buff), "%s", get_string(decl->full_name));
             ret = get_string_id(buff);
             break;
         default:
+unknown:;
             ret = get_string_id("???");
             break;
     }
@@ -1061,21 +1083,40 @@ X_AST
 
 static array_t get_declaration_path(ast_ident_t *ident) {
     array_t     path;
+    ast_t      *resolved_node;
     ast_decl_t *decl;
     ast_t      *decl_ast;
 
     path = array_make(ast_t*);
 
     while (ident->resolved_node != NULL) {
-        if (ident->resolved_node->kind == AST_BUILTIN) {
-            array_push(path, ident->resolved_node);
-            break;
-        } else {
-            ASSERT(ast_kind_is_decl(ident->resolved_node->kind),
-                   "resolved_node is not a declaration");
-        }
+        resolved_node = ident->resolved_node;
 
-        decl = (ast_decl_t*)ident->resolved_node;
+again:;
+        switch (resolved_node->kind) {
+            case AST_BUILTIN:
+                array_push(path, resolved_node);
+                goto out;
+                break;
+            case AST_POLYMORPHIC_CONSTANT:
+                resolved_node = resolved_node->value.a;
+                goto again;
+                break;
+            case AST_PROC:
+                decl = (ast_decl_t*)((ast_proc_t*)resolved_node)->parent_decl;
+                break;
+            case AST_STRUCT:
+                decl = (ast_decl_t*)((ast_struct_t*)resolved_node)->parent_decl;
+                break;
+            case AST_MODULE:
+                decl = (ast_decl_t*)((ast_module_t*)resolved_node)->parent_decl;
+                break;
+            default:
+                ASSERT(ast_kind_is_decl(resolved_node->kind),
+                    "resolved_node is not a declaration");
+                decl = (ast_decl_t*)resolved_node;
+                break;
+        }
 
 /*         ASSERT(decl->val_expr != NULL, "decl has no val"); */
         if (decl->val_expr == NULL) {
@@ -1094,6 +1135,7 @@ static array_t get_declaration_path(ast_ident_t *ident) {
 
         ident = (ast_ident_t*)decl->val_expr;
     }
+out:;
 
     return path;
 }
@@ -1144,8 +1186,9 @@ static void _report_declaration_path(int should_exit, array_t path) {
 #define report_declaration_path_no_exit(_path) (_report_declaration_path(0, (_path)))
 
 
-static u32 get_monomorph_type(check_context_t cxt, ast_t *node, array_t *polymorphs, array_t *params, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out);
+static monomorphed_t *get_monomorph(check_context_t cxt, ast_t *node, array_t *polymorphs, array_t *params, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out);
 static u32 get_proc_monomorph_type(check_context_t cxt, ast_proc_t *proc, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out);
+static u32 get_proc_monomorph_type_and_push_breadcrumb_for_call(check_context_t cxt, ast_proc_t *proc, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out);
 static u32 get_struct_monomorph_type(check_context_t cxt, ast_struct_t *st, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out);
 
 
@@ -1829,6 +1872,9 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
 }
 
 static void check_param(check_context_t cxt, ast_param_t *param) {
+    ast_t   *found;
+    scope_t *found_in_scope;
+
     param->containing_scope = cxt.scope;
 
     check_for_decl_cycle(ASTP(param));
@@ -1848,8 +1894,8 @@ static void check_param(check_context_t cxt, ast_param_t *param) {
     check_node(cxt, param->type_expr);
 
     if (param->type_expr->type == TY_POLY) {
-        param->type_expr->type    = TY_TYPE;
-        param->type_expr->value.t = TY_POLY;
+        param->type_expr->type     = TY_TYPE;
+        param->type_expr->value.t  = TY_POLY;
     }
 
     if (param->val != NULL) {
@@ -1859,6 +1905,21 @@ static void check_param(check_context_t cxt, ast_param_t *param) {
     ASTP(param)->type = param->type_expr->value.t;
 
     if (ASTP(param)->flags & AST_FLAG_POLYMORPH) {
+        if (ASTP(param)->type == TY_TYPE) {
+            if (cxt.flags & CHECK_FLAG_MONOMORPH) {
+                found = search_up_scopes_return_scope(cxt.scope, param->name, &found_in_scope);
+
+                ASSERT(found                != NULL, "did not find polymorphic type param in constants");
+                ASSERT(found_in_scope       != NULL, "how could this even happen if we found the node???");
+                ASSERT(found->kind          == AST_POLYMORPHIC_CONSTANT, "must be a poly constant");
+                ASSERT(found_in_scope->kind == AST_POLYMORPHIC_CONSTANTS_SCOPE, "must have come from poly constants");
+                ASSERT(found->type          == TY_TYPE, "must have type type");
+
+                ASTP(param)->value.t = found->value.t;
+            } else {
+                ASTP(param)->value.t = TY_POLY;
+            }
+        }
         ASTP(param)->flags |= AST_FLAG_CONSTANT;
     }
 
@@ -2260,7 +2321,9 @@ static void verify_polymorphic_args(u32 cxt_flags, array_t *params, poly_arg_t *
             continue;
         }
 
-        if (!(param->type_expr->flags & AST_FLAG_POLYMORPH)
+/*         if (ASTP(param)->type != TY_POLY */
+/*         &&  !(param->type_expr->flags & AST_FLAG_POLYMORPH) */
+        if (!type_is_poly(ASTP(param)->type)
         &&  !types_are_compatible(ASTP(param)->type, arg->type)) {
 
             EMBC(arg->node, {
@@ -2342,6 +2405,9 @@ static void extract_polymorph_constants_from_arg(array_t *constants, int i, ast_
         constant.ast.loc   = ASTP(param)->loc;
         constant.name      = param->name;
 
+        ASSERT(!type_is_poly(constant.ast.type), "did not solve");
+        ASSERT(constant.ast.type != TY_TYPE || !type_is_poly(constant.ast.value.t), "did not solve");
+
         array_push(*constants, constant);
 /*         report_range_info_no_context_no_exit( */
 /*             &ASTP(param)->loc, "CASE 1: %s resolved to %s", */
@@ -2402,7 +2468,7 @@ static array_t get_polymorph_constants(u32 cxt_flags, array_t *params, poly_arg_
     return constants;
 }
 
-static u32 get_already_monomorphed_type(array_t *monomorphs, array_t *constants, u32 *idx_out) {
+static monomorphed_t *get_already_monomorphed(array_t *monomorphs, array_t *constants, u32 *idx_out) {
     u32                  idx;
     monomorphed_t       *it;
     u32                  i;
@@ -2435,22 +2501,22 @@ static u32 get_already_monomorphed_type(array_t *monomorphs, array_t *constants,
             *idx_out = idx;
         }
 
-        return it->type;
+        return it;
 
 next:;
         idx += 1;
     }
 
-    return TY_NONE;
+    return NULL;
 }
 
-static u32 get_monomorph_type(check_context_t cxt, ast_t *node, array_t *monomorphs, array_t *params, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out) {
+static monomorphed_t *get_monomorph(check_context_t cxt, ast_t *node, array_t *monomorphs, array_t *params, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out) {
     int                    kind;
     src_range_t            params_loc;
     array_t                constants;
+    monomorphed_t         *monomorphed_p;
     monomorphed_t          monomorphed;
     scope_t               *scope;
-    monomorphed_t         *monomorphed_p;
     ast_t                 *poly_constants_scope_node;
     scope_t               *constants_scope;
     ast_poly_constant_t   *constant_it;
@@ -2459,12 +2525,13 @@ static u32 get_monomorph_type(check_context_t cxt, ast_t *node, array_t *monomor
     int                    i;
     poly_backlog_entry_t   backlog_entry;
 
-    kind             = node->kind;
-    params_loc       = kind == AST_PROC ? ((ast_proc_t*)node)->params_loc : ((ast_struct_t*)node)->params_loc;
-    constants        = get_polymorph_constants(cxt.flags, params, args, n_args, params_loc, args_loc);
-    monomorphed.type = get_already_monomorphed_type(monomorphs, &constants, idx_out);
+    kind       = node->kind;
+    params_loc = kind == AST_PROC ? ((ast_proc_t*)node)->params_loc : ((ast_struct_t*)node)->params_loc;
+    constants  = get_polymorph_constants(cxt.flags, params, args, n_args, params_loc, args_loc);
 
-    if (monomorphed.type == TY_NONE) {
+    monomorphed_p = get_already_monomorphed(monomorphs, &constants, idx_out);
+
+    if (monomorphed_p == NULL) {
         scope = get_scope(node);
 
         monomorphed.constants      = constants;
@@ -2532,8 +2599,11 @@ again:;
                              | (kind == AST_PROC ? CHECK_FLAG_POLY_PROC_TYPE_ONLY : 0)
                              | CHECK_FLAG_FORCE_RECHECK;
 
-        push_breadcrumb_for_poly_constants(&args_loc, cxt.parent_decl->full_name, &constants);
+        push_breadcrumb_for_poly_constants(&args_loc, cxt.parent_decl->full_name, &constants, 0);
         check_node(cxt, monomorphed.node);
+        if (node->kind == AST_STRUCT) {
+            verify_polymorphic_args(cxt.flags, &((ast_struct_t*)monomorphed.node)->params, args, n_args, params_loc, args_loc);
+        }
         pop_breadcrumb();
 
         if (idx_out != NULL) {
@@ -2564,9 +2634,9 @@ again:;
         if (kind == AST_PROC) {
             /* Note that we keep the CHECK_FLAG_FORCE_RECHECK bit set for the backlog entry. */
             cxt.flags &= ~(CHECK_FLAG_POLY_PROC_TYPE_ONLY |
-                           CHECK_FLAG_IN_DEFER           |
-                           CHECK_FLAG_IN_LOOP            |
-                           CHECK_FLAG_IN_PARAM           |
+                           CHECK_FLAG_IN_DEFER            |
+                           CHECK_FLAG_IN_LOOP             |
+                           CHECK_FLAG_IN_PARAM            |
                            CHECK_FLAG_IN_VARGS);
 
             cxt.flags |= CHECK_FLAG_POLY_BACKLOG;
@@ -2578,19 +2648,32 @@ again:;
             array_push(poly_backlog, backlog_entry);
         }
     } else {
-/*         report_simple_info_no_exit("polymorph already checked!"); */
+        if (node->kind == AST_STRUCT) {
+            push_breadcrumb_for_poly_constants(&args_loc, cxt.parent_decl->full_name, &constants, 0);
+            if (node->kind == AST_STRUCT) {
+                verify_polymorphic_args(cxt.flags, &((ast_struct_t*)monomorphed_p->node)->params, args, n_args, params_loc, args_loc);
+            }
+            pop_breadcrumb();
+        }
         array_free(constants);
     }
 
-    return monomorphed.type;
+    return monomorphed_p;
 }
 
 static u32 get_proc_monomorph_type(check_context_t cxt, ast_proc_t *proc, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out) {
-    return get_monomorph_type(cxt, ASTP(proc), &proc->monomorphs, &proc->params, args, n_args, args_loc, idx_out);
+    return get_monomorph(cxt, ASTP(proc), &proc->monomorphs, &proc->params, args, n_args, args_loc, idx_out)->type;
+}
+
+static u32 get_proc_monomorph_type_and_push_breadcrumb_for_call(check_context_t cxt, ast_proc_t *proc, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out) {
+    monomorphed_t *mono;
+    mono = get_monomorph(cxt, ASTP(proc), &proc->monomorphs, &proc->params, args, n_args, args_loc, idx_out);
+    push_breadcrumb_for_poly_constants(&args_loc, proc->parent_decl->full_name, &mono->constants, 1);
+    return mono->type;
 }
 
 static u32 get_struct_monomorph_type(check_context_t cxt, ast_struct_t *st, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out) {
-    return get_monomorph_type(cxt, ASTP(st), &st->monomorphs, &st->params, args, n_args, args_loc, idx_out);
+    return get_monomorph(cxt, ASTP(st), &st->monomorphs, &st->params, args, n_args, args_loc, idx_out)->type;
 }
 
 static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
@@ -2659,15 +2742,21 @@ static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
             parg->value = ((arg_t*)array_item(arg_list->args, i))->expr->value;
             parg->type  = ((arg_t*)array_item(arg_list->args, i))->expr->type;
             parg->node  = ((arg_t*)array_item(arg_list->args, i))->expr;
+
+            if (parg->type == TY_TYPE && type_is_poly(parg->value.t)) {
+                ASTP(expr)->type    = TY_TYPE;
+                ASTP(expr)->value.t = TY_POLY;
+                goto skip;
+            }
         }
 
         ASTP(expr)->type    = TY_TYPE;
         ASTP(expr)->value.t = get_struct_monomorph_type(cxt, (ast_struct_t*)struct_decl->val_expr, poly_args, n_args, ASTP(arg_list)->loc, &idx);
 
+skip:;
         if (left_ident != NULL) {
             left_ident->poly_idx = idx;
         }
-
         ASTP(expr)->flags |= AST_FLAG_CONSTANT;
 
         return;
@@ -2788,7 +2877,7 @@ too_few:
             parg->node  = ((arg_t*)array_item(arg_list->args, i))->expr;
         }
 
-        poly_proc_ty     = get_proc_monomorph_type(cxt, proc, poly_args, n_args, ASTP(arg_list)->loc, &idx);
+        poly_proc_ty     = get_proc_monomorph_type_and_push_breadcrumb_for_call(cxt, proc, poly_args, n_args, ASTP(arg_list)->loc, &idx);
         expr->left->type = poly_proc_ty;
         proc_ty          = poly_proc_ty;
 
@@ -2983,6 +3072,9 @@ too_few:
 
     if (proc != NULL) {
         array_free(path);
+        if (ASTP(proc)->flags & AST_FLAG_POLYMORPH) {
+            pop_breadcrumb();
+        }
     }
 
     ASTP(expr)->type = get_ret_type(expr->left->type);
@@ -3083,6 +3175,17 @@ static void check_ident(check_context_t cxt, ast_ident_t *ident) {
             ASTP(ident)->value.t  = TY_POLY;
             ASTP(ident)->flags   |= AST_FLAG_CONSTANT;
         } else {
+            if (ident->resolved_node->kind == AST_POLYMORPHIC_CONSTANT) {
+                switch (type_kind(ident->resolved_node->type)) {
+                    case TY_PROC:
+                        ident->resolved_node = ASTP(((ast_proc_t*)ident->resolved_node->value.a)->parent_decl);
+                        break;
+                    case TY_MODULE:
+                        ident->resolved_node = ASTP(((ast_module_t*)ident->resolved_node->value.a)->parent_decl);
+                        break;
+                }
+            }
+
             if (ident->resolved_node->type == TY_UNKNOWN) {
                 if (ident->resolved_node == ASTP(cxt.parent_decl)) {
                     CYCLE_PATH_PUSH(ASTP(ident));
@@ -3245,7 +3348,7 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
 
     memset(&new_ident, 0, sizeof(new_ident));
     ASTP(&new_ident)->kind  = AST_IDENT;
-    ASTP(&new_ident)->flags = ASTP(expr)->flags;
+    ASTP(&new_ident)->flags = ASTP(expr)->flags | (found_node->flags & AST_FLAG_CONSTANT);
     ASTP(&new_ident)->type  = found_node->type;
     ASTP(&new_ident)->value = found_node->value;
     ASTP(&new_ident)->loc   = ASTP(expr)->loc;
@@ -4277,6 +4380,7 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
     if ((ASTP(cxt.parent_decl)->flags & AST_FLAG_POLYMORPH)
     &&  !(cxt.flags & CHECK_FLAG_MONOMORPH)) {
 
+        array_push(all_types, cxt.parent_decl);
         goto skip_children;
     }
 
@@ -4290,12 +4394,7 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
 
     ASTP(st)->flags |= AST_FLAG_CHECKED;
 
-    /*
-    ** We don't want to add more entries from the backlog.
-    ** All appropriate declarations should already have been
-    ** added by the time we're scraping up monomorphs.
-    */
-    if (!(cxt.flags & CHECK_FLAG_POLY_BACKLOG)) {
+    if (!(ASTP(cxt.parent_decl)->flags & AST_FLAG_POLYMORPH)) {
         array_push(all_types, cxt.parent_decl);
     }
 

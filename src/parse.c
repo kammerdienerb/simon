@@ -853,7 +853,7 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
 
         EXPECT_CHAR(cxt, '(', "expected '(' to open the parameter type list for a procedure type");
 
-        while (!OPTIONAL_NO_EAT_CHAR(cxt, ')')) {
+        while (!OPTIONAL_CHAR(cxt, ')')) {
             type_expr = parse_expr_prec(cxt, ASSIGNMENT_PREC + 1);
 
             if (type_expr == NULL) {
@@ -1216,8 +1216,8 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
             param->containing_scope = SCOPE(cxt);
 
             if (OPTIONAL_CHAR(cxt, '%')) {
-                ASTP(param)->flags  |= AST_FLAG_POLYMORPH;
-                ASTP(result)->flags |= AST_FLAG_POLYMORPH;
+                ASTP(param)->flags  |= AST_FLAG_POLYMORPH | AST_FLAG_POLY_IDENT;
+                ASTP(result)->flags |= AST_FLAG_POLYMORPH | AST_FLAG_POLY_IDENT;
             }
 
             EXPECT_IDENT(cxt, &param->name, "expected parameter name");
@@ -1706,8 +1706,8 @@ static ast_t * parse_proc_body(parse_context_t *cxt, string_id name, int do_pars
         param->containing_scope = SCOPE(cxt);
 
         if (OPTIONAL_CHAR(cxt, '%')) {
-            ASTP(param)->flags  |= AST_FLAG_POLYMORPH;
-            ASTP(result)->flags |= AST_FLAG_POLYMORPH;
+            ASTP(param)->flags  |= AST_FLAG_POLYMORPH | AST_FLAG_POLY_IDENT;
+            ASTP(result)->flags |= AST_FLAG_POLYMORPH | AST_FLAG_POLY_IDENT;
         }
 
         EXPECT_IDENT(cxt, &param->name, "expected parameter name");
