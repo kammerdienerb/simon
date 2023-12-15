@@ -120,12 +120,12 @@ do {                                                            \
     for (_i = 0; _i < (_lvl); _i += 1) { EMIT_STRING("    "); } \
 } while (0)
 
-
-static void emit_name(ast_t *node, i32 poly_idx) {
+static void _emit_name(ast_t *node, i32 mono_idx, int asm_name) {
     ast_decl_t    *decl;
-    const char    *full_name;
-    u32            len;
-    u32            i;
+    scope_t       *scope;
+    ast_t         *parent_node;
+    int            parent_mono_idx;
+    ast_decl_t    *parent_decl;
     ast_param_t   *param;
     ast_builtin_t *builtin;
 
@@ -137,18 +137,40 @@ static void emit_name(ast_t *node, i32 poly_idx) {
 long_name:;
         decl = (ast_decl_t*)node;
 
-        full_name = get_string(decl->full_name);
-        len       = strlen(full_name);
-        for (i = 0; i < len; i += 1) {
-            if (full_name[i] == '.') {
-                EMIT_C('_');
-                EMIT_C('_');
-            } else {
-                EMIT_C(full_name[i]);
+        scope = decl->containing_scope;
+
+        if (scope         != NULL
+        &&  scope->parent != NULL
+        &&  scope->kind   != AST_GLOBAL_SCOPE) {
+
+            parent_node     = scope->node;
+            parent_mono_idx = -1;
+
+            switch (parent_node->kind) {
+                case AST_PROC:
+                    parent_decl     = ((ast_proc_t*)parent_node)->parent_decl;
+                    parent_mono_idx = ((ast_proc_t*)parent_node)->mono_idx;
+                    break;
+                case AST_STRUCT:
+                    parent_decl     = ((ast_struct_t*)parent_node)->parent_decl;
+                    parent_mono_idx = ((ast_struct_t*)parent_node)->mono_idx;
+                    break;
+                case AST_MODULE:
+                    parent_decl = ((ast_module_t*)parent_node)->parent_decl;
+                    break;
+                default:
+                    parent_decl = NULL;
+                    ASSERT(0, "unhandled scope node kind");
+                    break;
             }
+
+            _emit_name(ASTP(parent_decl), parent_mono_idx, asm_name);
+            EMIT_STRING(asm_name ? "." : "__");
         }
-        if (poly_idx >= 0) {
-            EMIT_STRING_F("__p%d", poly_idx);
+
+        EMIT_STRING_ID(decl->name);
+        if (mono_idx >= 0) {
+            EMIT_STRING_F("%s%d", asm_name ? "." : "__p", mono_idx);
         }
     } else if (node->kind == AST_PARAM) {
         param = (ast_param_t*)node;
@@ -157,6 +179,13 @@ long_name:;
         builtin = (ast_builtin_t*)node;
         EMIT_STRING_ID(builtin->name);
     }
+}
+
+static void emit_asm_name(ast_t *node, i32 mono_idx) {
+    _emit_name(node, mono_idx, 1);
+}
+static void emit_name(ast_t *node, i32 mono_idx) {
+    _emit_name(node, mono_idx, 0);
 }
 
 static void emit_type(u32 ty) {
@@ -200,19 +229,19 @@ proc:;
     }
 }
 
-static void emit_struct_pre_decl(ast_decl_t *decl, ast_struct_t *st, i32 poly_idx) {
+static void emit_struct_pre_decl(ast_decl_t *decl, ast_struct_t *st, i32 mono_idx) {
     if (st->bitfield_struct_bits != 0) {
         EMIT_STRING_F("typedef u%d ", st->bitfield_struct_bits);
-        emit_name(ASTP(decl), poly_idx);
+        emit_name(ASTP(decl), mono_idx);
         EMIT_STRING(";\n");
     } else {
         EMIT_STRING("struct ");
-        emit_name(ASTP(decl), poly_idx);
+        emit_name(ASTP(decl), mono_idx);
         EMIT_STRING("_struct;\n");
         EMIT_STRING("typedef struct ");
-        emit_name(ASTP(decl), poly_idx);
+        emit_name(ASTP(decl), mono_idx);
         EMIT_STRING("_struct ");
-        emit_name(ASTP(decl), poly_idx);
+        emit_name(ASTP(decl), mono_idx);
         EMIT_STRING(";\n");
     }
 }
@@ -221,7 +250,7 @@ static void emit_struct_pre_decls(void) {
     ast_decl_t    **it;
     ast_decl_t     *decl;
     ast_struct_t   *st;
-    i32             poly_idx;
+    i32             mono_idx;
     monomorphed_t  *mit;
 
     array_traverse(all_types, it) {
@@ -229,12 +258,12 @@ static void emit_struct_pre_decls(void) {
         st   = (ast_struct_t*)decl->val_expr;
 
         if (ASTP(decl)->flags & AST_FLAG_POLYMORPH) {
-            poly_idx = 0;
+            mono_idx = 0;
             array_traverse(st->monomorphs, mit) {
                 if (mit->specialization == NULL) {
-                    emit_struct_pre_decl(decl, st, poly_idx);
+                    emit_struct_pre_decl(decl, st, mono_idx);
                 }
-                poly_idx += 1;
+                mono_idx += 1;
             }
         } else {
             emit_struct_pre_decl(decl, st, -1);
@@ -242,14 +271,42 @@ static void emit_struct_pre_decls(void) {
     }
 }
 
-static void emit_struct(ast_decl_t *decl, ast_struct_t *st, i32 poly_idx) {
-    ast_t      **fit;
-    ast_decl_t  *field;
+static void emit_struct(ast_decl_t *decl, ast_struct_t *st, i32 mono_idx) {
+    ast_t        **fit;
+    ast_decl_t    *field;
+    u32            ty;
+    ast_decl_t    *field_type_decl;
+    ast_struct_t  *field_type_st;
 
-    if (st->bitfield_struct_bits != 0) { return; }
+    ASSERT(!(ASTP(st)->flags & AST_FLAG_VISITED), "cycle in struct dep graph!");
+
+    ASTP(st)->flags |= AST_FLAG_VISITED;
+
+    if (st->bitfield_struct_bits != 0) { goto out; }
+
+    array_traverse(st->fields, fit) {
+        field = (ast_decl_t*)*fit;
+        ty    = ASTP(field)->type;
+
+again:;
+        switch (type_kind(ty)) {
+            case TY_ARRAY:
+                ty = get_under_type(ty);
+                goto again;
+            case TY_STRUCT:
+            case TY_STRUCT_MONO:
+                field_type_decl = struct_type_to_decl(ty);
+                ASSERT(field_type_decl->val_expr->kind == AST_STRUCT, "not a struct?");
+                field_type_st = (ast_struct_t*)field_type_decl->val_expr;
+                if (!(ASTP(field_type_st)->flags & AST_FLAG_VISIT_WORK_DONE)) {
+                    emit_struct(field_type_decl, field_type_st, field_type_st->mono_idx);
+                }
+                break;
+        }
+    }
 
     EMIT_STRING("struct ");
-    emit_name(ASTP(decl), poly_idx);
+    emit_name(ASTP(decl), mono_idx);
     EMIT_STRING("_struct {\n");
     array_traverse(st->fields, fit) {
         field = (ast_decl_t*)*fit;
@@ -260,29 +317,54 @@ static void emit_struct(ast_decl_t *decl, ast_struct_t *st, i32 poly_idx) {
         EMIT_STRING(";\n");
     }
     EMIT_STRING("};\n\n");
+
+out:;
+    ASTP(st)->flags |= AST_FLAG_VISIT_WORK_DONE;
 }
 
 static void emit_structs(void) {
     ast_decl_t    **it;
     ast_decl_t     *decl;
     ast_struct_t   *st;
-    i32             poly_idx;
+    i32             mono_idx;
     monomorphed_t  *mit;
+
+    /* Clear all visited flags. We're going to do a dependency-order traversal. */
+    array_traverse(all_types, it) {
+        decl = *it;
+        st   = (ast_struct_t*)decl->val_expr;
+
+        if (ASTP(decl)->flags & AST_FLAG_POLYMORPH) {
+            mono_idx = 0;
+            array_traverse(st->monomorphs, mit) {
+                if (mit->specialization == NULL) {
+                    mit->node->flags &= ~(AST_FLAG_VISITED | AST_FLAG_VISIT_WORK_DONE);
+                }
+                mono_idx += 1;
+            }
+        } else {
+            ASTP(st)->flags &= ~(AST_FLAG_VISITED | AST_FLAG_VISIT_WORK_DONE);
+        }
+    }
 
     array_traverse(all_types, it) {
         decl = *it;
         st   = (ast_struct_t*)decl->val_expr;
 
         if (ASTP(decl)->flags & AST_FLAG_POLYMORPH) {
-            poly_idx = 0;
+            mono_idx = 0;
             array_traverse(st->monomorphs, mit) {
                 if (mit->specialization == NULL) {
-                    emit_struct(decl, (ast_struct_t*)mit->node, poly_idx);
+                    if (!(mit->node->flags & AST_FLAG_VISITED)) {
+                        emit_struct(decl, (ast_struct_t*)mit->node, mono_idx);
+                    }
                 }
-                poly_idx += 1;
+                mono_idx += 1;
             }
         } else {
-            emit_struct(decl, st, -1);
+            if (!(ASTP(st)->flags & AST_FLAG_VISITED)) {
+                emit_struct(decl, st, -1);
+            }
         }
     }
 }
@@ -364,7 +446,7 @@ static void emit_param(ast_param_t *param, const char *lazy_comma) {
     }
 }
 
-static void emit_proc_pre_decl(ast_decl_t *decl, ast_proc_t *proc, i32 poly_idx) {
+static void emit_proc_pre_decl(ast_decl_t *decl, ast_proc_t *proc, i32 mono_idx) {
     const char   *lazy_comma;
     ast_t       **pit;
     ast_param_t  *param;
@@ -378,7 +460,7 @@ static void emit_proc_pre_decl(ast_decl_t *decl, ast_proc_t *proc, i32 poly_idx)
         EMIT_STRING("void ");
     }
 
-    emit_name(ASTP(decl), poly_idx);
+    emit_name(ASTP(decl), mono_idx);
 
     if (array_len(proc->params) == 0) {
         EMIT_STRING("(void)");
@@ -402,10 +484,7 @@ static void emit_proc_pre_decl(ast_decl_t *decl, ast_proc_t *proc, i32 poly_idx)
 
     if (!(ASTP(proc)->flags & AST_FLAG_IS_EXTERN)) {
         EMIT_STRING(" __asm__ (\"");
-        EMIT_STRING_ID(decl->full_name);
-        if (poly_idx >= 0) {
-            EMIT_STRING_F(".%d", poly_idx);
-        }
+        emit_asm_name(ASTP(decl), proc->mono_idx);
         EMIT_STRING("\")");
     }
 
@@ -416,7 +495,7 @@ static void emit_proc_pre_decls(void) {
     ast_decl_t    **it;
     ast_decl_t     *decl;
     ast_proc_t     *proc;
-    i32             poly_idx;
+    i32             mono_idx;
     monomorphed_t  *mit;
 
     array_traverse(all_procs, it) {
@@ -424,12 +503,12 @@ static void emit_proc_pre_decls(void) {
         proc = (ast_proc_t*)decl->val_expr;
 
         if (ASTP(proc)->flags & AST_FLAG_POLYMORPH) {
-            poly_idx = 0;
+            mono_idx = 0;
             array_traverse(proc->monomorphs, mit) {
                 if (mit->specialization == NULL) {
-                    emit_proc_pre_decl(decl, (ast_proc_t*)mit->node, poly_idx);
+                    emit_proc_pre_decl(decl, (ast_proc_t*)mit->node, mono_idx);
                 }
-                poly_idx += 1;
+                mono_idx += 1;
             }
         } else {
             emit_proc_pre_decl(decl, proc, -1);
@@ -785,11 +864,11 @@ static void emit_expr(ast_t *expr) {
                 emit_expr(((ast_decl_t*)resolved_node)->val_expr);
             } else if (resolved_node->kind == AST_DECL_PROC
                    && resolved_node->flags & AST_FLAG_POLYMORPH
-                   &&  ident->poly_idx >= 0) {
+                   &&  ident->mono_idx >= 0) {
 
                 decl             = (ast_decl_t*)resolved_node;
                 proc             = (ast_proc_t*)decl->val_expr;
-                spec_monomorphed = array_item(proc->monomorphs, ident->poly_idx);
+                spec_monomorphed = array_item(proc->monomorphs, ident->mono_idx);
 
                 if (spec_monomorphed->specialization == NULL) { goto normal_name; }
 
@@ -797,7 +876,7 @@ static void emit_expr(ast_t *expr) {
 
             } else {
 normal_name:;
-                emit_name(((ast_ident_t*)expr)->resolved_node, ((ast_ident_t*)expr)->poly_idx);
+                emit_name(((ast_ident_t*)expr)->resolved_node, ((ast_ident_t*)expr)->mono_idx);
             }
 
             break;
@@ -887,7 +966,8 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
     switch (stmt->kind) {
         case AST_BLOCK:
             if (stmt->flags & AST_FLAG_SYNTHETIC_BLOCK) {
-                ASSERT(block_kind == BLOCK_NORMAL, "non-normal synthetic block???");
+                ASSERT(block_kind != BLOCK_PROC_BODY, "proc synthetic block???");
+                ASSERT(block_kind != BLOCK_LOOP,      "loop synthetic block???");
                 block_kind = BLOCK_SYNTHETIC;
             }
 
@@ -1037,7 +1117,7 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
     }
 }
 
-static void emit_proc(ast_decl_t *decl, ast_proc_t *proc, i32 poly_idx) {
+static void emit_proc(ast_decl_t *decl, ast_proc_t *proc, i32 mono_idx) {
     const char   *lazy_comma;
     ast_t       **pit;
     ast_param_t  *param;
@@ -1051,7 +1131,7 @@ static void emit_proc(ast_decl_t *decl, ast_proc_t *proc, i32 poly_idx) {
         EMIT_STRING("void ");
     }
 
-    emit_name(ASTP(decl), poly_idx);
+    emit_name(ASTP(decl), mono_idx);
 
     if (array_len(proc->params) == 0) {
         EMIT_STRING("(void) ");
@@ -1081,7 +1161,7 @@ static void emit_procs(void) {
     ast_decl_t    **it;
     ast_decl_t     *decl;
     ast_proc_t     *proc;
-    i32             poly_idx;
+    i32             mono_idx;
     monomorphed_t  *mit;
 
     array_traverse(all_procs, it) {
@@ -1093,12 +1173,12 @@ static void emit_procs(void) {
         }
 
         if (ASTP(proc)->flags & AST_FLAG_POLYMORPH) {
-            poly_idx = 0;
+            mono_idx = 0;
             array_traverse(proc->monomorphs, mit) {
                 if (mit->specialization == NULL) {
-                    emit_proc(decl, (ast_proc_t*)mit->node, poly_idx);
+                    emit_proc(decl, (ast_proc_t*)mit->node, mono_idx);
                 }
-                poly_idx += 1;
+                mono_idx += 1;
             }
         } else {
             emit_proc(decl, proc, -1);

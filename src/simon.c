@@ -64,6 +64,7 @@ int main(int argc, char **argv) {
 
 void do_sanity_checks(void) {
     ASSERT(sizeof(ast_ident_t) == sizeof(ast_bin_expr_t), "ident doesn't fit into bin_expr");
+    ASSERT(sizeof(ast_macro_arg_expand_t) == sizeof(ast_decl_t), "decl doesn't fit into macro_arg_expand");
 
     ASSERT(offsetof(ast_module_t, scope) == offsetof(ast_scoped_t, scope), "scope misalign");
     ASSERT(offsetof(ast_proc_t,   scope) == offsetof(ast_scoped_t, scope), "scope misalign");

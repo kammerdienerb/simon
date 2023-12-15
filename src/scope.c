@@ -253,9 +253,24 @@ void add_symbol(scope_t *scope, string_id name_id, ast_t *node) {
     array_push(scope->nodes,   node);
 }
 
+static void propagate_in_proc(scope_t *scope) {
+    scope_t **it;
+
+    scope->in_proc = 1;
+
+    array_traverse(scope->subscopes, it) {
+        propagate_in_proc(*it);
+    }
+}
+
 void insert_subscope(scope_t *scope, scope_t *subscope) {
-    subscope->parent = scope;
+    subscope->parent  = scope;
+    subscope->in_proc = scope->kind == AST_PROC || subscope->kind == AST_PROC || scope->in_proc;
     array_push(scope->subscopes, subscope);
+
+    if (subscope->in_proc) {
+        propagate_in_proc(subscope);
+    }
 }
 
 scope_t *add_subscope(scope_t *scope, int kind, ast_t *node) {
@@ -274,12 +289,6 @@ scope_t *add_named_subscope(scope_t *scope, int kind, ast_t *node, string_id nam
     array_push(scope->subscopes, subscope);
 
     return subscope;
-}
-
-void move_subscope(scope_t *dst, scope_t *subscope) {
-    subscope->parent = dst;
-
-    array_push(dst->subscopes, subscope);
 }
 
 void free_scope_no_recurse(scope_t *scope) {

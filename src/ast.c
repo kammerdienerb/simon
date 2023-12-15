@@ -61,6 +61,7 @@ do {                                  \
 #define CPY_SCOPE(dst, _parent_scope)                \
 do {                                                 \
     (dst)->scope         = copy_scope((dst)->scope); \
+    (dst)->scope->node   = ASTP((dst));              \
     insert_subscope((_parent_scope), (dst)->scope);  \
 } while (0)
 
@@ -97,8 +98,9 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
             if (!insert_scope->in_proc) {
                 add_symbol(insert_scope, decl->name, ASTP(decl));
             }
+            decl->containing_scope = insert_scope;
 
-            if (node->flags & AST_FLAG_MACRO_EXPAND_ARG
+            if (node->flags & AST_FLAG_MACRO_EXPAND_NAME
             &&  collect_macro_expand_args != NULL) {
 
                 exp = ASTP(decl);
@@ -175,7 +177,7 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
 
             add_symbol(insert_scope, param->name, ASTP(param));
 
-            if (node->flags & AST_FLAG_MACRO_EXPAND_ARG
+            if (node->flags & AST_FLAG_MACRO_EXPAND_NAME
             &&  collect_macro_expand_args != NULL) {
 
                 exp = ASTP(param);
@@ -207,13 +209,6 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
 
             if (ASTP(ident)->flags & AST_FLAG_POLY_IDENT) {
                 add_symbol(insert_scope, ident->str_rep, ASTP(ident));
-            }
-
-            if (node->flags & AST_FLAG_MACRO_EXPAND_ARG
-            &&  collect_macro_expand_args != NULL) {
-
-                exp = ASTP(ident);
-                array_push(*collect_macro_expand_args, exp);
             }
 
             return ASTP(ident);
@@ -337,6 +332,17 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
             CPY_FIELD(macro_call, node, block,    insert_scope);
 
             return ASTP(macro_call);
+        }
+        case AST_MACRO_ARG_EXPAND:
+        case AST_MACRO_BLOCK_ARG_EXPAND: {
+            ast_macro_arg_expand_t *macro_arg_expand; ALLOC_CPY(macro_arg_expand, node);
+
+            if (collect_macro_expand_args != NULL) {
+                exp = ASTP(macro_arg_expand);
+                array_push(*collect_macro_expand_args, exp);
+            }
+
+            return ASTP(macro_arg_expand);
         }
         default:
         unhandled:;
@@ -714,6 +720,20 @@ void expand_macro(ast_macro_call_t *call) {
 
     macro = (ast_macro_t*)((ast_decl_t*)found_node)->val_expr;
 
+    if (call->block != NULL && !macro->is_block_macro) {
+        report_loc_err_no_exit(call->block->loc.beg,
+                               "'%s' is not a block macro, but is being used like one", get_string(found_name));
+        report_fixit_no_exit(ASTP(call)->loc.beg,
+                             "use parentheses around arguments instead of square brackets...\a%s!(...)", get_string(found_name));
+        report_fixit(call->block->loc.beg, "... and remove the block");
+    }
+    if (macro->is_block_macro && call->block == NULL) {
+        report_range_err_no_exit(&ASTP(call)->loc,
+                                 "'%s' is a block macro, but is not being used like one", get_string(found_name));
+        report_fixit_no_exit(ASTP(call)->loc.beg,
+                             "use square brackets around arguments instead of parentheses...\a%s![...]", get_string(found_name));
+        report_fixit(ASTP(call)->loc.end, "... and add a block argument\a{ ... }");
+    }
     if (array_len(arg_list->args) < array_len(macro->param_names)) {
         report_loc_err(ASTP(arg_list)->loc.end,
                        "too few arguments in macro expansion");
@@ -740,7 +760,7 @@ void expand_macro(ast_macro_call_t *call) {
         ((ast_block_t*)new_node)->stmts  = array_make(ast_t*);
 
         array_traverse(((ast_block_t*)macro->block)->stmts, it) {
-            new_stmt = copy_tree_collect_macro_expand_args(*it, call->scope->parent, &macro_expand_args);
+            new_stmt = copy_tree_collect_macro_expand_args(*it, call->scope, &macro_expand_args);
             array_push(((ast_block_t*)new_node)->stmts, new_stmt);
         }
     }
@@ -752,6 +772,10 @@ void expand_macro(ast_macro_call_t *call) {
     array_traverse(macro_expand_args, it) {
         expand_arg = *it;
 
+        if (expand_arg->kind == AST_MACRO_BLOCK_ARG_EXPAND) {
+            goto block;
+        }
+
         expand_arg_loc.beg = expand_arg->loc.beg;
 
         switch (expand_arg->kind) {
@@ -761,9 +785,12 @@ void expand_macro(ast_macro_call_t *call) {
                 name               = ((ast_decl_t*)expand_arg)->name;
                 expand_arg_loc.end = ((ast_decl_t*)expand_arg)->name_end;
                 break;
-
-            case AST_IDENT:
-                name               = ((ast_ident_t*)expand_arg)->str_rep;
+            case AST_PARAM:
+                name               = ((ast_param_t*)expand_arg)->name;
+                expand_arg_loc.end = ((ast_param_t*)expand_arg)->name_end;
+                break;
+            case AST_MACRO_ARG_EXPAND:
+                name               = ((ast_macro_arg_expand_t*)expand_arg)->name;
                 expand_arg_loc.end = expand_arg->loc.end;
                 break;
 
@@ -785,14 +812,18 @@ void expand_macro(ast_macro_call_t *call) {
 found:;
         arg_p = array_item(arg_list->args, idx);
 
+block:;
         switch (expand_arg->kind) {
 /* #define X(k) case k: */
 /*                 X_AST_DECLARATIONS */
 /* #undef X */
 /*                 break; */
 
-            case AST_IDENT:
-                REPLACE_NODE(expand_arg, copy_tree(arg_p->expr, call->scope->parent));
+            case AST_MACRO_ARG_EXPAND:
+                REPLACE_NODE(expand_arg, copy_tree(arg_p->expr, call->scope));
+                break;
+            case AST_MACRO_BLOCK_ARG_EXPAND:
+                REPLACE_NODE(expand_arg, copy_tree(call->block, call->scope));
                 break;
 
             default:
@@ -896,6 +927,7 @@ found:;
             ASSERT(0, "bad expected macro kind");
     }
 
+    ASTP(call)->macro_decl = found_node;
     push_macro_breadcrumb(ASTP(call));
 
     if (expected_kind == MACRO_DECL) {
@@ -2611,8 +2643,10 @@ again:;
         }
 
         if (kind == AST_PROC) {
+            ((ast_proc_t*)monomorphed.node)->mono_idx = cxt.monomorph_idx;
             monomorphed.type = monomorphed_p->type = monomorphed.node->type;
         } else {
+            ((ast_struct_t*)monomorphed.node)->mono_idx = cxt.monomorph_idx;
             monomorphed.type = monomorphed_p->type = monomorphed.node->value.t;
         }
 
@@ -2755,7 +2789,7 @@ static void check_call(check_context_t cxt, ast_bin_expr_t *expr) {
 
 skip:;
         if (left_ident != NULL) {
-            left_ident->poly_idx = idx;
+            left_ident->mono_idx = idx;
         }
         ASTP(expr)->flags |= AST_FLAG_CONSTANT;
 
@@ -2882,7 +2916,7 @@ too_few:
         proc_ty          = poly_proc_ty;
 
         if (left_ident != NULL) {
-            left_ident->poly_idx = idx;
+            left_ident->mono_idx = idx;
         }
 
         n_params = get_num_param_types(proc_ty);
@@ -3365,7 +3399,7 @@ static void check_namespace_dot(check_context_t cxt, ast_bin_expr_t *expr) {
 
     new_ident.str_rep       = get_string_id_n(new_name_buff, new_name_len);
     new_ident.resolved_node = found_node;
-    new_ident.poly_idx      = -1;
+    new_ident.mono_idx      = -1;
     new_ident.varg_idx      = -1;
 
     REPLACE_NODE(ASTP(expr), ASTP(&new_ident));
@@ -4383,6 +4417,8 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
         array_push(all_types, cxt.parent_decl);
         goto skip_children;
     }
+
+    cxt.flags &= ~CHECK_FLAG_MONOMORPH;
 
     array_traverse(st->fields, it) {
         check_node(cxt, *it);

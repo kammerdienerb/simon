@@ -80,6 +80,8 @@ AST_DEFINE(dummy);
     X(AST_BREAK,                       break)            \
     X(AST_CONTINUE,                    continue)         \
     X(AST_MACRO_CALL,                  macro_call)       \
+    X(AST_MACRO_ARG_EXPAND,            macro_arg_expand) \
+    X(AST_MACRO_BLOCK_ARG_EXPAND,      macro_arg_expand) \
     X(AST_POLYMORPHIC_CONSTANT,        poly_constant)    \
     X(AST_POLYMORPHIC_CONSTANTS_SCOPE, dummy)
 
@@ -151,13 +153,13 @@ enum {
     AST_FLAG_POLY_VARARGS               = (1 <<  3),
     AST_FLAG_CF_MUST_RETURN             = (1 <<  4),
     AST_FLAG_CF_MUST_SKIP_LOOP_BODY     = (1 <<  5),
-/*     AST_FLAG_CALL_IS_BUILTIN_SLICE_FROM = (1 <<  6), */
+    AST_FLAG_VISITED                    = (1 <<  6),
     AST_FLAG_IS_EXTERN                  = (1 <<  7),
     AST_FLAG_EXPR_TOP                   = (1 <<  8),
     AST_FLAG_EXPR_CAN_BE_LVAL           = (1 <<  9),
-/*     AST_FLAG_PAREN_EXPR                 = (1 << 10), */
+    AST_FLAG_VISIT_WORK_DONE            = (1 << 10),
     AST_FLAG_BITFIELD_DOT               = (1 << 11),
-    AST_FLAG_MACRO_EXPAND_ARG           = (1 << 12),
+    AST_FLAG_MACRO_EXPAND_NAME          = (1 << 12),
     AST_FLAG_CONSTANT                   = (1 << 13),
     AST_FLAG_POLY_IDENT                 = (1 << 14),
     AST_FLAG_CHECKED                    = (1 << 15),
@@ -229,10 +231,11 @@ AST_DEFINE(module,
 );
 
 AST_DEFINE(param,
-    string_id  name;
-    ast_t     *type_expr;
-    ast_t     *val;
-    scope_t   *containing_scope;
+    string_id    name;
+    ast_t       *type_expr;
+    ast_t       *val;
+    scope_t     *containing_scope;
+    src_point_t  name_end;
 );
 
 AST_DEFINE(block,
@@ -249,6 +252,7 @@ AST_DEFINE(proc,
     ast_t       *ret_type_expr;
     ast_t       *block;
     array_t      monomorphs;
+    int          mono_idx;
 );
 
 AST_DEFINE(struct,
@@ -260,12 +264,14 @@ AST_DEFINE(struct,
     array_t      children;
     array_t      monomorphs;
     u8           bitfield_struct_bits;
+    int          mono_idx;
 );
 
 AST_DEFINE(macro,
     ast_decl_t *parent_decl;
     ast_t      *block;
     array_t     param_names;
+    int         is_block_macro;
 );
 
 AST_DEFINE(int,
@@ -284,14 +290,6 @@ AST_DEFINE(char,
     string_id str_rep;
 );
 
-AST_DEFINE(ident,
-    string_id  str_rep;
-    ast_t     *resolved_node;
-    int        poly_idx;
-    int        varg_idx;
-    char       _padding[sizeof(ast_decl_t) - sizeof(ast_t)];
-);
-
 AST_DEFINE(proc_type,
     array_t  param_type_exprs;
     ast_t   *ret_type_expr;
@@ -308,13 +306,20 @@ AST_DEFINE(bin_expr,
     src_point_t  op_loc;
     ast_t       *call_decl;
     int          op;
-    char         _padding[   sizeof(ast_ident_t) - sizeof(ast_t)
-                           - sizeof(ast_t*)
-                           - sizeof(ast_t*)
-                           - sizeof(int)
-                           - sizeof(src_point_t)
-                           - sizeof(ast_t*)
-                         ];
+);
+
+AST_DEFINE(ident,
+    string_id  str_rep;
+    ast_t     *resolved_node;
+    int        mono_idx;
+    int        varg_idx;
+    char       _padding[   sizeof(ast_bin_expr_t)
+                         - sizeof(ast_t)
+                         - sizeof(string_id)
+                         - sizeof(ast_t*)
+                         - sizeof(int)
+                         - sizeof(int)
+                       ];
 );
 
 typedef struct {
@@ -358,7 +363,19 @@ AST_DEFINE(macro_call,
     ast_t   *block;
     scope_t *scope;
     int      expected_kind;
-    char     _padding[sizeof(ast_decl_t)];
+    char     _padding[  sizeof(ast_decl_t)
+                      - sizeof(ast_t)
+                      - sizeof(ast_t*)
+                      - sizeof(ast_t*)
+                      - sizeof(ast_t*)
+                      - sizeof(scope_t*)
+                      - sizeof(int)
+                     ];
+);
+
+AST_DEFINE(macro_arg_expand,
+    string_id name;
+    char      _padding[sizeof(ast_decl_t) - sizeof(ast_t) - sizeof(string_id)];
 );
 
 AST_DEFINE(compile_error,
