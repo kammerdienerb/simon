@@ -121,13 +121,16 @@ do {                                                            \
 } while (0)
 
 static void _emit_name(ast_t *node, i32 mono_idx, int asm_name) {
-    ast_decl_t    *decl;
-    scope_t       *scope;
-    ast_t         *parent_node;
-    int            parent_mono_idx;
-    ast_decl_t    *parent_decl;
-    ast_param_t   *param;
-    ast_builtin_t *builtin;
+    ast_decl_t          *decl;
+    scope_t             *scope;
+    ast_t               *parent_node;
+    int                  parent_mono_idx;
+    ast_decl_t          *parent_decl;
+    monomorphed_t       *mono;
+    ast_poly_constant_t *it;
+    const char          *lazy_comma;
+    ast_param_t         *param;
+    ast_builtin_t       *builtin;
 
     if (node->kind == AST_DECL_VAR) {
         decl = (ast_decl_t*)node;
@@ -170,7 +173,31 @@ long_name:;
 
         EMIT_STRING_ID(decl->name);
         if (mono_idx >= 0) {
-            EMIT_STRING_F("%s%d", asm_name ? "." : "__p", mono_idx);
+            if (asm_name) {
+                switch (node->kind) {
+                    case AST_DECL_PROC:
+                        mono = array_item(((ast_proc_t*)decl->val_expr)->monomorphs, mono_idx);
+                        break;
+                    case AST_DECL_STRUCT:
+                        mono = array_item(((ast_struct_t*)decl->val_expr)->monomorphs, mono_idx);
+                        break;
+                    default:
+                        mono = NULL;
+                        ASSERT(0, "bad decl kind with mono idx");
+                        break;
+                }
+
+                EMIT_C('(');
+                lazy_comma = "";
+                array_traverse(mono->constants, it) {
+                    EMIT_STRING_F("%s%s: %s", lazy_comma, get_string(it->name), get_string(value_to_string_id(ASTP(it)->value, ASTP(it)->type)));
+                    lazy_comma = ", ";
+
+                }
+                EMIT_C(')');
+            } else {
+                EMIT_STRING_F("__p%d", mono_idx);
+            }
         }
     } else if (node->kind == AST_PARAM) {
         param = (ast_param_t*)node;
@@ -951,6 +978,10 @@ next:;
     }
 }
 
+static void emit_line(src_point_t *pt) {
+    EMIT_STRING_F("#line %d \"%s\"\n", pt->line, get_string(pt->path_id));
+}
+
 static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
     ast_t **it;
     ast_t  *s;
@@ -960,6 +991,7 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
     }
 
     if (!(fmt_flags & FMT_NO_INDENT) && stmt->kind != AST_VARGS_BLOCK) {
+        emit_line(&stmt->loc.beg);
         INDENT(lvl);
     }
 
@@ -999,6 +1031,7 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
 
             if (block_kind != BLOCK_SYNTHETIC) {
                 if (block_kind == BLOCK_PROC_BODY || HAVE_DEFERS()) {
+                    emit_line(&stmt->loc.end);
                     EMIT_STRING_F("\n__si_scope_%"PRIu64"_exit:;\n", TOP_DEFER_LABEL());
                     emit_defers(lvl + 1);
                 }
@@ -1007,6 +1040,7 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
 
             if (block_kind == BLOCK_PROC_BODY && current_proc->ret_type_expr != NULL) {
                 INDENT(lvl + 1);
+                emit_line(&ASTP(current_proc)->loc.end);
                 EMIT_STRING("return __si_ret;\n");
             }
 
@@ -1085,6 +1119,7 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
                 INDENT(lvl);
             }
             emit_all_defers_except_return(lvl);
+            emit_line(&stmt->loc.beg);
             EMIT_STRING_F("goto __si_scope_%"PRIu64"_exit;\n", BOTTOM_DEFER_LABEL());
             break;
 
@@ -1123,6 +1158,8 @@ static void emit_proc(ast_decl_t *decl, ast_proc_t *proc, i32 mono_idx) {
     ast_param_t  *param;
 
     current_proc = proc;
+
+    EMIT_STRING_F("#line %d \"%s\"\n", ASTP(proc)->loc.beg.line, get_string(ASTP(proc)->loc.beg.path_id));
 
     if (proc->ret_type_expr != NULL) {
         emit_type(proc->ret_type_expr->value.t);
