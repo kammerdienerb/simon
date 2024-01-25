@@ -3800,6 +3800,8 @@ static void check_cmp(check_context_t cxt, ast_bin_expr_t *expr) {
     u32 tk1;
     u32 tk2;
     u64 tk_both;
+    int ls;
+    int rs;
 
     t1 = expr->left->type;
     t2 = expr->right->type;
@@ -3824,6 +3826,11 @@ static void check_cmp(check_context_t cxt, ast_bin_expr_t *expr) {
             ASTP(expr)->flags &= ~AST_FLAG_EXPR_CAN_BE_LVAL;
             break;
         case TKINDPAIR_INT_INT:
+            ls = INT_TYPE_IS_SIGNED(t1);
+            rs = INT_TYPE_IS_SIGNED(t2);
+
+            if (ls != rs) { goto bad; }
+
             if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
                 if (INT_TYPE_IS_SIGNED(ASTP(expr)->type)) {
                     switch (expr->op) {

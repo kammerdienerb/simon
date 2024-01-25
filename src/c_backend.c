@@ -689,6 +689,10 @@ normal_call:;
             if (expr->flags & AST_FLAG_BITFIELD_DOT) {
                 EMIT_C('(');
                 EMIT_C('(');
+                emit_type(expr->type);
+                EMIT_C(')');
+                EMIT_C('(');
+                EMIT_C('(');
                 if (type_kind(l->type) == TY_PTR) {
                     EMIT_C('(');
                     EMIT_C('*');
@@ -723,6 +727,7 @@ normal_call:;
                     EMIT_STRING_F(" >> %d", field->bitfield_shift);
                 }
 
+                EMIT_C(')');
                 EMIT_C(')');
             } else {
                 emit_expr(l);
@@ -1044,6 +1049,7 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
                 EMIT_STRING("return __si_ret;\n");
             }
 
+            emit_line(&stmt->loc.end);
             INDENT(lvl);
             if (block_kind != BLOCK_SYNTHETIC) {
                 EMIT_STRING("}");
