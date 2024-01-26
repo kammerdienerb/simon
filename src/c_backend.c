@@ -134,7 +134,7 @@ static void _emit_name(ast_t *node, i32 mono_idx, int asm_name) {
 
     if (node->kind == AST_DECL_VAR) {
         decl = (ast_decl_t*)node;
-        if (!decl->containing_scope->in_proc) { goto long_name; }
+        if (!(ASTP(decl)->flags & AST_FLAG_IS_EXTERN) && !decl->containing_scope->in_proc) { goto long_name; }
         EMIT_STRING_ID(decl->name);
     } else if (ast_kind_is_decl(node->kind)) {
 long_name:;
@@ -554,6 +554,10 @@ static void emit_vars(void) {
 
         if (ASTP(decl)->flags & AST_FLAG_CONSTANT) {
             continue;
+        }
+
+        if (ASTP(decl)->flags & AST_FLAG_IS_EXTERN) {
+            EMIT_STRING("extern ");
         }
 
         emit_type(ASTP(decl)->type);
