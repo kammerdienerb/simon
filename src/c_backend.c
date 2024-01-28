@@ -210,9 +210,7 @@ long_name:;
 }
 
 static void emit_asm_name(ast_t *node, i32 mono_idx) {
-    EMIT_STRING("\\\"");
     _emit_name(node, mono_idx, 1);
-    EMIT_STRING("\\\"");
 }
 static void emit_name(ast_t *node, i32 mono_idx) {
     _emit_name(node, mono_idx, 0);
@@ -1271,7 +1269,7 @@ void do_c_backend(void) {
 
 /*     sprintf(cmd_buff, "cat %s && cc -o %s %s -std=c99 -O0 -g -nostdlib -ffreestanding -fno-builtin -Wall -Wextra -Werror -Wno-unused-variable -Wno-unused-parameter -Wl,-e,%s", */
 /*             options.output_name, exe_name, options.output_name, get_string(program_entry->full_name)); */
-    sprintf(cmd_buff, "cc -o %s %s -std=c99 -O0 -g -nostdlib -ffreestanding -fno-builtin -fno-stack-protector -Wno-parentheses-equality %s -Wl,-e,\\\"%s\\\"",
+    sprintf(cmd_buff, "clang -o %s %s -std=c99 -O0 -g -nostdlib -ffreestanding -fno-builtin -fno-stack-protector -Wno-parentheses-equality %s -Wl,-e,%s",
             exe_name, options.output_name, options.with_libc ? "-lc" : "", get_string(program_entry->full_name));
 
     verb_message("C compiler command:\n  %s\n", cmd_buff);
