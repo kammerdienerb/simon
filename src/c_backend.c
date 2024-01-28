@@ -856,7 +856,7 @@ static void emit_expr(ast_t *expr) {
                 if (INT_TYPE_IS_SIGNED(expr->type)) {
                     EMIT_STRING_F("%"PRIi64, expr->value.i);
                 } else {
-                    EMIT_STRING_F("%"PRIu64, expr->value.u);
+                    EMIT_STRING_F("%"PRIu64"ULL", expr->value.u);
                 }
                 return;
             case TY_F32:
