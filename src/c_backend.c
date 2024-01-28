@@ -140,7 +140,8 @@ static void _emit_name(ast_t *node, i32 mono_idx, int asm_name) {
 long_name:;
         decl = (ast_decl_t*)node;
 
-        scope = decl->containing_scope;
+        scope       = decl->containing_scope;
+        parent_node = NULL;
 
         if (scope         != NULL
         &&  scope->parent != NULL
@@ -209,7 +210,9 @@ long_name:;
 }
 
 static void emit_asm_name(ast_t *node, i32 mono_idx) {
+    EMIT_STRING("\\\"");
     _emit_name(node, mono_idx, 1);
+    EMIT_STRING("\\\"");
 }
 static void emit_name(ast_t *node, i32 mono_idx) {
     _emit_name(node, mono_idx, 0);
