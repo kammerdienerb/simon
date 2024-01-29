@@ -111,11 +111,12 @@ void do_init(void) {
     init_types();
     init_scopes();
 
-    roots       = array_make(ast_t*);
-    macro_calls = array_make(ast_macro_call_t*);
-    all_types   = array_make(ast_decl_t*);
-    all_procs   = array_make(ast_decl_t*);
-    all_vars    = array_make(ast_decl_t*);
+    roots            = array_make(ast_t*);
+    macro_calls      = array_make(ast_macro_call_t*);
+    all_types        = array_make(ast_decl_t*);
+    all_procs        = array_make(ast_decl_t*);
+    all_vars         = array_make(ast_decl_t*);
+    cycle_check_path = array_make(ast_t*);
 
     verb_message("Initialization took %lu us.\n", measure_time_now_us() - start_us);
 }

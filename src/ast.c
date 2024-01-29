@@ -16,7 +16,6 @@ typedef struct {
 } poly_backlog_entry_t;
 
 static array_t poly_backlog;
-static array_t cycle_check_path;
 
 static void check_node(check_context_t cxt, ast_t *node);
 
@@ -970,8 +969,7 @@ void check_all(void) {
         return;
     }
 
-    poly_backlog     = array_make(poly_backlog_entry_t);
-    cycle_check_path = array_make(ast_t*);
+    poly_backlog = array_make(poly_backlog_entry_t);
 
     memset(&cxt, 0, sizeof(cxt));
 

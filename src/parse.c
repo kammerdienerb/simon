@@ -828,7 +828,7 @@ static int lookahead_unary_prefix_op(parse_context_t *cxt) {
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_MATCH(OP_DEREF)))    { op = OP_DEREF;    }
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_MATCH(OP_NEG)))      { op = OP_NEG;      }
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_MATCH(OP_BNEG)))     { op = OP_BNEG;     }
-    else if (OPTIONAL_NO_EAT_LIT(cxt, OP_MATCH(OP_SIZEOF)))   { op = OP_SIZEOF;   }
+/*     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_MATCH(OP_SIZEOF)))   { op = OP_SIZEOF;   } */
     else if (OPTIONAL_NO_EAT_LIT(cxt, OP_MATCH(OP_LENOF)))    { op = OP_LENOF;    }
 
     return op;
