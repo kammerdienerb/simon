@@ -299,6 +299,40 @@ static void emit_struct_pre_decls(void) {
     }
 }
 
+static void emit_basic_array_types(void) {
+    u32     ty;
+    type_t *it;
+
+    ty = 0;
+    array_traverse(type_table, it) {
+        if (ty != TY_ARRAY && it->kind == TY_ARRAY && !type_is_poly(ty)) {
+            if (type_kind(it->under_id) != TY_STRUCT && type_kind(it->under_id) != TY_STRUCT_MONO) {
+                EMIT_STRING("typedef ");
+                emit_type(it->under_id);
+                EMIT_STRING_F(" __array_type_%u[%u];\n", ty, it->array_length);
+            }
+        }
+        ty += 1;
+    }
+}
+
+static void emit_struct_array_types(u32 struct_ty) {
+    u32     ty;
+    type_t *it;
+
+    ty = 0;
+    array_traverse(type_table, it) {
+        if (ty != TY_ARRAY && it->kind == TY_ARRAY && !type_is_poly(ty)) {
+            if (it->under_id == struct_ty) {
+                EMIT_STRING("typedef ");
+                emit_type(it->under_id);
+                EMIT_STRING_F(" __array_type_%u[%u];\n", ty, it->array_length);
+            }
+        }
+        ty += 1;
+    }
+}
+
 static void emit_struct(ast_decl_t *decl, ast_struct_t *st, i32 mono_idx) {
     ast_t        **fit;
     ast_decl_t    *field;
@@ -347,6 +381,9 @@ again:;
     EMIT_STRING("};\n\n");
 
 out:;
+
+    emit_struct_array_types(ASTP(st)->value.t);
+
     ASTP(st)->flags |= AST_FLAG_VISIT_WORK_DONE;
 }
 
@@ -394,21 +431,6 @@ static void emit_structs(void) {
                 emit_struct(decl, st, -1);
             }
         }
-    }
-}
-
-static void emit_array_types(void) {
-    u32     ty;
-    type_t *it;
-
-    ty = 0;
-    array_traverse(type_table, it) {
-        if (ty != TY_ARRAY && it->kind == TY_ARRAY && !type_is_poly(ty)) {
-            EMIT_STRING("typedef ");
-            emit_type(it->under_id);
-            EMIT_STRING_F(" __array_type_%u[%u];", ty, it->array_length);
-        }
-        ty += 1;
     }
 }
 
@@ -545,6 +567,29 @@ static void emit_proc_pre_decls(void) {
 }
 
 static void emit_expr(ast_t *expr);
+
+static void emit_sizeof_assertions(void) {
+    u64 n_types;
+    u32 ty;
+    u32 tk;
+
+    n_types = array_len(type_table);
+
+    for (ty = 0; ty < n_types; ty += 1) {
+        tk = type_kind(ty);
+        if (ty != TY_STRUCT
+        &&  ty != TY_STRUCT_MONO
+        &&  (tk == TY_STRUCT || tk == TY_STRUCT_MONO)) {
+
+            EMIT_STRING("_Static_assert(sizeof(");
+            emit_name(ASTP(struct_type_to_decl(ty)), -1);
+            EMIT_STRING_F(") == %" PRIi64 ", \"incorrect sizeof\");\n", type_size(ty, NULL));
+        }
+        ty += 1;
+    }
+
+    EMIT_STRING("\n");
+}
 
 static void emit_vars(void) {
     ast_decl_t **it;
@@ -1246,13 +1291,14 @@ void do_c_backend(void) {
     defer_label_stack = array_make(u64);
     loop_label_stack  = array_make(u64);
 
-    emit_prelude();          EMIT_STRING("\n\n");
-    emit_struct_pre_decls(); EMIT_STRING("\n\n");
-    emit_array_types();      EMIT_STRING("\n\n");
-    emit_proc_types();       EMIT_STRING("\n\n");
-    emit_structs();          EMIT_STRING("\n\n");
-    emit_proc_pre_decls();   EMIT_STRING("\n\n");
-    emit_vars();             EMIT_STRING("\n\n");
+    emit_prelude();           EMIT_STRING("\n\n");
+    emit_struct_pre_decls();  EMIT_STRING("\n\n");
+    emit_basic_array_types(); EMIT_STRING("\n\n");
+    emit_proc_types();        EMIT_STRING("\n\n");
+    emit_structs();           EMIT_STRING("\n\n");
+    emit_sizeof_assertions(); EMIT_STRING("\n\n");
+    emit_proc_pre_decls();    EMIT_STRING("\n\n");
+    emit_vars();              EMIT_STRING("\n\n");
     emit_procs();
 
     fflush(output_file);

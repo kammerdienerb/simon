@@ -189,6 +189,105 @@ int type_kind(u32 ty) {
     return kind;
 }
 
+u64 type_size(u32 ty, u64 *align_out) {
+    u64            size;
+    u64            align;
+    type_t        *t;
+    ast_struct_t  *st;
+    ast_t        **it;
+    u64            fsize;
+    u64            falign;
+
+#define PSZ  (8)
+#define SZSZ (8)
+
+    size  = 0;
+    align = 0;
+
+    switch (type_kind(ty)) {
+        case TY_GENERIC_INT:
+            switch (ty) {
+                case TY_U8:  size = align = 1; break;
+                case TY_U16: size = align = 2; break;
+                case TY_U32: size = align = 4; break;
+                case TY_U64: size = align = 8; break;
+                case TY_S8:  size = align = 1; break;
+                case TY_S16: size = align = 2; break;
+                case TY_S32: size = align = 4; break;
+                case TY_S64: size = align = 8; break;
+                default: goto unknown;
+            }
+            break;
+
+        case TY_GENERIC_FLOAT:
+            switch (ty) {
+                case TY_F32: size = align = 4; break;
+                case TY_F64: size = align = 8; break;
+                default: goto unknown;
+            }
+            break;
+
+        case TY_PTR: size = align = PSZ; break;
+
+        case TY_ARRAY:
+            t    = get_type_structure(ty);
+            size = t->array_length * type_size(t->under_id, &align);
+            break;
+
+        case TY_SLICE:
+            size  = PSZ + SZSZ;
+            align = PSZ;
+            break;
+
+        case TY_STRUCT:
+        case TY_STRUCT_MONO:
+            st = struct_type_to_definition(ty);
+
+            if (st->bitfield_struct_bits != 0) {
+                size = align = st->bitfield_struct_bits / 8;
+            } else {
+                array_traverse(st->fields, it) {
+                    fsize = type_size((*it)->type, &falign);
+
+                    if (align == 0) {
+                        align = falign;
+                    }
+
+                    if (size != 0) {
+                        if (!IS_ALIGNED(size, falign)) {
+                            size = ALIGN(size, falign);
+                        }
+                    }
+
+                    size += fsize;
+                }
+
+                if (size == 0) {
+                    size  = 0;
+                    align = 1;
+                } else {
+                    if (!IS_ALIGNED(size, align)) {
+                        size = ALIGN(size, align);
+                    }
+                }
+            }
+
+            break;
+
+        case TY_PROC:
+            size = align = PSZ; break;
+
+unknown:;
+        default:;
+            ASSERT(0, "type unhandled in type_size()");
+            break;
+    }
+
+    if (align_out != NULL) { *align_out = align; }
+
+    return size;
+}
+
 u32 get_ptr_type(u32 ty) {
     type_t new_t;
 

@@ -4329,8 +4329,18 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
 
             break;
         case OP_SIZEOF:
-            ASTP(expr)->type   = TY_S64;
-            ASTP(expr)->flags |= expr->child->flags & AST_FLAG_CONSTANT;
+            if (type_kind(expr->child->type) != TY_TYPE) {
+                EMBC(expr->child, {
+                    report_range_err_no_exit(&ASTP(expr)->loc,
+                                             "right-hand-side operand of 'lenof' operator must be a type");
+                    report_range_info_no_context(&expr->child->loc,
+                                                 "operand has type %s",
+                                                 get_string(get_type_string_id(expr->child->type)));
+                });
+            }
+            ASTP(expr)->type     = TY_S64;
+            ASTP(expr)->flags   |= expr->child->flags & AST_FLAG_CONSTANT;
+            ASTP(expr)->value.s  = (i64)type_size(expr->child->value.t, NULL);
             break;
         case OP_LENOF:
             if (type_kind(expr->child->type) != TY_ARRAY && type_kind(expr->child->type) != TY_SLICE) {

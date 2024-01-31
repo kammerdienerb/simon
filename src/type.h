@@ -159,6 +159,7 @@ int type_kind_is_int(u32 kind);
 int type_kind_is_float(u32 kind);
 int type_kind_is_numeric(u32 kind);
 int type_kind(u32 ty);
+u64 type_size(u32 ty, u64 *align_out);
 u32 get_ptr_type(u32 ty);
 u32 get_array_type(u32 ty, u32 len);
 u32 get_slice_type(u32 ty);
