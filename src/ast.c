@@ -4176,9 +4176,18 @@ lval_check:;
             break;
 
         case OP_AND:
+            check_logical(cxt, expr);
+            ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                ASTP(expr)->value.s = expr->left->value.s && expr->right->value.s;
+            }
+            break;
         case OP_OR:
             check_logical(cxt, expr);
             ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                ASTP(expr)->value.s = expr->left->value.s || expr->right->value.s;
+            }
             break;
 
         case OP_BSHL:
@@ -4193,6 +4202,17 @@ lval_check:;
             }
             ASTP(expr)->type   = expr->left->type;
             ASTP(expr)->flags |= BIN_EXPR_CONST(expr->left, expr->right);
+
+            if (ASTP(expr)->flags & AST_FLAG_CONSTANT) {
+                switch (expr->op) {
+                    case OP_BSHL: ASTP(expr)->value.u = expr->left->value.u << expr->right->value.u; break;
+                    case OP_BSHR: ASTP(expr)->value.u = expr->left->value.u >> expr->right->value.u; break;
+                    case OP_BAND: ASTP(expr)->value.u = expr->left->value.u && expr->right->value.u; break;
+                    case OP_BXOR: ASTP(expr)->value.u = expr->left->value.u ^  expr->right->value.u; break;
+                    case OP_BOR:  ASTP(expr)->value.u = expr->left->value.u |  expr->right->value.u; break;
+                }
+            }
+
             break;
 
         default:
