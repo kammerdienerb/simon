@@ -43,6 +43,7 @@
     X(OP_NEG,          11,      OP_ASSOC_RIGHT,   1,      "-",      "-")      \
     X(OP_BNEG,         11,      OP_ASSOC_RIGHT,   1,      "~",      "~")      \
     X(OP_SIZEOF,       11,      OP_ASSOC_RIGHT,   1,      "sizeof", "sizeof") \
+    X(OP_TYPEOF,       11,      OP_ASSOC_RIGHT,   1,      "typeof", "typeof") \
     X(OP_LENOF,        11,      OP_ASSOC_RIGHT,   1,      "lenof",  "lenof")
 
 enum {

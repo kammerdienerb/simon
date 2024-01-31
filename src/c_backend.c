@@ -440,6 +440,7 @@ static void emit_proc_types(void) {
     const char *lazy_comma;
     u32         n;
     u32         i;
+    u32         param_ty;
 
     ty = 0;
 
@@ -463,6 +464,11 @@ static void emit_proc_types(void) {
                 EMIT_STRING("void");
             } else {
                 for (i = 0; i < n; i += 1) {
+                    param_ty = get_param_type(ty, i);
+                    if (param_ty == TY_TYPE || param_ty == TY_MODULE) {
+                        continue;
+                    }
+
                     EMIT_STRING(lazy_comma);
                     emit_type(get_param_type(ty, i));
                     lazy_comma = ", ";
@@ -647,6 +653,9 @@ static void emit_unary_expr(ast_t *expr) {
             emit_expr(child);
             EMIT_C(')');
             break;
+        case OP_TYPEOF:
+            emit_type(expr->value.t);
+            break;
         case OP_LENOF:
             if (type_kind(child->type) == TY_ARRAY) {
                 EMIT_STRING_F("%"PRIi64, (i64)get_array_length(child->type));
@@ -710,6 +719,9 @@ normal_call:;
                 emit_expr(l);
                 EMIT_C('(');
                 array_traverse(((ast_arg_list_t*)r)->args, it) {
+                    if (it->expr->type == TY_TYPE || it->expr->type == TY_MODULE) {
+                        continue;
+                    }
                     EMIT_STRING(lazy_comma);
                     emit_expr(it->expr);
                     lazy_comma = ", ";

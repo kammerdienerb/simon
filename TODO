@@ -1,0 +1,19 @@
+TODO:
+✓✓✓ Rework the spots in c_backend that use AST_FLAG_CALL_IS_*,
+    get those flag bits back
+✓✓✓ Perform CFA to determine if a procedure will always return a value
+    (see bJou code on 42 for some inspiration)
+✓✓✓ Add an ast_expanded_macro_t node that will have padding.
+    We need to do something about this huge ident/bin expr situation.
+    Perhaps also try to remove the macro_decl field in ast_t (would love to get back to 64b)
+✓✓✓ u64 -> s64?
+✓✓✓ Polymorphic expressions solving with slices.
+✓✓✓ sizeof, typeof
+-   Block macros?
+-   Macro export
+-   Sum types
+-   match statement
+-   "did you mean...?"
+-   Specialization return type?
+-   Macro varargs
+-   madvise MADV_SEQUENTIAL and MADV_WILLNEED may be good to add to parser file mappings
