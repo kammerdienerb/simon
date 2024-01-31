@@ -526,11 +526,7 @@ static void emit_proc_pre_decl(ast_decl_t *decl, ast_proc_t *proc, i32 mono_idx)
         array_traverse(proc->params, pit) {
             param = (ast_param_t*)*pit;
 
-            if (ASTP(param)->type == TY_TYPE
-            ||  ASTP(param)->type == TY_MODULE) {
-
-                continue;
-            }
+            if (ASTP(param)->flags & AST_FLAG_POLYMORPH) { continue; }
 
             emit_param(param, lazy_comma);
             lazy_comma = ", ";
@@ -678,6 +674,7 @@ static void emit_binary_expr(ast_t *expr) {
     ast_t           *call_decl;
     ast_arg_list_t  *arg_list;
     arg_t           *arg;
+    u32              i;
     arg_t           *it;
     const char      *lazy_comma = "";
     u32              st_ty;
@@ -685,7 +682,6 @@ static void emit_binary_expr(ast_t *expr) {
     ast_struct_t    *st;
     ast_t          **field_it;
     ast_decl_t      *field;
-    u32              i;
 
     op = ((ast_bin_expr_t*)expr)->op;
     l  = ((ast_bin_expr_t*)expr)->left;
@@ -718,13 +714,14 @@ static void emit_binary_expr(ast_t *expr) {
 normal_call:;
                 emit_expr(l);
                 EMIT_C('(');
+                i = 0;
                 array_traverse(((ast_arg_list_t*)r)->args, it) {
-                    if (it->expr->type == TY_TYPE || it->expr->type == TY_MODULE) {
-                        continue;
-                    }
+                    if (it->expr->flags & AST_FLAG_POLYMORPH) { continue; }
+
                     EMIT_STRING(lazy_comma);
                     emit_expr(it->expr);
                     lazy_comma = ", ";
+                    i += 1;
                 }
                 EMIT_C(')');
             }
@@ -1246,11 +1243,7 @@ static void emit_proc(ast_decl_t *decl, ast_proc_t *proc, i32 mono_idx) {
         array_traverse(proc->params, pit) {
             param = (ast_param_t*)*pit;
 
-            if (ASTP(param)->type == TY_TYPE
-            ||  ASTP(param)->type == TY_MODULE) {
-
-                continue;
-            }
+            if (ASTP(param)->flags & AST_FLAG_POLYMORPH) { continue; }
 
             emit_param(param, lazy_comma);
             lazy_comma = ", ";

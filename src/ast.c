@@ -2332,6 +2332,20 @@ static void verify_polymorphic_args(u32 cxt_flags, array_t *params, poly_arg_t *
         param = (ast_param_t*)*it;
         arg   = args + i;
 
+        if (ASTP(param)->flags & AST_FLAG_POLYMORPH && !(arg->node->flags & AST_FLAG_CONSTANT)) {
+            EMBC(arg->node, {
+                report_range_err_no_exit(arg->node->kind == AST_PARAM ? &(((ast_param_t*)arg->node)->type_expr->loc) : &arg->node->loc,
+                                         "argument to polymorphic parameter '%s' is not a constant expression",
+                                          get_string(param->name),
+                                          get_string(get_type_string_id(ASTP(param)->type)));
+                report_range_info_no_context(&param->type_expr->loc,
+                                        	 "%sparameter '%s' delcared here:",
+                                             (ASTP(param)->flags & AST_FLAG_POLYMORPH) ? "polymorphic " : "",
+                                             get_string(param->name));
+            });
+            return;
+        }
+
         if (ASTP(param)->flags & AST_FLAG_POLY_VARARGS) {
             break;
         }
@@ -2898,7 +2912,7 @@ too_few:
     }
 
     if (proc != NULL
-    && ASTP(proc)->flags & AST_FLAG_POLYMORPH) {
+    &&  ASTP(proc)->flags & AST_FLAG_POLYMORPH) {
         cxt.parent_decl  = (ast_decl_t*)proc_origin;
 
         poly_args = alloca(sizeof(*poly_args) * n_args);
@@ -2978,8 +2992,13 @@ too_few:
             realize_generic(param_type, arg_p->expr);
         }
 
+        if (proc != NULL && i < n_params - !!(ASTP(proc)->flags & AST_FLAG_POLY_VARARGS)) {
+            parm_decl = *(ast_t**)array_item(proc->params, i);
+            arg_p->expr->flags |= parm_decl->flags & AST_FLAG_POLYMORPH;
+        }
+
         if (arg_p->name != STRING_ID_NULL) {
-            if (left_ident == NULL) {
+            if (proc == NULL) {
                 report_range_err(&arg_p->expr->loc, "named arguments are not allowed in indirect calls");
                 return;
             } else {
@@ -3011,92 +3030,6 @@ too_few:
                         report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declared here:");
                         report_declaration_path(path);
                     }
-                }
-            }
-        }
-    }
-
-    if (varg_ty != TY_NONE) {
-        for (i = n_params; i < n_args; i += 1) {
-            arg_p    = array_item(arg_list->args, i);
-            arg_type = arg_p->expr->type;
-
-            if (!types_are_compatible(varg_ty, arg_type) && !type_is_poly(varg_ty)) {
-                EMBC(arg_p->expr, {
-                    report_range_err_no_exit(&arg_p->expr->loc,
-                                             "incorrect argument type: expected %s, but got %s",
-                                             get_string(get_type_string_id(varg_ty)),
-                                             get_string(get_type_string_id(arg_type)));
-                    report_simple_info_no_exit("argument belongs to a variadic parameter list");
-
-                    if (left_ident == NULL) {
-                        report_simple_info("indirect call with procedure type %s",
-                                           get_string(get_type_string_id(proc_ty)));
-                    } else {
-                        if (proc_origin->kind == AST_BUILTIN) {
-                            if (left_ident->resolved_node == proc_origin) {
-                                report_simple_info("'%s' is a compiler builtin",
-                                                   get_string(((ast_builtin_t*)proc_origin)->name));
-                            } else {
-                                report_declaration_path(path);
-                            }
-                            return;
-                        }
-
-                        parm_decl = *(ast_t**)array_last(proc->params);
-
-                        if (left_ident->resolved_node == proc_origin) {
-                            report_range_info_no_context(&parm_decl->loc, "variadic parameter list declared here:");
-                        } else if (left_ident->resolved_node != proc_origin) {
-                            report_range_info_no_context_no_exit(&parm_decl->loc, "variadic parameter list declared here:");
-                            report_declaration_path(path);
-                        }
-                    }
-                });
-            }
-
-            if (arg_p->name != STRING_ID_NULL) {
-                if (proc_origin->kind == AST_BUILTIN) {
-                    report_range_err_no_exit(&arg_p->expr->loc,
-                                                "using argument name '%s' for a call to a compiler builtin, which does not have named parameters",
-                                                get_string(arg_p->name));
-                    if (left_ident->resolved_node == proc_origin) {
-                        report_simple_info("'%s' is a compiler builtin",
-                                        get_string(((ast_builtin_t*)proc_origin)->name));
-                    } else {
-                        report_declaration_path(path);
-                    }
-                    return;
-                }
-
-                if (i == n_params) {
-                    if (left_ident == NULL) {
-                        report_range_err(&arg_p->expr->loc, "named arguments are not allowed in indirect calls");
-                        return;
-                    } else {
-                        parm_decl = *(ast_t**)array_last(proc->params);
-                        if (arg_p->name != ((ast_param_t*)parm_decl)->name) {
-                            report_range_err_no_exit(&arg_p->expr->loc,
-                                                        "argument name '%s' does not match variadic parameter list name '%s'",
-                                                        get_string(arg_p->name),
-                                                        get_string(((ast_param_t*)parm_decl)->name));
-                            if (left_ident->resolved_node == proc_origin) {
-                                report_range_info_no_context(&parm_decl->loc, "parameter declared here:");
-                            } else {
-                                report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declared here:");
-                                report_declaration_path(path);
-                            }
-                        }
-                    }
-                } else {
-                    report_range_err_no_exit(&arg_p->expr->loc, "only the first argument for a variadic parameter list may be named");
-                    if (left_ident->resolved_node == proc_origin) {
-                        report_range_info_no_context(&parm_decl->loc, "parameter declared here:");
-                    } else {
-                        report_range_info_no_context_no_exit(&parm_decl->loc, "parameter declared here:");
-                        report_declaration_path(path);
-                    }
-                    return;
                 }
             }
         }
@@ -4565,6 +4498,13 @@ static void check_arg_list(check_context_t cxt, ast_arg_list_t *arg_list) {
 
     array_traverse(arg_list->args, arg) {
         check_node(cxt, arg->expr);
+        if (arg->expr->type == TY_NOT_TYPED) {
+            EMBC(arg->expr, {
+                report_range_err(&arg->expr->loc,
+                                 "invalid use of expression which does not have a type");
+                return;
+            });
+        }
     }
 
 again:;
