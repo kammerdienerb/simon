@@ -3054,7 +3054,7 @@ too_few:
             realize_generic(param_type, arg_p->expr);
         }
 
-        if (proc != NULL && i < n_params - !!(ASTP(proc)->flags & AST_FLAG_POLY_VARARGS)) {
+        if (proc != NULL && i < array_len(proc->params) - !!(ASTP(proc)->flags & AST_FLAG_POLY_VARARGS)) {
             parm_decl = *(ast_t**)array_item(proc->params, i);
             arg_p->expr->flags |= parm_decl->flags & AST_FLAG_POLYMORPH;
         }
@@ -3062,6 +3062,10 @@ too_few:
         if (arg_p->name != STRING_ID_NULL) {
             if (proc == NULL) {
                 report_range_err(&arg_p->expr->loc, "named arguments are not allowed in indirect calls");
+                return;
+            } else if (parm_decl == NULL) {
+                report_range_err(&arg_p->expr->loc, "using argument name '%s' for a parameter that does not carry a name",
+                                 get_string(arg_p->name));
                 return;
             } else {
                 if (proc_origin == NULL) {
@@ -3078,8 +3082,6 @@ too_few:
                         return;
                     }
                 }
-
-                parm_decl = *(ast_t**)array_item(proc->params, i);
 
                 if (arg_p->name != ((ast_param_t*)parm_decl)->name) {
                     report_range_err_no_exit(&arg_p->expr->loc,
