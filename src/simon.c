@@ -110,6 +110,7 @@ void do_init(void) {
     init_ifile_table();
     init_types();
     init_scopes();
+    init_tags();
 
     roots            = array_make(ast_t*);
     macro_calls      = array_make(ast_macro_call_t*);

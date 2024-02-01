@@ -19,6 +19,7 @@ static array_t poly_backlog;
 
 static void check_node(check_context_t cxt, ast_t *node);
 
+
 static inline scope_t *get_scope(ast_t *node) {
     /* There are sanity checks to make sure that these nodes have their scope
      * pointer as their first field so that we can do this cheaply. */
@@ -1222,8 +1223,55 @@ static u32 get_proc_monomorph_type_and_push_breadcrumb_for_call(check_context_t 
 static u32 get_struct_monomorph_type(check_context_t cxt, ast_struct_t *st, poly_arg_t *args, u32 n_args, src_range_t args_loc, u32 *idx_out);
 
 
-static void check_specialization(check_context_t cxt, ast_t *tag, ast_t *node, ast_t *arg) {
-    ast_decl_t    *decl;
+typedef void (*tag_check_fn)(check_context_t cxt, ast_decl_t*, ast_t*, ast_arg_list_t *args);
+
+enum {
+    TAG_IDENT,
+    TAG_CALL,
+};
+
+typedef struct {
+    string_id    name;
+    tag_check_fn check_fn;
+    u32          arity;
+    u32          form;
+} Tag_Info;
+
+#define GET_TAG_ARG(_args, _idx) (((arg_t*)array_item((_args)->args, (_idx)))->expr)
+
+void check_tag_program_entry(check_context_t cxt, ast_decl_t *decl, ast_t *tag, ast_arg_list_t *arg_list) {
+    ast_proc_t *proc;
+
+    proc = (ast_proc_t*)(ASTP(decl)->kind == AST_DECL_PROC ? decl->val_expr : NULL);
+
+    if (proc == NULL) {
+        report_range_err(&ASTP(decl)->loc, "'%s' is tagged 'program_entry', but is not a procedure", get_string(decl->name));
+        return;
+    }
+
+    if (program_entry != NULL && program_entry != decl) {
+        multiple_entry_error(decl, program_entry);
+        return;
+    }
+
+    program_entry = decl;
+}
+
+void check_tag_extern(check_context_t cxt, ast_decl_t *decl, ast_t *tag, ast_arg_list_t *arg_list) {
+    if (ASTP(decl)->kind != AST_DECL_PROC && ASTP(decl)->kind != AST_DECL_VAR) {
+        report_range_err(&ASTP(decl)->loc, "'%s' is tagged 'extern', but is not a procedure or a variable", get_string(decl->name));
+        return;
+    }
+
+    ASTP(decl)->flags |= AST_FLAG_IS_EXTERN;
+
+    if (ASTP(decl)->kind == AST_DECL_PROC) {
+        decl->val_expr->flags |= AST_FLAG_IS_EXTERN;
+    }
+}
+
+void check_tag_specialization(check_context_t cxt, ast_decl_t *decl, ast_t *tag, ast_arg_list_t *arg_list) {
+    ast_t         *arg;
     ast_ident_t   *arg_ident;
     ast_decl_t    *arg_decl;
     ast_proc_t    *proc;
@@ -1236,9 +1284,11 @@ static void check_specialization(check_context_t cxt, ast_t *tag, ast_t *node, a
     u32            idx;
     monomorphed_t *monomorphed;
 
-    decl = (ast_decl_t*)node;
+    arg = GET_TAG_ARG(arg_list, 0);
 
-    ASSERT(arg->kind == AST_IDENT, "specialization arg not an ident");
+    if (arg->kind != AST_IDENT) {
+        report_range_err(&arg->loc, "tag 'specialization' argument must be an identifier");
+    }
 
     arg_ident = (ast_ident_t*)arg;
 
@@ -1252,6 +1302,7 @@ static void check_specialization(check_context_t cxt, ast_t *tag, ast_t *node, a
             report_range_err_no_exit(&arg->loc, "can't make '%s' a specialization of something not polymorphic", get_string(decl->name));
             report_range_info_no_context(&ASTP(arg_decl)->loc, "'%s', which is not polymorphic, is declared here", get_string(arg_decl->full_name));
         });
+        return;
     }
 
     if (ASTP(decl)->flags & AST_FLAG_POLYMORPH) {
@@ -1259,7 +1310,25 @@ static void check_specialization(check_context_t cxt, ast_t *tag, ast_t *node, a
             report_range_err_no_exit(&ASTP(decl)->loc, "specializations may not be polymorphic");
             report_range_info_no_context(&tag->loc, "'%s' tagged as a specialization of '%s' here", get_string(decl->name), get_string(arg_decl->full_name));
         });
+        return;
     }
+
+    if (ASTP(decl)->kind == AST_DECL_PROC && ASTP(decl)->kind != AST_DECL_PROC) {
+        EMBC(ASTP(decl), {
+            report_range_err_no_exit(&ASTP(decl)->loc, "specialization of a procedure must also be a procedure");
+            report_range_info_no_context(&tag->loc, "'%s' tagged as a specialization of procedure '%s' here", get_string(decl->name), get_string(arg_decl->full_name));
+        });
+        return;
+    }
+
+    if (ASTP(decl)->kind == AST_DECL_STRUCT && ASTP(decl)->kind != AST_DECL_STRUCT) {
+        EMBC(ASTP(decl), {
+            report_range_err_no_exit(&ASTP(decl)->loc, "specialization of a struct must also be a struct");
+            report_range_info_no_context(&tag->loc, "'%s' tagged as a specialization of struct '%s' here", get_string(decl->name), get_string(arg_decl->full_name));
+        });
+        return;
+    }
+
 
     if (decl->val_expr->kind == AST_PROC) {
         proc     = (ast_proc_t*)decl->val_expr;
@@ -1305,201 +1374,194 @@ static void check_specialization(check_context_t cxt, ast_t *tag, ast_t *node, a
     }
 }
 
-static void check_tag(check_context_t cxt, ast_t *node, ast_t *tag) {
-    ast_decl_t         *decl  = NULL;
-    ast_proc_t         *proc  = NULL;
-    ast_struct_t       *st    = NULL;
-    ast_module_t       *mod   = NULL;
-    ast_decl_t         *field = NULL;
-    ast_ident_t        *ident;
-    ast_bin_expr_t     *expr;
-    ast_arg_list_t     *arg_list;
-    array_t            *args;
-    int                 n_args;
-    ast_t              *arg;
-    int                 i;
-    u64                 bits[2];
+void check_tag_bitfield_struct(check_context_t cxt, ast_decl_t *decl, ast_t *tag, ast_arg_list_t *arg_list) {
+    ast_struct_t *st;
+    ast_t        *arg;
 
-    if (ast_kind_is_decl(node->kind)) { decl = (ast_decl_t*)node; }
+    st = (ast_struct_t*)(ASTP(decl)->kind == AST_DECL_STRUCT ? decl->val_expr : NULL);
 
-    switch (node->kind) {
-        case AST_DECL_VAR:
-            break;
-        case AST_DECL_PROC:
-            proc = (ast_proc_t*)decl->val_expr;
-            break;
-        case AST_DECL_STRUCT:
-            st = (ast_struct_t*)decl->val_expr;
-            break;
-        case AST_DECL_STRUCT_FIELD:
-            field = decl;
-            break;
-        case AST_DECL_MACRO:
-            ASSERT(0, "unimplemented");
-            break;
-        case AST_DECL_MODULE:
-            mod = (ast_module_t*)decl->val_expr;
-            break;
-        default:
-            ASSERT(0, "this kind of node should not have tags");
-            break;
+    if (st == NULL) {
+        report_range_err(&((ast_bin_expr_t*)tag)->left->loc, "tag 'bitfield_struct' only applies to structs");
+        return;
     }
 
-    (void)proc;
-    (void)st;
-    (void)mod;
-    (void)field;
+    arg = GET_TAG_ARG(arg_list, 0);
+
+    if (arg->type != TY_TYPE) {
+        report_range_err_no_exit(&arg->loc, "tag 'bitfield_struct' argument must have type type");
+        report_simple_info("got %s", get_string(get_type_string_id(arg->type)));
+        return;
+    }
+
+    if (type_kind(arg->value.t) != TY_GENERIC_INT) {
+        report_range_err_no_exit(&arg->loc, "tag 'bitfield_struct' argument must be an unsigned integer type");
+        report_simple_info("have type %s", get_string(get_type_string_id(arg->value.t)));
+        return;
+    }
+
+    switch (arg->value.t) {
+        case TY_S8:
+        case TY_S16:
+        case TY_S32:
+        case TY_S64:
+            report_range_err_no_exit(&arg->loc, "tag 'bitfield_struct' argument must be an unsigned integer type");
+            report_simple_err("have type %s", get_string(get_type_string_id(arg->value.t)));
+            return;
+            break;
+        case TY_U8:  st->bitfield_struct_bits = 8;  break;
+        case TY_U16: st->bitfield_struct_bits = 16; break;
+        case TY_U32: st->bitfield_struct_bits = 32; break;
+        case TY_U64: st->bitfield_struct_bits = 64; break;
+        default:
+            ASSERT(0, "huh?");
+            break;
+    }
+}
+
+void check_tag_bitfield(check_context_t cxt, ast_decl_t *decl, ast_t *tag, ast_arg_list_t *arg_list) {
+    ast_struct_t *st;
+    ast_t        *arg;
+    u64           i;
+    u64           bits[2];
+
+    st = (ast_struct_t*)cxt.unit_decl->val_expr;
+
+    if (!st->bitfield_struct_bits) {
+        report_range_err(&tag->loc,
+                            "field '%s' is tagged with 'bitfield', but its parent struct '%s' is not a 'bitfield_struct'",
+                            get_string(decl->name),
+                            get_string(cxt.unit_decl->name));
+        return;
+    }
+
+    for (i = 0; i < 2; i += 1) {
+        arg = GET_TAG_ARG(arg_list, i);
+
+        if (arg->kind != AST_INT
+        ||  arg->value.s < 0
+        ||  arg->value.s >= st->bitfield_struct_bits) {
+
+            report_range_err_no_exit(&arg->loc, "tag 'bitfield' argument must be a valid bit position");
+            report_simple_info("valid bit positions are 0-%d", st->bitfield_struct_bits - 1);
+            return;
+        }
+
+        bits[i] = arg->value.u;
+    }
+
+    if (bits[1] < bits[0]) {
+        report_range_err(&arg->loc, "second argument of tag 'bitfield' must be greater than or equal to the first");
+        return;
+    }
+
+    for (i = 0; i < st->bitfield_struct_bits; i += 1) {
+        if (i >= bits[0] && i <= bits[1]) {
+            decl->bitfield_mask |= 1ULL << i;
+        }
+    }
+
+    decl->bitfield_shift = bits[0];
+}
+
+void init_tags(void) {
+
+    tag_infos = array_make(Tag_Info);
+
+#define ADD_TAG_INFO(_id, _check_fn, _arity, _form)              \
+{                                                                \
+    Tag_Info _info = { (_id), (_check_fn), (_arity), (_form) };  \
+    array_push(tag_infos, _info);                                \
+}
+
+    ADD_TAG_INFO(PROGRAM_ENTRY_ID,   check_tag_program_entry,   0, TAG_IDENT);
+    ADD_TAG_INFO(EXTERN_ID,          check_tag_extern,          0, TAG_IDENT);
+    ADD_TAG_INFO(SPECIALIZATION_ID,  check_tag_specialization,  1, TAG_CALL);
+    ADD_TAG_INFO(BITFIELD_STRUCT_ID, check_tag_bitfield_struct, 1, TAG_CALL);
+    ADD_TAG_INFO(BITFIELD_ID,        check_tag_bitfield,        2, TAG_CALL);
+}
+
+
+static void check_tag(check_context_t cxt, ast_decl_t *decl, ast_t *tag) {
+    ast_ident_t    *ident;
+    ast_bin_expr_t *expr;
+    ast_arg_list_t *arg_list;
+    u8              form;
+    string_id       id;
+    src_range_t     loc;
+    Tag_Info       *info;
+
+    ident    = NULL;
+    expr     = NULL;
+    arg_list = NULL;
 
     if (tag->kind == AST_IDENT) {
+        form  = TAG_IDENT;
         ident = (ast_ident_t*)tag;
-
-        if (ident->str_rep == PROGRAM_ENTRY_ID) {
-            if (proc == NULL) {
-                report_range_err(&node->loc, "'%s' is tagged 'program_entry', but is not a procedure", get_string(decl->name));
-            }
-
-            if (program_entry != NULL && program_entry != decl) {
-                multiple_entry_error(decl, program_entry);
-            }
-
-            program_entry = decl;
-        } else if (ident->str_rep == EXTERN_ID) {
-            if (node->kind != AST_DECL_VAR
-            &&  proc == NULL) {
-                report_range_err(&node->loc, "'%s' is tagged 'extern', but is not a procedure or a variable", get_string(decl->name));
-            }
-
-            node->flags |= AST_FLAG_IS_EXTERN;
-
-            if (proc != NULL) {
-                ASTP(proc)->flags |= AST_FLAG_IS_EXTERN;
-            }
-        } else {
-            report_range_err(&tag->loc, "unknown tag '%s'", get_string(ident->str_rep));
-        }
+        id    = ident->str_rep;
+        loc   = ASTP(ident)->loc;
     } else if (tag->kind == AST_BIN_EXPR) {
         expr = (ast_bin_expr_t*)tag;
         if (expr->left->kind != AST_IDENT
         ||  expr->op != OP_CALL
         ||  expr->right->kind != AST_ARG_LIST) {
-            report_range_err_no_exit(&tag->loc, "invalid tag expression");
-            report_simple_info("tags may be of the form `tag` or `tag(arguments)`");
+
+            goto bad_form;
         }
 
+        form     = TAG_CALL;
         ident    = (ast_ident_t*)expr->left;
+        id       = ident->str_rep;
+        loc      = ASTP(ident)->loc;
         arg_list = (ast_arg_list_t*)expr->right;
+    } else {
+bad_form:;
+        report_range_err_no_exit(&tag->loc, "invalid tag expression");
+        report_simple_info("tags may be of the form `tag` or `tag(arguments)`");
+        return;
+    }
 
+    array_traverse(tag_infos, info) {
+        if (info->name == id) { goto found; }
+    }
 
-        if (ident->str_rep == SPECIALIZATION_ID) {
+    report_range_err(&loc, "unrecognized tag '%s'", get_string(id));
+    return;
+
+found:;
+
+    if (form != info->form) {
+        report_range_err(&tag->loc,
+                         "incorrect form for tag '%s' (expected %s)",
+                         get_string(id),
+                         info->form == TAG_IDENT ? "bare identifier" : "procedure call style");
+        return;
+    }
+
+    if (arg_list != NULL) {
+        if (array_len(arg_list->args) != info->arity) {
+            report_range_err(&ASTP(arg_list)->loc,
+                             "tag '%s' expects exactly %d argument%s",
+                             get_string(id),
+                             info->arity,
+                             info->arity == 1 ? "" : "s");
+            return;
+        }
+
+        if (id == SPECIALIZATION_ID) {
             cxt.flags |= CHECK_FLAG_ALLOW_REF_POLY_PROC;
         }
-
         check_node(cxt, ASTP(arg_list));
-
         cxt.flags &= ~CHECK_FLAG_ALLOW_REF_POLY_PROC;
-
-        args   = &arg_list->args;
-        n_args = array_len(*args);
-
-        if (ident->str_rep == BITFIELD_STRUCT_ID) {
-            if (st == NULL) {
-                report_range_err(&ASTP(ident)->loc, "tag 'bitfield_struct' only applies to structs");
-            }
-
-            if (n_args != 1) {
-                report_range_err(&ASTP(arg_list)->loc, "tag 'bitfield_struct' expects exactly 1 argument");
-            }
-
-            arg = ((arg_t*)array_item(*args, 0))->expr;
-
-            if (arg->type != TY_TYPE) {
-                report_range_err_no_exit(&arg->loc, "tag 'bitfield_struct' argument must have type type");
-                report_simple_info("got %s", get_string(get_type_string_id(arg->type)));
-            }
-
-            if (type_kind(arg->value.t) != TY_GENERIC_INT) {
-                report_range_err_no_exit(&arg->loc, "tag 'bitfield_struct' argument must be an unsigned integer type");
-                report_simple_info("have type %s", get_string(get_type_string_id(arg->value.t)));
-            }
-
-            switch (arg->value.t) {
-                case TY_S8:
-                case TY_S16:
-                case TY_S32:
-                case TY_S64:
-                    report_range_err_no_exit(&arg->loc, "tag 'bitfield_struct' argument must be an unsigned integer type");
-                    report_simple_err("have type %s", get_string(get_type_string_id(arg->value.t)));
-                    break;
-                case TY_U8:  st->bitfield_struct_bits = 8;  break;
-                case TY_U16: st->bitfield_struct_bits = 16; break;
-                case TY_U32: st->bitfield_struct_bits = 32; break;
-                case TY_U64: st->bitfield_struct_bits = 64; break;
-                default:
-                    ASSERT(0, "huh?");
-                    break;
-            }
-        } else if (ident->str_rep == BITFIELD_ID) {
-            st = (ast_struct_t*)cxt.unit_decl->val_expr;
-
-            if (!st->bitfield_struct_bits) {
-                report_range_err(&tag->loc,
-                                 "field '%s' is tagged with 'bitfield', but its parent struct '%s' is not a 'bitfield_struct'",
-                                 get_string(field->name),
-                                 get_string(cxt.unit_decl->name));
-            }
-
-            if (n_args != 2) {
-                report_range_err(&ASTP(arg_list)->loc, "tag 'bitfield' expects exactly 2 arguments");
-            }
-
-            for (i = 0; i < n_args; i += 1) {
-                arg = ((arg_t*)array_item(*args, i))->expr;
-
-                if (arg->kind != AST_INT
-                ||  arg->value.s < 0
-                ||  arg->value.s >= st->bitfield_struct_bits) {
-
-                    report_range_err_no_exit(&arg->loc, "tag 'bitfield' argument must be a valid bit position");
-                    report_simple_info("valid bit positions are 0-%d", st->bitfield_struct_bits - 1);
-                }
-
-                bits[i] = arg->value.u;
-            }
-
-            if (bits[1] < bits[0]) {
-                report_range_err(&arg->loc, "second argument of tag 'bitfield' must be greater than or equal to the first");
-            }
-
-            for (i = 0; i < st->bitfield_struct_bits; i += 1) {
-                if (i >= bits[0] && i <= bits[1]) {
-                    field->bitfield_mask |= 1ULL << i;
-                }
-            }
-
-            field->bitfield_shift = bits[0];
-        } else if (ident->str_rep == SPECIALIZATION_ID) {
-            if (n_args != 1) {
-                report_range_err(&ASTP(arg_list)->loc, "tag 'specialization' expects exactly 1 argument");
-            }
-
-            arg = ((arg_t*)array_item(*args, 0))->expr;
-
-            if (arg->kind != AST_IDENT) {
-                report_range_err(&arg->loc, "tag 'specialization' argument must be an identifier");
-            }
-
-            check_specialization(cxt, tag, node, arg);
-        } else {
-            report_range_err(&expr->left->loc, "unknown tag '%s'", get_string(ident->str_rep));
-        }
     }
+
+    info->check_fn(cxt, decl, tag, arg_list);
 }
 
-static void check_tags(check_context_t cxt, ast_t *node, array_t *tags) {
+static void check_tags(check_context_t cxt, ast_decl_t *decl, array_t *tags) {
     ast_t **it;
 
     array_traverse(*tags, it) {
-        check_tag(cxt, node, *it);
+        check_tag(cxt, decl, *it);
     }
 }
 
@@ -1621,7 +1683,7 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
     if (ASTP(decl)->kind == AST_DECL_VAR
     ||  ASTP(decl)->kind == AST_DECL_STRUCT_FIELD) {
 
-        check_tags(cxt, ASTP(decl), &decl->tags);
+        check_tags(cxt, decl, &decl->tags);
     }
 
     if (decl->type_expr != NULL) {
@@ -1852,7 +1914,7 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
 
     ASTP(proc)->type = get_proc_type(n_params, param_types, ret_type);
 
-    check_tags(cxt, ASTP(cxt.parent_decl), &(cxt.parent_decl)->tags);
+    check_tags(cxt, cxt.parent_decl, &(cxt.parent_decl)->tags);
 
     if (ASTP(proc)->flags & AST_FLAG_POLYMORPH
     &&  !(cxt.flags & CHECK_FLAG_MONOMORPH)) {
@@ -4365,7 +4427,7 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
         i += 1;
     }
 
-    check_tags(cxt, ASTP(cxt.parent_decl), &(cxt.parent_decl)->tags);
+    check_tags(cxt, cxt.parent_decl, &(cxt.parent_decl)->tags);
 
     if (!(cxt.flags & CHECK_FLAG_MONOMORPH)) {
         ASTP(st)->value.t = get_struct_type(cxt.parent_decl);
@@ -4763,7 +4825,7 @@ static void check_node(check_context_t cxt, ast_t *node) {
             node->type                  = TY_MODULE;
             ASTP(cxt.parent_decl)->type = TY_MODULE;
 
-            check_tags(cxt, ASTP(cxt.parent_decl), &(cxt.parent_decl)->tags);
+            check_tags(cxt, cxt.parent_decl, &(cxt.parent_decl)->tags);
 
             cxt.scope = get_subscope_from_node(cxt.scope, node);
             ASSERT(cxt.scope != NULL, "did not get subscope");

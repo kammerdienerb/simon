@@ -12,6 +12,7 @@ u64              n_lines;
 u64              n_blank_lines;
 ast_decl_t      *program_entry;
 pthread_mutex_t  program_entry_mtx = PTHREAD_MUTEX_INITIALIZER;
+array_t          tag_infos;
 array_t          all_types;
 array_t          all_procs;
 array_t          all_vars;

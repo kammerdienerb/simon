@@ -1284,40 +1284,6 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
         }
     }
 
-#if 0
-    while (!OPTIONAL_CHAR(cxt, '}')) {
-        tags = array_make(ast_t*);
-        parse_tags(cxt, &tags);
-
-        field                = AST_ALLOC(cxt, ast_decl_t);
-        ASTP(field)->kind    = AST_DECL_STRUCT_FIELD;
-        ASTP(field)->loc.beg = GET_BEG_POINT(cxt);
-        field->name          = STRING_ID_NULL;
-        field->tags          = tags;
-
-        EXPECT_IDENT(cxt, &field->name, "expected field name in struct '%s'", get_string(name));
-
-        ASTP(field)->loc.end = GET_END_POINT(cxt);
-
-        EXPECT_CHAR(cxt, ':', "expected ':'");
-
-        field->type_expr = parse_expr_prec(cxt, ASSIGNMENT_PREC + 1);
-        if (field->type_expr == NULL) {
-            report_loc_err(GET_BEG_POINT(cxt),
-                        "expected valid type expression for field '%s' of struct '%s'",
-                        get_string(field->name), get_string(name));
-            return NULL;
-        }
-
-        array_push(result->fields, field);
-
-        if (!OPTIONAL_CHAR(cxt, ',')) {
-            EXPECT_CHAR(cxt, '}', "expected '}' to close struct '%s', or ',' to add more fields", get_string(name));
-            break;
-        }
-    }
-#endif
-
     SCOPE_POP(cxt);
 
     ASTP(result)->loc.end = GET_END_POINT(cxt);

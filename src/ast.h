@@ -420,5 +420,6 @@ void check_all(void);
 u32 find_poly_vargs_type(scope_t *scope);
 string_id value_to_string_id(value_t val, u32 type);
 int tag_is_string(ast_t *tag_expr, string_id id);
+void init_tags(void);
 
 #endif

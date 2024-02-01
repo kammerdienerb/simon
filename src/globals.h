@@ -14,6 +14,7 @@ extern array_t          roots;
 extern pthread_mutex_t  macro_calls_mtx;
 extern array_t          macro_calls;
 extern ast_decl_t      *program_entry;
+extern array_t          tag_infos;
 extern array_t          all_types;
 extern array_t          all_procs;
 extern array_t          all_vars;

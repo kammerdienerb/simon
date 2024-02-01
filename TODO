@@ -18,4 +18,4 @@ TODO:
 -   Macro varargs
 -   madvise MADV_SEQUENTIAL and MADV_WILLNEED may be good to add to parser file mappings
 ✓✓✓ More checking for TY_NOT_TYPED
--   Improve tags error checking (unknown tag, incorrect form, etc.)
+✓✓✓ Improve tags error checking (unknown tag, incorrect form, etc.)
