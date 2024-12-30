@@ -2,13 +2,15 @@
 
 # compile_error!("this is my error text");
 
-M :: macro {
-    FOO :: 0;
+M :: macro() {
+    FOO :: 123;
 }
 
 [[ program_entry ]]
 main :: proc() {
     M!();
+
+    FOO :: 456;
 
 #     HT :: Hash_Table(str, s64);
 #     table: HT;
@@ -41,6 +43,14 @@ main :: proc() {
 # macro is a MACRO_EXPR, or something. Then when it gets expanded, we throw an error
 # because it results in a declaration node instead. That might work, but we'll need to
 # work through some of the more complicated cased (like block macros) to be sure.
+#
+# Further update (june):
+# Concerning declarations within a macro:
+# What if private declarations have their name mangled every time the macro is expanded
+# in expand_macro() or somewhere in copy_tree()? This could be an easy way to get this
+# working such that C code generation is easy (might "Just work" TM). It will, however,
+# place more restrictions on valid identifiers (i.e. whatever we use for the mangling
+# will be disallowed).
 
 
 ### Interesting ideas:

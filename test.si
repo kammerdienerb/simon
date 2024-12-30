@@ -1,10 +1,45 @@
+
+
+# BTree :: struct(%key_type:   type,
+#                 %value_type: type,
+#                 %cmp_fn:     proc(key_type, key_type): s64) {
+
+#     cmp :: cmp_fn;
+
+#     bundle: Allocator.Bundle;
+# }
+
+# btree_insert :: proc(bt: *%bt_type) {
+#     bt_type.cmp("abc");
+# }
+
+# btree_new :: proc(%key_type:    type,
+#                   %value_type:  type,
+#                   %cmp:         proc(key_type, key_type): s64,
+#                   allocator:   *%allocator_type)
+#             : BTree(key_type, val_type, cmp) {
+
+#     bt_type.cmp("abc");
+
+#     tree: BTree(s64, s64, cmp);
+
+#     tree.bundle = Allocator.bundle(allocator);
+# }
+
+# cmp :: proc(a: s64, b: s64): s64 { return a - b; }
+
+foo :: proc(%N: s64, s: [u8]) {
+}
+
+bar :: proc() {}
+
 [[ program_entry ]]
 main :: proc() {
     defer { exit(0); }
-    loop i := 1; i <= 40; i += 1 {
-        printf("{}", i % 10);
-    }
-    printf("\n");
-    my_width := -20;
-    printf("{=*}|\n", my_width, "hello, world!");
+
+#     btree_insert(*tree);
+    debug_print!(123);
+    debug_print!("this is a test string");
+
+#     foo(N: bar(), s: "asdf");
 }

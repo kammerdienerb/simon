@@ -1,0 +1,37 @@
+
+
+# my_macro :: macro[] {
+#     ${}
+# }
+
+
+Hash_Table :: struct(%key_type: type, %val_type: type) {
+    KEY_TYPE :: key_type;
+    VAL_TYPE :: val_type;
+
+    alloc: Allocator.Bundle;
+
+    new :: proc(allocator: *%allocator_type): Hash_Table(KEY_TYPE, VAL_TYPE) {
+        ret: Hash_Table(KEY_TYPE, VAL_TYPE);
+        return ret;
+    }
+}
+
+[[ program_entry ]]
+main :: proc() {
+    ht: Hash_Table(s64, f64);
+    buff: 1024*u8;
+
+
+    mem := singleton_allocator_new(*buff[0], 1024);
+    ht2 := Hash_Table(s64, f64).new(*mem);
+    ht3 := Hash_Table(f64, f64).new(*mem);
+
+    printf("Hello, hash tables\n");
+
+#     my_macro![] {
+#         x := 123;
+#     }
+
+#     printf("{}\n", x);
+}

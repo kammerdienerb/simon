@@ -58,3 +58,5 @@ tests/bin
 .cache
 compile_commands.json
 tags
+
+.DS_Store

@@ -613,7 +613,10 @@ static void expand_code_to_string_macro(ast_macro_call_t *call) {
     ast_arg_list_t *arg_list;
     ast_t          *arg;
     u64             len;
-    char           *buff;
+    array_t         buff;
+    int             bs;
+    int             c;
+    int             i;
     string_id       id;
     ast_string_t    string;
 
@@ -627,13 +630,21 @@ static void expand_code_to_string_macro(ast_macro_call_t *call) {
     validate_range(&arg->loc);
     len = arg->loc.end.buff_ptr - arg->loc.beg.buff_ptr;
 
-    buff = mem_alloc(1 + 2 + len);
-    buff[0] = '"';
-    memcpy(buff + 1, arg->loc.beg.buff_ptr, len);
-    buff[1 + len] = '"';
-    buff[2 + len] = 0;
-    id = get_string_id_n(buff, 2 + len);
-    mem_free(buff);
+    buff = array_make(char);
+    bs   = '\\';
+    c    = '"';
+    array_push(buff, c);
+    for (i = 0; i < len; i += 1) {
+        c = arg->loc.beg.buff_ptr[i];
+        if (c == '"') { array_push(buff, bs); }
+        array_push(buff, c);
+    }
+    c = '"';
+    array_push(buff, c);
+
+    id = get_string_id_n(array_data(buff), array_len(buff));
+
+    array_free(buff);
 
     memset(&string, 0, sizeof(string));
     ASTP(&string)->kind    = AST_STRING;
