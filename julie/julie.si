@@ -1,0 +1,76 @@
+
+Error :: struct {
+    which: s64;
+}
+
+
+[[ specialization(Format.to_formatted_str) ]]
+error_to_formatted_str :: proc(sb: *String_Builder, arg: Error, f: Format.Format_Info): s64 {
+    if        arg.which == SUCCESS {
+        return string_builder_append(sb, "No error.");
+    } else if arg.which == ERR_TOO_SMALL {
+        return string_builder_append(sb, "Too small.");
+    } else if arg.which == ERR_BAD_ALLOC {
+        return string_builder_append(sb, "Failed to allocate.");
+    }
+
+    return string_builder_append(sb, "Unknown error.");
+}
+
+
+try :: macro(expr) {
+    {
+        foo := $expr;
+        if foo.which == ERR_BAD_ALLOC {
+            printf("Got an error! code = {}\n", foo);
+            return foo;
+        }
+        foo;
+    }
+}
+
+error :: macro(which) {
+    {
+        tmp: Error;
+        tmp.which = $which;
+        tmp;
+    }
+}
+
+[[ program_entry ]]
+main :: proc(): Error {
+    defer { exit(0); }
+
+    tmp: s64;
+
+
+    result := try!(error!(ERR_BAD_ALLOC));
+
+    # Read command line arguments
+    bp   := _builtin_base_pointer();
+    argc := @cast(*u32, bp + 16);
+    argv := cast(**u8, bp + 24);
+
+    if argc != 2 {
+        printf("expected one argument: a julie file path\n");
+        exit(1);
+    }
+
+    x := {
+        defer { printf("what does this do?\n"); }
+        printf("hello, world!\n");
+
+        foo := 0;
+
+        if argc {
+            foo = 123;
+        } else {
+            foo = 456;
+        }
+
+        foo;
+    };
+    debug_print!(x);
+
+    return error!(SUCCESS);
+}

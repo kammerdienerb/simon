@@ -8,6 +8,8 @@ M :: macro() {
 
 [[ program_entry ]]
 main :: proc() {
+    defer { exit(0); }
+
     M!();
 
     FOO :: 456;

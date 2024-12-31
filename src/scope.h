@@ -16,6 +16,8 @@ typedef struct scope {
     array_t       subscopes;
     string_id     name_id;
     int           in_proc;
+    int           in_macro;
+    u64           macro_scope_id;
     int           visited;
 } scope_t;
 
@@ -23,7 +25,6 @@ void     init_scopes(void);
 scope_t *create_scope(scope_t *parent, int kind, ast_t *node);
 scope_t *copy_scope(scope_t *scope);
 scope_t *create_named_scope(scope_t *parent, int kind, ast_t *node, string_id name_id);
-void     add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node);
 void     add_symbol(scope_t *scope, string_id name_id, ast_t *node);
 void     insert_subscope(scope_t *scope, scope_t *subscope);
 scope_t *add_subscope(scope_t *scope, int kind, ast_t *node);

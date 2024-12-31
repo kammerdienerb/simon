@@ -1,0 +1,19 @@
+
+
+# foo :: proc(%T: type, x: s64): union(T, Error) {
+#     t: T;
+#
+#     if x {
+#         return t;
+#     }
+#
+#     return error!(ERR_BAD_ALLOC);
+# }
+
+
+Julie_Status :: s64;
+
+Julie_Util :: module {
+#     map_file_into_readonly_memory :: proc(path: [u8]): [u8] {
+#     }
+}

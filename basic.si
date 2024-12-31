@@ -34,11 +34,26 @@ Allocator :: module {
 
 Heap_Allocator :: struct {}
 
+heap_allocator: Heap_Allocator;
+
 [[ specialization(Allocator.alloc) ]]
-heap_alloc :: proc(allocator: *Heap_Allocator, n_bytes: u64): *u8 { return NULL; }
+heap_alloc :: proc(allocator: *Heap_Allocator, n_bytes: u64): *u8 { return malloc(n_bytes); }
+
+[[ specialization(Allocator.realloc) ]]
+heap_realloc :: proc(allocator: *Heap_Allocator, ptr: *u8, n_bytes: u64): *u8 { return realloc(ptr, n_bytes); }
 
 [[ specialization(Allocator.free) ]]
-heap_free :: proc(allocator: *Heap_Allocator, ptr: *u8) {  }
+heap_free :: proc(allocator: *Heap_Allocator, ptr: *u8) { free(ptr); }
+
+[[ specialization(Allocator.bundle) ]]
+heap_bundle :: proc(allocator: *Heap_Allocator): Allocator.Bundle {
+    ret: Allocator.Bundle;
+    ret.self    = cast(*u8, allocator);
+    ret.alloc   = cast(proc(*u8, u64): *u8,      heap_alloc);
+    ret.realloc = cast(proc(*u8, *u8, u64): *u8, heap_realloc);
+    ret.free    = cast(proc(*u8, *u8),           heap_free);
+    return ret;
+}
 
 Fixed_Allocator :: struct {
     base: *u8;
@@ -118,11 +133,16 @@ singleton_bundle :: proc(allocator: *Singleton_Allocator): Allocator.Bundle {
 
 
 
-[[ extern ]] open  :: proc(path: *u8, oflag: s32): s32;
-[[ extern ]] read  :: proc(fd: s32, bytes: *u8, len: u64): s32;
-[[ extern ]] write :: proc(fd: s32, bytes: *u8, len: u64): s32;
-[[ extern ]] close :: proc(fd: s32): s32;
-[[ extern ]] exit  :: proc(code: s64);
+[[ extern ]] open    :: proc(path: *u8, oflag: s32): s32;
+[[ extern ]] read    :: proc(fd: s32, bytes: *u8, len: u64): s32;
+[[ extern ]] write   :: proc(fd: s32, bytes: *u8, len: u64): s32;
+[[ extern ]] close   :: proc(fd: s32): s32;
+[[ extern ]] exit    :: proc(code: s64);
+[[ extern ]] malloc  :: proc(size: u64): *u8;
+[[ extern ]] realloc :: proc(ptr: *u8, size: u64): *u8;
+[[ extern ]] free    :: proc(ptr: *u8);
+
+[[ extern ]] __argv: **u8;
 
 write_string :: proc(s: [u8]) {
     write(1, *s[0], lenof s);
@@ -157,7 +177,7 @@ string_builder_free :: proc(sb: *String_Builder) {
     string_builder_reset(sb);
 }
 
-string_builder_append :: proc(sb: *String_Builder, c: u8): s64 {
+string_builder_append_c :: proc(sb: *String_Builder, c: u8): s64 {
     was_null := sb.data == NULL;
 
     sb.data = Allocator.bundle_realloc(*sb.allocator, sb.data, sb.len + 1);
@@ -178,10 +198,48 @@ string_builder_append :: proc(sb: *String_Builder, c: u8): s64 {
     return SUCCESS;
 }
 
+string_builder_append :: proc(sb: *String_Builder, s: [u8]): s64 {
+    l := lenof(s);
+
+    if l == 0 {
+        return SUCCESS;
+    }
+
+    was_null := sb.data == NULL;
+
+    sb.data = Allocator.bundle_realloc(*sb.allocator, sb.data, sb.len + l);
+
+    if was_null {
+        sb.cursor = sb.data;
+    }
+
+    if sb.data == NULL {
+        string_builder_reset(sb);
+        return ERR_BAD_ALLOC;
+    }
+
+    loop i := 0; i < l; i += 1 {
+        sb.len     += 1;
+        @sb.cursor  = s[i];
+        sb.cursor  += 1;
+    }
+
+    return SUCCESS;
+}
+
 string_builder_get :: proc(sb: *String_Builder): [u8] {
     return _builtin_slice_from(sb.data, sb.len);
 }
 
+cstr_len :: proc(cstr: *u8): s64 {
+    l := 0;
+    loop ; @(cstr + l); l += 1 {}
+    return l;
+}
+
+string_from_c :: macro(cstr) {
+    _builtin_slice_from($cstr, cstr_len($cstr));
+}
 
 is_space :: proc(c: u8): s64 {
     d := cast(u32, c) - 9;
@@ -262,7 +320,7 @@ Format :: module {
         }
 
         loop idx := 0; idx < len; idx += 1 {
-            err := string_builder_append(sb, buff[idx]);
+            err := string_builder_append_c(sb, buff[idx]);
             if err { return err; }
         }
 
@@ -280,7 +338,7 @@ Format :: module {
     [[ specialization(to_formatted_str) ]]
     u8_to_formatted_str :: proc(sb: *String_Builder, arg: u8, f: Format.Format_Info): s64 {
         if f.ascii {
-            return string_builder_append(sb, arg);
+            return string_builder_append_c(sb, arg);
         } else {
             return u64_to_formatted_str(sb, cast(u64, arg), f);
         }
@@ -320,7 +378,7 @@ Format :: module {
 
         idx = 0;
         loop ; idx < len; idx += 1 {
-            err := string_builder_append(sb, buff[idx]);
+            err := string_builder_append_c(sb, buff[idx]);
             if err { return err; }
         }
 
@@ -346,8 +404,8 @@ Format :: module {
             f.hex = HEX_UPPER;
         }
 
-        string_builder_append(sb, '0');
-        string_builder_append(sb, 'x');
+        string_builder_append_c(sb, '0');
+        string_builder_append_c(sb, 'x');
 
         err := to_formatted_str(sb, cast(u64, arg), f);
 
@@ -359,7 +417,7 @@ Format :: module {
         arg_len := lenof arg;
 
         loop i := 0; i < arg_len; i += 1 {
-            err := string_builder_append(sb, arg[i]);
+            err := string_builder_append_c(sb, arg[i]);
             if err { return err; }
         }
 
@@ -487,9 +545,7 @@ aprintf :: proc(allocator: *%allocator_type, fmt: [u8], args: %...): s64 {
 }
 
 printf :: proc(fmt: [u8], args: %...): s64 {
-    N := 4096;
-    mem := singleton_allocator_new(_builtin_stack_alloc(N), N);
-    return aprintf(*mem, fmt, args);
+    return aprintf(*heap_allocator, fmt, args);
 }
 
 debug_print :: macro(expr) {

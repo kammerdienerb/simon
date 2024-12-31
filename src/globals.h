@@ -20,6 +20,7 @@ extern array_t          all_procs;
 extern array_t          all_vars;
 extern array_t          macro_expand_stack;
 extern array_t          cycle_check_path;
+extern u64              macro_scope_counter;
 
 #define ROOTS_LOCK()                             \
 do {                                             \

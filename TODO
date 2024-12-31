@@ -19,3 +19,13 @@ TODO:
 -   madvise MADV_SEQUENTIAL and MADV_WILLNEED may be good to add to parser file mappings
 ✓✓✓ More checking for TY_NOT_TYPED
 ✓✓✓ Improve tags error checking (unknown tag, incorrect form, etc.)
+-   Improve error message:
+        julie.si:10:5: error: attempting to pass arguments to something that does not have parameters
+        8  │     argv := cast(**u8, sp-16);
+        9  │
+        10 │     debug_print(@(argv + 0));
+                ^^^^^^^^^^^^^^^^^^^^^^^^
+        11 │ #     debug_print!(_builtin_slice_from(@(argv), 16));
+
+        julie.si:10:5: info: expression has type macro
+        10 │     debug_print(@(argv + 0));

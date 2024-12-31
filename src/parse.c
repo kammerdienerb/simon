@@ -836,6 +836,8 @@ static int lookahead_unary_prefix_op(parse_context_t *cxt) {
 }
 
 static ast_t * parse_expr_prec(parse_context_t *cxt, int min_prec);
+static ast_t * parse_block_with_scope(parse_context_t *cxt);
+static ast_t * parse_block(parse_context_t *cxt);
 
 static ast_t * parse_leaf_expr(parse_context_t *cxt) {
     src_range_t  loc;
@@ -897,6 +899,10 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
         ((ast_ident_t*)result)->resolved_node = NULL;
         ((ast_ident_t*)result)->mono_idx      = -1;
         ((ast_ident_t*)result)->varg_idx      = -1;
+
+        if (cxt->in_macro_def) {
+            result->flags |= AST_FLAG_NAME_IN_MACRO;
+        }
     } else if (OPTIONAL_FLOAT(cxt, &str_rep)) {
         result                           = AST_ALLOC(cxt, ast_float_t);
         result->kind                     = AST_FLOAT;
@@ -959,7 +965,7 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
             loc.end = GET_END_POINT(cxt);
             report_range_err(&loc, "macro argument expansion is only valid within a macro");
         }
-    }
+    } else if ((result = parse_block_with_scope(cxt))) {}
 
     if (result != NULL) {
         loc.end     = GET_END_POINT(cxt);
@@ -1651,8 +1657,8 @@ static ast_t *parse_stmt(parse_context_t *cxt) {
         goto out;
     }
 
-    if ((result = parse_expr(cxt)))                   { EXPECT_CHAR(cxt, ';', "expected ';'"); goto out; }
     if ((result = parse_block_with_scope(cxt)))       {                                        goto out; }
+    if ((result = parse_expr(cxt)))                   { EXPECT_CHAR(cxt, ';', "expected ';'"); goto out; }
 
 out:;
     return result;
@@ -1866,6 +1872,9 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
     result->name_end = GET_END_POINT(cxt);
     ASSERT(OPTIONAL_CHAR(cxt, ':'), "parse_declaration_begin must be wrong");
 
+    if (cxt->in_macro_def) {
+        ASTP(result)->flags |= AST_FLAG_NAME_IN_MACRO;
+    }
 
     result->containing_scope = SCOPE(cxt);
     if (result->containing_scope == cxt->global_scope) {
@@ -1940,7 +1949,10 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
     result->name       = name;
     result->full_name  = get_full_name(name, SCOPE(cxt));
 
-    if (var_shape_kind != AST_DECL_STRUCT_FIELD && !SCOPE(cxt)->in_proc) {
+    if (var_shape_kind != AST_DECL_STRUCT_FIELD
+    &&  !SCOPE(cxt)->in_proc
+    &&  !cxt->in_macro_def) {
+
         INSTALL(cxt, name, ASTP(result));
     }
 
@@ -2079,7 +2091,7 @@ static void parse(parse_context_t *cxt) {
     GS_LOCK(); {
         i = 0;
         array_traverse(cxt->global_scope->symbols, name_it) {
-            add_symbol_if_new(global_scope, *name_it, *(ast_t**)array_item(cxt->global_scope->nodes, i));
+            add_symbol(global_scope, *name_it, *(ast_t**)array_item(cxt->global_scope->nodes, i));
             i += 1;
         }
         array_traverse(cxt->global_scope->subscopes, subscope_it) {

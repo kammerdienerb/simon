@@ -43,11 +43,11 @@ int main(int argc, char **argv) {
 
     do_parse();
 
+    do_check();
+
     if (options.dump_symbols) {
         show_scope(global_scope);
     }
-
-    do_check();
 
     if (options.verbose) {
         report_type_stats();

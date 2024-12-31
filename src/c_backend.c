@@ -18,6 +18,7 @@ static array_t     loop_label_stack;
 
 enum {
     BLOCK_NORMAL,
+    BLOCK_EXPR,
     BLOCK_PROC_BODY,
     BLOCK_LOOP,
     BLOCK_SYNTHETIC,
@@ -104,6 +105,20 @@ static void emit_prelude(void) {
 "\n"
 "#define _builtin_stack_alloc(_n) (__builtin_alloca((_n)))\n"
 "#ifdef __x86_64__\n"
+"#define _builtin_stack_pointer() ({ \\\n"
+"    register unsigned long esp __asm(\"esp\"); \\\n"
+"    __asm(\"\" : \"=r\"(esp)); \\\n"
+"    (void*)esp; \\\n"
+"})\n"
+"#else\n"
+"#define _builtin_stack_pointer() ({ \\\n"
+"    register unsigned long esp __asm(\"sp\"); \\\n"
+"    __asm(\"\" : \"=r\"(esp)); \\\n"
+"    (void*)esp; \\\n"
+"})\n"
+"#endif\n"
+"#define _builtin_base_pointer() (__builtin_frame_address(0))\n"
+"#ifdef __x86_64__\n"
 "__attribute__((used, always_inline))\n"
 "static inline void _builtin_outb(u8* addr, u8 b) { __asm__ volatile ( \"outb %0, %1\" : : \"a\"(b), \"Nd\"((u16)(u64)addr) );                      }\n"
 "__attribute__((used, always_inline))\n"
@@ -135,10 +150,19 @@ static void _emit_name(ast_t *node, i32 mono_idx, int asm_name) {
     if (node->kind == AST_DECL_VAR) {
         decl = (ast_decl_t*)node;
         if (!(ASTP(decl)->flags & AST_FLAG_IS_EXTERN) && !decl->containing_scope->in_proc) { goto long_name; }
+
+        if (decl->containing_scope->kind == AST_MACRO_EXPAND_SCOPE) {
+            EMIT_STRING_F("__si_macro_%"PRIu64"_", decl->containing_scope->macro_scope_id);
+        }
+
         EMIT_STRING_ID(decl->name);
     } else if (ast_kind_is_decl(node->kind)) {
 long_name:;
         decl = (ast_decl_t*)node;
+
+        if (decl->containing_scope->kind == AST_MACRO_EXPAND_SCOPE) {
+            EMIT_STRING_F("__si_macro_%"PRIu64"_", decl->containing_scope->macro_scope_id);
+        }
 
         scope       = decl->containing_scope;
         parent_node = NULL;
@@ -568,7 +592,7 @@ static void emit_proc_pre_decls(void) {
     }
 }
 
-static void emit_expr(ast_t *expr);
+static void emit_expr(ast_t *expr, int lvl);
 
 static void emit_sizeof_assertions(void) {
     u64 n_types;
@@ -616,7 +640,7 @@ static void emit_vars(void) {
     }
 }
 
-static void emit_unary_expr(ast_t *expr) {
+static void emit_unary_expr(ast_t *expr, int lvl) {
     int    op;
     ast_t *child;
 
@@ -627,26 +651,26 @@ static void emit_unary_expr(ast_t *expr) {
     switch (op) {
         case OP_NEG:
             EMIT_STRING(OP_STR(op));
-            emit_expr(child);
+            emit_expr(child, lvl);
             break;
         case OP_NOT:
             EMIT_STRING("!(");
-            emit_expr(child);
+            emit_expr(child, lvl);
             EMIT_C(')');
             break;
         case OP_ADDR:
             EMIT_STRING("&(");
-            emit_expr(child);
+            emit_expr(child, lvl);
             EMIT_C(')');
             break;
         case OP_DEREF:
             EMIT_STRING("(*(");
-            emit_expr(child);
+            emit_expr(child, lvl);
             EMIT_STRING("))");
             break;
         case OP_SIZEOF:
             EMIT_STRING("sizeof (");
-            emit_expr(child);
+            emit_expr(child, lvl);
             EMIT_C(')');
             break;
         case OP_TYPEOF:
@@ -657,7 +681,7 @@ static void emit_unary_expr(ast_t *expr) {
                 EMIT_STRING_F("%"PRIi64, (i64)get_array_length(child->type));
             } else if (type_kind(child->type) == TY_SLICE) {
             	EMIT_C('(');
-                emit_expr(child);
+                emit_expr(child, lvl);
             	EMIT_STRING(").len");
             }
             break;
@@ -667,7 +691,7 @@ static void emit_unary_expr(ast_t *expr) {
     }
 }
 
-static void emit_binary_expr(ast_t *expr) {
+static void emit_binary_expr(ast_t *expr, int lvl) {
     int              op;
     ast_t           *l;
     ast_t           *r;
@@ -703,7 +727,7 @@ static void emit_binary_expr(ast_t *expr) {
                     emit_type(arg->expr->value.t);
                     EMIT_STRING(")(");
                     arg = array_item(arg_list->args, 1);
-                    emit_expr(arg->expr);
+                    emit_expr(arg->expr, lvl);
                     EMIT_STRING("))");
                 } else if (((ast_builtin_t*)call_decl)->name == _BUILTIN_VARG_ID) {
                     EMIT_STRING_F("__varg%d", which_varg);
@@ -712,14 +736,14 @@ static void emit_binary_expr(ast_t *expr) {
                 }
             } else {
 normal_call:;
-                emit_expr(l);
+                emit_expr(l, lvl);
                 EMIT_C('(');
                 i = 0;
                 array_traverse(((ast_arg_list_t*)r)->args, it) {
                     if (it->expr->flags & AST_FLAG_POLYMORPH) { continue; }
 
                     EMIT_STRING(lazy_comma);
-                    emit_expr(it->expr);
+                    emit_expr(it->expr, lvl);
                     lazy_comma = ", ";
                     i += 1;
                 }
@@ -728,15 +752,15 @@ normal_call:;
             break;
         case OP_SUBSCRIPT:
             if (type_kind(l->type) == TY_ARRAY) {
-                emit_expr(l);
+                emit_expr(l, lvl);
                 EMIT_C('[');
-                emit_expr(r);
+                emit_expr(r, lvl);
                 EMIT_C(']');
             } else if (type_kind(l->type) == TY_SLICE) {
                 EMIT_STRING("(*__si_slice_idx(");
-                emit_expr(l);
+                emit_expr(l, lvl);
                 EMIT_STRING(", ");
-                emit_expr(r);
+                emit_expr(r, lvl);
                 EMIT_STRING(", ");
                 emit_type(get_under_type(l->type));
                 EMIT_STRING("))");
@@ -755,10 +779,10 @@ normal_call:;
                 if (type_kind(l->type) == TY_PTR) {
                     EMIT_C('(');
                     EMIT_C('*');
-                    emit_expr(l);
+                    emit_expr(l, lvl);
                     EMIT_C(')');
                 } else {
-                    emit_expr(l);
+                    emit_expr(l, lvl);
                 }
 
                 st_ty   = l->type;
@@ -789,7 +813,7 @@ normal_call:;
                 EMIT_C(')');
                 EMIT_C(')');
             } else {
-                emit_expr(l);
+                emit_expr(l, lvl);
                 if (type_kind(l->type) == TY_PTR) {
                     EMIT_C('-');
                     EMIT_C('>');
@@ -824,36 +848,36 @@ normal_call:;
 
                 ASSERT(field != NULL, "did not get field");
 
-                emit_expr(((ast_bin_expr_t*)l)->left);
+                emit_expr(((ast_bin_expr_t*)l)->left, lvl);
                 EMIT_STRING(" = (");
-                emit_expr(((ast_bin_expr_t*)l)->left);
+                emit_expr(((ast_bin_expr_t*)l)->left, lvl);
                 EMIT_STRING_F(" & ~0x%"PRIx64") | (", field->bitfield_mask);
 
                 if (op == OP_ASSIGN) {
                     EMIT_STRING("(((u64)");
-                    emit_expr(r);
+                    emit_expr(r, lvl);
                     EMIT_C(')');
                     EMIT_STRING_F(" << %dULL) & 0x%"PRIx64")", field->bitfield_shift, field->bitfield_mask);
                 } else {
-                    emit_expr(((ast_bin_expr_t*)l)->left);
+                    emit_expr(((ast_bin_expr_t*)l)->left, lvl);
                     EMIT_C('(');
                     EMIT_C('(');
-                    emit_expr(l);
+                    emit_expr(l, lvl);
                     EMIT_C(' ');
                     for (i = 0; i < strlen(OP_STR(op)) - 1; i += 1) {
                         EMIT_C(OP_STR(op)[i]);
                     }
                     EMIT_STRING_F(" ((u64)");
-                    emit_expr(r);
+                    emit_expr(r, lvl);
                     EMIT_C(')');
                     EMIT_C(')');
                     EMIT_STRING_F(" << %dULL) & 0x%"PRIx64")", field->bitfield_shift, field->bitfield_mask);
                 }
             } else {
                 EMIT_C('(');
-                emit_expr(l);
+                emit_expr(l, lvl);
                 EMIT_STRING_F(" %s ", OP_STR(op));
-                emit_expr(r);
+                emit_expr(r, lvl);
                 EMIT_C(')');
             }
             break;
@@ -873,19 +897,19 @@ normal_call:;
         case OP_LEQ:
         case OP_GTR:
         case OP_GEQ:
-            emit_expr(l);
+            emit_expr(l, lvl);
             EMIT_STRING_F(" %s ", OP_STR(op));
-            emit_expr(r);
+            emit_expr(r, lvl);
             break;
         case OP_AND:
-            emit_expr(l);
+            emit_expr(l, lvl);
             EMIT_STRING(" && ");
-            emit_expr(r);
+            emit_expr(r, lvl);
             break;
         case OP_OR:
-            emit_expr(l);
+            emit_expr(l, lvl);
             EMIT_STRING(" || ");
-            emit_expr(r);
+            emit_expr(r, lvl);
             break;
         default:
             report_simple_err_no_exit("INTERNAL ERROR: unhandled expression in emit_binary_expr(): %s", OP_STR(op));
@@ -895,7 +919,15 @@ normal_call:;
     EMIT_C(')');
 }
 
-static void emit_expr(ast_t *expr) {
+enum {
+    FMT_FLAGS_NONE = 0,
+    FMT_NO_INDENT  = 1 << 0,
+    FMT_NO_END     = 1 << 1,
+};
+
+static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind);
+
+static void emit_expr(ast_t *expr, int lvl) {
     ast_ident_t   *ident;
     ast_t         *resolved_node;
     ast_decl_t    *decl;
@@ -922,10 +954,10 @@ static void emit_expr(ast_t *expr) {
 
     switch (expr->kind) {
         case AST_UNARY_EXPR:
-            emit_unary_expr(expr);
+            emit_unary_expr(expr, lvl);
             break;
         case AST_BIN_EXPR:
-            emit_binary_expr(expr);
+            emit_binary_expr(expr, lvl);
             break;
         case AST_INT:
             EMIT_STRING_ID(((ast_int_t*)expr)->str_rep);
@@ -952,7 +984,7 @@ static void emit_expr(ast_t *expr) {
             } else if (expr->flags & AST_FLAG_CONSTANT
             &&  resolved_node->kind == AST_DECL_VAR) {
 
-                emit_expr(((ast_decl_t*)resolved_node)->val_expr);
+                emit_expr(((ast_decl_t*)resolved_node)->val_expr, lvl);
             } else if (resolved_node->kind == AST_DECL_PROC
                    && resolved_node->flags & AST_FLAG_POLYMORPH
                    &&  ident->mono_idx >= 0) {
@@ -971,18 +1003,13 @@ normal_name:;
             }
 
             break;
+        case AST_BLOCK:
+            emit_stmt(expr, lvl, FMT_NO_END | FMT_NO_INDENT, BLOCK_EXPR);
+            break;
         default:
             ASSERT(0, "not an expression");
     }
 }
-
-enum {
-    FMT_FLAGS_NONE = 0,
-    FMT_NO_INDENT  = 1 << 0,
-    FMT_NO_END     = 1 << 1,
-};
-
-static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind);
 
 static void emit_defers(int lvl) {
     array_t  *scope;
@@ -1068,6 +1095,9 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
             }
 
             if (block_kind != BLOCK_SYNTHETIC) {
+                if (block_kind == BLOCK_EXPR) {
+                    EMIT_STRING("(");
+                }
                 EMIT_STRING("{\n");
             }
             if (block_kind != BLOCK_SYNTHETIC) {
@@ -1078,6 +1108,10 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
                 INDENT(lvl + 1);
                 emit_type(current_proc->ret_type_expr->value.t);
                 EMIT_STRING(" __si_ret;\n\n");
+            } else if (block_kind == BLOCK_EXPR && stmt->type != TY_NOT_TYPED) {
+                INDENT(lvl + 1);
+                emit_type(stmt->type);
+                EMIT_STRING(" __si_block_val;\n\n");
             }
 
             array_traverse(((ast_block_t*)stmt)->stmts, it) {
@@ -1089,7 +1123,21 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
             array_traverse(((ast_block_t*)stmt)->stmts, it) {
                 s = *it;
                 if (s->kind != AST_DEFER) {
-                    emit_stmt(s, lvl + 1, FMT_FLAGS_NONE, BLOCK_NORMAL);
+                    if (block_kind == BLOCK_EXPR && it == array_last(((ast_block_t*)stmt)->stmts)) {
+                        INDENT(lvl + 1);
+                        if (ast_kind_is_decl(s->kind)) {
+                            emit_stmt(s, lvl + 1, FMT_NO_INDENT, BLOCK_NORMAL);
+                            INDENT(lvl + 1);
+                            EMIT_STRING("__si_block_val = ");
+                            emit_name(s, -1);
+                            EMIT_STRING(";\n");
+                        } else {
+                            EMIT_STRING("__si_block_val = ");
+                            emit_stmt(s, lvl + 1, FMT_NO_INDENT, BLOCK_NORMAL);
+                        }
+                    } else {
+                        emit_stmt(s, lvl + 1, FMT_FLAGS_NONE, BLOCK_NORMAL);
+                    }
                 }
             }
 
@@ -1106,12 +1154,18 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
                 INDENT(lvl + 1);
                 emit_line(&ASTP(current_proc)->loc.end);
                 EMIT_STRING("return __si_ret;\n");
+            } else if (block_kind == BLOCK_EXPR) {
+                INDENT(lvl + 1);
+                EMIT_STRING("__si_block_val;\n");
             }
 
             emit_line(&stmt->loc.end);
             INDENT(lvl);
             if (block_kind != BLOCK_SYNTHETIC) {
                 EMIT_STRING("}");
+                if (block_kind == BLOCK_EXPR) {
+                    EMIT_STRING(")");
+                }
             }
             if (!(fmt_flags & FMT_NO_END)) {
                 EMIT_STRING("\n\n");
@@ -1129,11 +1183,12 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
         case AST_DECL_VAR:
             emit_type(stmt->type);
             EMIT_C(' ');
-            EMIT_STRING_ID(((ast_decl_t*)stmt)->name);
+            emit_name(stmt, -1);
+/*             EMIT_STRING_ID(((ast_decl_t*)stmt)->name); */
 
             if (((ast_decl_t*)stmt)->val_expr) {
                 EMIT_STRING(" = ");
-                emit_expr(((ast_decl_t*)stmt)->val_expr);
+                emit_expr(((ast_decl_t*)stmt)->val_expr, lvl);
             }
 
             if (!(fmt_flags & FMT_NO_END)) {
@@ -1143,7 +1198,7 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
 
         case AST_IF:
             EMIT_STRING("if (");
-            emit_expr(((ast_if_t*)stmt)->expr);
+            emit_expr(((ast_if_t*)stmt)->expr, lvl);
             EMIT_STRING(") ");
             emit_stmt(((ast_if_t*)stmt)->then_block, lvl, FMT_NO_INDENT | FMT_NO_END, BLOCK_NORMAL);
             if (((ast_if_t*)stmt)->els != NULL) {
@@ -1179,7 +1234,7 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
         case AST_RETURN:
             if (((ast_return_t*)stmt)->expr != NULL) {
                 EMIT_STRING("__si_ret = ");
-                emit_expr(((ast_return_t*)stmt)->expr);
+                emit_expr(((ast_return_t*)stmt)->expr, lvl);
                 EMIT_STRING(";\n");
                 INDENT(lvl);
             }
@@ -1203,9 +1258,9 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
             break;
 
 #define X(kind) case kind:
-        X_AST_ALL_EXPRS
+        X_AST_ALL_EXPRS_BUT_BLOCK
 #undef X
-            emit_expr(stmt);
+            emit_expr(stmt, lvl);
             if (!(fmt_flags & FMT_NO_END)) {
                 EMIT_STRING(";\n");
             }

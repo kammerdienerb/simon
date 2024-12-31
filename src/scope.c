@@ -93,6 +93,8 @@ void init_scopes(void) {
     INSERT_BUILTIN_PROC_LIKE("_builtin_printi", TY_NOT_TYPED, TY_S64);
     INSERT_BUILTIN_PROC_LIKE("_builtin_putc",   TY_NOT_TYPED, TY_U8);
     INSERT_BUILTIN_PROC_LIKE("_builtin_stack_alloc", get_ptr_type(TY_U8), TY_U64);
+    INSERT_BUILTIN_PROC_LIKE("_builtin_stack_pointer", get_ptr_type(TY_U8));
+    INSERT_BUILTIN_PROC_LIKE("_builtin_base_pointer", get_ptr_type(TY_U8));
     INSERT_BUILTIN_PROC_LIKE("_builtin_varg", TY_BUILTIN_SPECIAL);
     INSERT_BUILTIN_PROC_LIKE("_builtin_slice_from", TY_BUILTIN_SPECIAL);
     INSERT_BUILTIN_PROC_LIKE("_builtin_outb", TY_NOT_TYPED, get_ptr_type(TY_U8), TY_U8);
@@ -118,6 +120,13 @@ scope_t *create_scope(scope_t *parent, int kind, ast_t *node) {
     scope->subscopes = array_make(scope_t*);
     scope->name_id   = parent != NULL ? parent->name_id : STRING_ID_NULL;
     scope->in_proc   = parent != NULL && (kind == AST_PROC || parent->in_proc);
+    scope->in_macro  = parent != NULL && (kind == AST_MACRO_EXPAND_SCOPE || parent->in_macro);
+
+    if (kind == AST_MACRO_EXPAND_SCOPE) {
+        scope->macro_scope_id = macro_scope_counter++;
+    } else {
+        scope->macro_scope_id = 0;
+    }
 
     return scope;
 }
@@ -221,21 +230,6 @@ static void redecl_error(string_id name, ast_t *bad, ast_t *existing) {
     }
 }
 
-void add_symbol_if_new(scope_t *scope, string_id name_id, ast_t *node) {
-    ast_t *existing_node;
-
-    if (name_id == UNDERSCORE_ID) { return; }
-
-    existing_node = search_up_scopes(scope, name_id);
-    if (existing_node != NULL && existing_node->kind == AST_BUILTIN) {
-        redecl_error(name_id, node, existing_node);
-        return;
-    }
-
-    array_push(scope->symbols, name_id);
-    array_push(scope->nodes,   node);
-}
-
 void add_symbol(scope_t *scope, string_id name_id, ast_t *node) {
     ast_t   *existing_node;
     scope_t *exists_at;
@@ -243,10 +237,26 @@ void add_symbol(scope_t *scope, string_id name_id, ast_t *node) {
     if (name_id == UNDERSCORE_ID) { return; }
 
     existing_node = search_up_scopes_return_scope(scope, name_id, &exists_at);
-    if (existing_node != NULL &&
-        (existing_node->kind == AST_BUILTIN || exists_at->kind != AST_GLOBAL_SCOPE)) {
-        redecl_error(name_id, node, existing_node);
-        return;
+
+    if (existing_node != NULL) {
+
+        if (existing_node->kind == AST_BUILTIN
+        ||  scope == exists_at
+        ||  exists_at->in_macro) {
+
+            redecl_error(name_id, node, existing_node);
+            return;
+        }
+
+#if 0
+        if (existing_node->kind == AST_BUILTIN
+        ||  scope->kind == AST_GLOBAL_SCOPE
+        ||  exists_at->kind != AST_GLOBAL_SCOPE) {
+
+            redecl_error(name_id, node, existing_node);
+            return;
+        }
+#endif
     }
 
     array_push(scope->symbols, name_id);
@@ -263,13 +273,27 @@ static void propagate_in_proc(scope_t *scope) {
     }
 }
 
+static void propagate_in_macro(scope_t *scope) {
+    scope_t **it;
+
+    scope->in_macro = 1;
+
+    array_traverse(scope->subscopes, it) {
+        propagate_in_macro(*it);
+    }
+}
+
 void insert_subscope(scope_t *scope, scope_t *subscope) {
-    subscope->parent  = scope;
-    subscope->in_proc = scope->kind == AST_PROC || subscope->kind == AST_PROC || scope->in_proc;
+    subscope->parent   = scope;
+    subscope->in_proc  = scope->kind == AST_PROC || subscope->kind == AST_PROC || scope->in_proc;
+    subscope->in_macro = scope->kind == AST_MACRO_EXPAND_SCOPE || subscope->kind == AST_MACRO_EXPAND_SCOPE || scope->in_macro;
     array_push(scope->subscopes, subscope);
 
     if (subscope->in_proc) {
         propagate_in_proc(subscope);
+    }
+    if (subscope->in_macro) {
+        propagate_in_macro(subscope);
     }
 }
 

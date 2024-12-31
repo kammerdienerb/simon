@@ -44,6 +44,8 @@ AST_DEFINE(dummy);
                                                          \
     X(AST_GLOBAL_SCOPE,                dummy)            \
                                                          \
+    X(AST_MACRO_EXPAND_SCOPE,          dummy)            \
+                                                         \
     X(AST_IGNORE_NODE,                 dummy)            \
                                                          \
     X(AST_COMPILE_ERROR,               compile_error)    \
@@ -98,9 +100,20 @@ AST_DEFINE(dummy);
     X(AST_FLOAT)                       \
     X(AST_STRING)                      \
     X(AST_CHAR)                        \
-    X(AST_IDENT)
+    X(AST_IDENT)                       \
+    X(AST_BLOCK)
 
 #define X_AST_ALL_EXPRS                \
+    X(AST_INT)                         \
+    X(AST_FLOAT)                       \
+    X(AST_STRING)                      \
+    X(AST_CHAR)                        \
+    X(AST_IDENT)                       \
+    X(AST_UNARY_EXPR)                  \
+    X(AST_BIN_EXPR)                    \
+    X(AST_BLOCK)
+
+#define X_AST_ALL_EXPRS_BUT_BLOCK      \
     X(AST_INT)                         \
     X(AST_FLOAT)                       \
     X(AST_STRING)                      \
@@ -132,7 +145,6 @@ AST_DEFINE(dummy);
     X(AST_CONTINUE)
 
 #define X_AST_ONLY_STATEMENTS          \
-    X(AST_BLOCK)                       \
     X(AST_IF)                          \
     X(AST_LOOP)                        \
     X(AST_RETURN)                      \
@@ -159,7 +171,7 @@ enum {
     AST_FLAG_EXPR_CAN_BE_LVAL           = (1 <<  9),
     AST_FLAG_VISIT_WORK_DONE            = (1 << 10),
     AST_FLAG_BITFIELD_DOT               = (1 << 11),
-    AST_FLAG_MACRO_EXPAND_NAME          = (1 << 12),
+    AST_FLAG_NAME_IN_MACRO              = (1 << 12),
     AST_FLAG_CONSTANT                   = (1 << 13),
     AST_FLAG_POLY_IDENT                 = (1 << 14),
     AST_FLAG_CHECKED                    = (1 << 15),

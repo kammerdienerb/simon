@@ -28,18 +28,26 @@
 
 # cmp :: proc(a: s64, b: s64): s64 { return a - b; }
 
-foo :: proc(%N: s64, s: [u8]) {
-}
+# foo :: proc(%N: s64, s: [u8]) {
+# }
 
-bar :: proc() {}
+# bar :: proc() {}
+
+foo :: macro() {
+    a := 123;
+    printf("{}\n", a);
+}
 
 [[ program_entry ]]
 main :: proc() {
     defer { exit(0); }
 
+    foo!();
+    a : [u8];
+
 #     btree_insert(*tree);
-    debug_print!(123);
-    debug_print!("this is a test string");
+#     debug_print!(123);
+#     debug_print!("this is a test string");
 
 #     foo(N: bar(), s: "asdf");
 }

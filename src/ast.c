@@ -100,13 +100,6 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
             }
             decl->containing_scope = insert_scope;
 
-            if (node->flags & AST_FLAG_MACRO_EXPAND_NAME
-            &&  collect_macro_expand_args != NULL) {
-
-                exp = ASTP(decl);
-                array_push(*collect_macro_expand_args, exp);
-            }
-
             return ASTP(decl);
         }
         case AST_MODULE: {
@@ -176,13 +169,6 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
             CPY_FIELD(param, node, val, insert_scope);
 
             add_symbol(insert_scope, param->name, ASTP(param));
-
-            if (node->flags & AST_FLAG_MACRO_EXPAND_NAME
-            &&  collect_macro_expand_args != NULL) {
-
-                exp = ASTP(param);
-                array_push(*collect_macro_expand_args, exp);
-            }
 
             return ASTP(param);
         }
@@ -696,7 +682,8 @@ void expand_macro(ast_macro_call_t *call) {
 
     /* I'm not sure if this is the right time/way to do this... */
     memset(&cxt, 0, sizeof(cxt));
-    cxt.scope = call->scope;
+
+    cxt.scope = add_subscope(call->scope, AST_MACRO_EXPAND_SCOPE, ASTP(call));
     check_ident(cxt, ident);
 
     arg_list   = (ast_arg_list_t*)call->arg_list;
@@ -761,7 +748,7 @@ void expand_macro(ast_macro_call_t *call) {
     if (array_len(((ast_block_t*)macro->block)->stmts) == 1) {
         new_node = copy_tree_collect_macro_expand_args(
                     *(ast_t**)array_item(((ast_block_t*)macro->block)->stmts, 0),
-                    call->scope->parent,
+                    cxt.scope,
                     &macro_expand_args);
     } else {
         new_node                         = AST_ALLOC(ast_block_t);
@@ -771,10 +758,12 @@ void expand_macro(ast_macro_call_t *call) {
         ((ast_block_t*)new_node)->stmts  = array_make(ast_t*);
 
         array_traverse(((ast_block_t*)macro->block)->stmts, it) {
-            new_stmt = copy_tree_collect_macro_expand_args(*it, call->scope, &macro_expand_args);
+            new_stmt = copy_tree_collect_macro_expand_args(*it, cxt.scope, &macro_expand_args);
             array_push(((ast_block_t*)new_node)->stmts, new_stmt);
         }
     }
+
+    cxt.scope->node = new_node;
 
     new_node->loc        = call_loc;
     new_node->macro_decl = found_node;
@@ -1832,8 +1821,8 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
         array_push(all_vars, decl);
     }
 
-    if (cxt.scope->in_proc) {
-        add_symbol(cxt.scope, decl->name, ASTP(decl));
+    if (decl->containing_scope->in_proc) {
+        add_symbol(decl->containing_scope, decl->name, ASTP(decl));
     }
 }
 
@@ -4502,6 +4491,11 @@ static void check_block(check_context_t cxt, ast_block_t *block) {
     idx = 0;
     array_traverse(((ast_block_t*)ASTP(block))->stmts, it) {
         check_node(cxt, *it);
+
+        if (it == array_last(((ast_block_t*)ASTP(block))->stmts)) {
+            ASTP(block)->type  = (*it)->type;
+            ASTP(block)->value = (*it)->value;
+        }
 
         next = NULL;
 

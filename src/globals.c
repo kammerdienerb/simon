@@ -19,3 +19,4 @@ array_t          all_vars;
 FILE            *output_file;
 array_t          macro_expand_stack;
 array_t          cycle_check_path;
+u64              macro_scope_counter;

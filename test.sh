@@ -6,5 +6,5 @@
 # build/bin/simon poly.si
 # build/bin/simon test2.si
 # build/bin/simon test3.si
-build/bin/simon test2.si basic.si
+build/bin/simon --with-libc -o julie/julie.c julie/*.si basic.si
 # build/bin/simon slice.si
