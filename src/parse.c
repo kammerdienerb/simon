@@ -182,11 +182,7 @@ static int parse_identifier(parse_context_t *cxt, string_id *string_out) {
         len += 1;
     }
 
-    if (!has_alnum) {
-        if (len != 1 || *cxt->cursor != '_') {
-            return 0;
-        }
-    }
+    if (!has_alnum) { return 0; }
 
     id = get_string_id_n(cxt->cursor, len);
 
@@ -227,11 +223,61 @@ static int parse_declaration_begin(parse_context_t *cxt) {
         len += 1;
     }
 
-    if (!has_alnum) {
-        if (len != 1 || *cxt->cursor != '_') {
-            return 0;
-        }
+    if (!has_alnum) { return 0; }
+
+    id_len = len;
+    while ((cxt->cursor + len) < cxt->end && IS_SPACE(*(cxt->cursor + len))) {
+        len += 1;
     }
+
+    if ((cxt->cursor + len) >= cxt->end || *(cxt->cursor + len) != ':') {
+        return 0;
+    }
+
+    len += 1;
+
+    id = get_string_id_n(cxt->cursor, id_len);
+
+    if (is_kwd(id)) { return 0; }
+
+    return len;
+}
+
+static int parse_macro_expand_declaration_begin(parse_context_t *cxt) {
+    int       has_alnum;
+    int       len;
+    char      c;
+    int       id_len;
+    string_id id;
+
+    has_alnum = 0;
+    len       = 0;
+
+    if (cxt->cursor >= cxt->end || *cxt->cursor != '$') {
+        return 0;
+    }
+
+    len += 1;
+
+    if ((cxt->cursor + len) < cxt->end
+    &&  ((c = *(cxt->cursor + len)), (c == '_' || IS_ALPHA(c)))) {
+        if (c != '_') {
+            has_alnum = 1;
+        }
+        len += 1;
+    } else {
+        return 0;
+    }
+
+    while ((cxt->cursor + len) < cxt->end
+    &&     IS_IDENT_CHAR((c = *(cxt->cursor + len)))) {
+        if (c != '_') {
+            has_alnum = 1;
+        }
+        len += 1;
+    }
+
+    if (!has_alnum) { return 0; }
 
     id_len = len;
     while ((cxt->cursor + len) < cxt->end && IS_SPACE(*(cxt->cursor + len))) {
@@ -279,11 +325,7 @@ static int parse_macro_call_begin(parse_context_t *cxt) {
         len += 1;
     }
 
-    if (!has_alnum) {
-        if (len != 1 || *cxt->cursor != '_') {
-            return 0;
-        }
-    }
+    if (!has_alnum) { return 0; }
 
     id_len = len;
 
@@ -577,6 +619,9 @@ static int parse_char_literal(parse_context_t *cxt, string_id *char_out) {
 
 #define OPTIONAL_NO_EAT_DECLARATION(cxt) \
     OPTIONAL_NO_EAT((cxt), parse_declaration_begin((cxt)))
+
+#define OPTIONAL_NO_EAT_MACRO_EXPAND_DECLARATION(cxt) \
+    OPTIONAL_NO_EAT((cxt), parse_macro_expand_declaration_begin((cxt)))
 
 #define OPTIONAL_NO_EAT_MACRO_CALL_BEGIN(cxt) \
     OPTIONAL_NO_EAT((cxt), parse_macro_call_begin((cxt)))
@@ -899,10 +944,6 @@ static ast_t * parse_leaf_expr(parse_context_t *cxt) {
         ((ast_ident_t*)result)->resolved_node = NULL;
         ((ast_ident_t*)result)->mono_idx      = -1;
         ((ast_ident_t*)result)->varg_idx      = -1;
-
-        if (cxt->in_macro_def) {
-            result->flags |= AST_FLAG_NAME_IN_MACRO;
-        }
     } else if (OPTIONAL_FLOAT(cxt, &str_rep)) {
         result                           = AST_ALLOC(cxt, ast_float_t);
         result->kind                     = AST_FLOAT;
@@ -1186,6 +1227,7 @@ static ast_t * parse_declaration(parse_context_t *cxt);
 
 static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
     ast_struct_t *result;
+    int           save_in_struct;
     ast_param_t  *param;
     ast_t        *decl;
 
@@ -1203,6 +1245,7 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
     SCOPE_PUSH_NAMED(cxt, AST_STRUCT, ASTP(result), name);
     result->scope = SCOPE(cxt);
 
+    save_in_struct         = cxt->in_struct;
     cxt->in_struct         = 1;
     cxt->allow_poly_idents = 1;
 
@@ -1294,7 +1337,7 @@ static ast_t * parse_struct_body(parse_context_t *cxt, string_id name) {
 
     ASTP(result)->loc.end = GET_END_POINT(cxt);
 
-    cxt->in_struct = 0;
+    cxt->in_struct = save_in_struct;
 
     return ASTP(result);
 }
@@ -1829,6 +1872,8 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
     int          has_tags;
     src_range_t  loc;
     int          is_extern;
+    int          is_macro_public;
+    int          name_is_macro_expand;;
     string_id    name;
     int          kind;
     ast_decl_t  *result;
@@ -1844,37 +1889,52 @@ static ast_t * parse_declaration(parse_context_t *cxt) {
         return macro_call;
     }
 
-    tags             = array_make(ast_t*);
-    has_tags         = parse_tags(cxt, &tags);
-    is_extern        = 0;
+    tags                 = array_make(ast_t*);
+    has_tags             = parse_tags(cxt, &tags);
+    is_extern            = 0;
+    is_macro_public      = 0;
+    name_is_macro_expand = 0;
 
     array_traverse(tags, tag_it) {
         tag_expr = *tag_it;
 
-        if (tag_is_string(tag_expr, EXTERN_ID)) { is_extern = 1; }
+        if (tag_is_string(tag_expr, EXTERN_ID))            { is_extern       = 1; }
+        else if (tag_is_string(tag_expr, MACRO_PUBLIC_ID)) { is_macro_public = 1; }
     }
 
     loc.beg = GET_BEG_POINT(cxt);
 
     if (!OPTIONAL_NO_EAT_DECLARATION(cxt)) {
-        if (has_tags) {
-            EXPECT_IDENT(cxt, &name, "expected identifier after a declaration tag");
-            EXPECT_CHAR(cxt, ':', "expected ':'");
+        if (OPTIONAL_NO_EAT_MACRO_EXPAND_DECLARATION(cxt)) {
+            if (!cxt->in_macro_def) {
+                loc.end = GET_END_POINT(cxt);
+                report_range_err(&loc, "macro argument expansion is only valid within a macro");
+            }
+            eat(cxt, 1); /* $ */
+            name_is_macro_expand = 1;
+        } else {
+            if (has_tags) {
+                EXPECT_IDENT(cxt, &name, "expected identifier after a declaration tag");
+                EXPECT_CHAR(cxt, ':', "expected ':'");
 
-            ASSERT(0, "should never get here");
+                ASSERT(0, "should never get here");
+            }
+            return NULL;
         }
-        return NULL;
     }
 
     result = AST_ALLOC(cxt, ast_decl_t);
 
+    if (is_macro_public) {
+        ASTP(result)->flags |= AST_FLAG_MACRO_PUBLIC;
+    }
+    if (name_is_macro_expand) {
+        ASTP(result)->flags |= AST_FLAG_NAME_IN_MACRO;
+    }
+
     ASSERT(OPTIONAL_IDENT(cxt, &name), "parse_declaration_begin must be wrong");
     result->name_end = GET_END_POINT(cxt);
     ASSERT(OPTIONAL_CHAR(cxt, ':'), "parse_declaration_begin must be wrong");
-
-    if (cxt->in_macro_def) {
-        ASTP(result)->flags |= AST_FLAG_NAME_IN_MACRO;
-    }
 
     result->containing_scope = SCOPE(cxt);
     if (result->containing_scope == cxt->global_scope) {
@@ -2103,7 +2163,10 @@ static void parse(parse_context_t *cxt) {
 
     MACRO_CALLS_LOCK(); {
         array_traverse(cxt->macro_calls, macro_it) {
-             array_push(macro_calls, *macro_it);
+            if ((*macro_it)->scope->kind == AST_GLOBAL_SCOPE) {
+                (*macro_it)->scope = global_scope;
+            }
+            array_push(macro_calls, *macro_it);
         }
     } MACRO_CALLS_UNLOCK();
 

@@ -234,29 +234,23 @@ void add_symbol(scope_t *scope, string_id name_id, ast_t *node) {
     ast_t   *existing_node;
     scope_t *exists_at;
 
-    if (name_id == UNDERSCORE_ID) { return; }
-
     existing_node = search_up_scopes_return_scope(scope, name_id, &exists_at);
 
     if (existing_node != NULL) {
+        if (scope->in_macro
+        &&  exists_at->in_macro
+        &&  node->flags & AST_FLAG_NAME_IN_MACRO
+        &&  node->flags & AST_FLAG_MACRO_PUBLIC) {
+            /* Let this through. */
 
-        if (existing_node->kind == AST_BUILTIN
-        ||  scope == exists_at
-        ||  exists_at->in_macro) {
-
-            redecl_error(name_id, node, existing_node);
-            return;
-        }
-
-#if 0
-        if (existing_node->kind == AST_BUILTIN
-        ||  scope->kind == AST_GLOBAL_SCOPE
-        ||  exists_at->kind != AST_GLOBAL_SCOPE) {
+        } else if (existing_node->kind == AST_BUILTIN
+               ||  scope == exists_at
+               ||  exists_at->in_macro
+               ||  (exists_at->kind != AST_GLOBAL_SCOPE && (node->flags & AST_FLAG_MACRO_PUBLIC))) {
 
             redecl_error(name_id, node, existing_node);
             return;
         }
-#endif
     }
 
     array_push(scope->symbols, name_id);

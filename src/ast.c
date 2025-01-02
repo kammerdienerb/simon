@@ -95,10 +95,36 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
                 array_push(decl->tags, new);
             }
 
+            new = ASTP(decl);
+            switch (insert_scope->kind) {
+                case AST_DECL_MACRO:
+                    array_push(((ast_module_t*)(((ast_decl_t*)insert_scope->node)->val_expr))->children, new);
+                    break;
+                case AST_DECL_STRUCT:
+                    if (new->kind == AST_DECL_VAR
+                    &&  ((ast_decl_t*)new)->type_expr != NULL) {
+
+                        new->kind = AST_DECL_STRUCT_FIELD;
+                        array_push(((ast_struct_t*)(((ast_decl_t*)insert_scope->node)->val_expr))->fields, new);
+                    } else {
+                        array_push(((ast_struct_t*)(((ast_decl_t*)insert_scope->node)->val_expr))->children, new);
+                    }
+                    break;
+            }
+
             if (!insert_scope->in_proc) {
-                add_symbol(insert_scope, decl->name, ASTP(decl));
+                if (insert_scope->in_macro && (ASTP(decl)->flags & AST_FLAG_MACRO_PUBLIC)) {
+                    add_symbol(insert_scope->parent, decl->name, new);
+                } else {
+                    add_symbol(insert_scope, decl->name, new);
+                }
             }
             decl->containing_scope = insert_scope;
+
+            if (collect_macro_expand_args != NULL && (new->flags & AST_FLAG_NAME_IN_MACRO)) {
+                exp = new;
+                array_push(*collect_macro_expand_args, exp);
+            }
 
             return ASTP(decl);
         }
@@ -324,6 +350,7 @@ static ast_t *_copy_tree(ast_t *node, scope_t *insert_scope, array_t *collect_ma
             ast_macro_arg_expand_t *macro_arg_expand; ALLOC_CPY(macro_arg_expand, node);
 
             if (collect_macro_expand_args != NULL) {
+                macro_arg_expand->replacement_scope = insert_scope;
                 exp = ASTP(macro_arg_expand);
                 array_push(*collect_macro_expand_args, exp);
             }
@@ -647,6 +674,7 @@ static void check_ident(check_context_t cxt, ast_ident_t *ident);
 
 void expand_macro(ast_macro_call_t *call) {
     ast_ident_t     *ident;
+    scope_t         *expand_scope;
     check_context_t  cxt;
     ast_arg_list_t  *arg_list;
     src_range_t      call_loc;
@@ -680,10 +708,11 @@ void expand_macro(ast_macro_call_t *call) {
         return;
     }
 
+    expand_scope = add_subscope(call->scope, AST_MACRO_EXPAND_SCOPE, ASTP(call));
+
     /* I'm not sure if this is the right time/way to do this... */
     memset(&cxt, 0, sizeof(cxt));
-
-    cxt.scope = add_subscope(call->scope, AST_MACRO_EXPAND_SCOPE, ASTP(call));
+    cxt.scope = expand_scope;
     check_ident(cxt, ident);
 
     arg_list   = (ast_arg_list_t*)call->arg_list;
@@ -748,26 +777,22 @@ void expand_macro(ast_macro_call_t *call) {
     if (array_len(((ast_block_t*)macro->block)->stmts) == 1) {
         new_node = copy_tree_collect_macro_expand_args(
                     *(ast_t**)array_item(((ast_block_t*)macro->block)->stmts, 0),
-                    cxt.scope,
+                    expand_scope,
                     &macro_expand_args);
     } else {
         new_node                         = AST_ALLOC(ast_block_t);
         new_node->kind                   = AST_BLOCK;
         new_node->flags                 |= AST_FLAG_SYNTHETIC_BLOCK;
-        ((ast_block_t*)new_node)->scope  = cxt.scope;
+        ((ast_block_t*)new_node)->scope  = expand_scope;
         ((ast_block_t*)new_node)->stmts  = array_make(ast_t*);
 
         array_traverse(((ast_block_t*)macro->block)->stmts, it) {
-            new_stmt = copy_tree_collect_macro_expand_args(*it, cxt.scope, &macro_expand_args);
+            new_stmt = copy_tree_collect_macro_expand_args(*it, expand_scope, &macro_expand_args);
             array_push(((ast_block_t*)new_node)->stmts, new_stmt);
         }
     }
 
-    cxt.scope->node = new_node;
-
-    new_node->loc        = call_loc;
-    new_node->macro_decl = found_node;
-
+    expand_scope->node = new_node;
 
     array_traverse(macro_expand_args, it) {
         expand_arg = *it;
@@ -814,16 +839,23 @@ found:;
 
 block:;
         switch (expand_arg->kind) {
-/* #define X(k) case k: */
-/*                 X_AST_DECLARATIONS */
-/* #undef X */
-/*                 break; */
+#define X(k) case k:
+                X_AST_DECLARATIONS
+#undef X
+
+                if (arg_p->expr->kind != AST_IDENT) {
+                    report_range_err_no_exit(&expand_arg_loc, "'%s' must be an identifier when used in this context", name);
+                    report_range_info(&arg_p->expr->loc, "attempting to expand this expression, which is not an identifier, into '%s'", name);
+                }
+
+                ((ast_decl_t*)expand_arg)->name = ((ast_ident_t*)arg_p->expr)->str_rep;
+                break;
 
             case AST_MACRO_ARG_EXPAND:
-                REPLACE_NODE(expand_arg, copy_tree(arg_p->expr, call->scope));
+                REPLACE_NODE(expand_arg, copy_tree(arg_p->expr, ((ast_macro_arg_expand_t*)expand_arg)->replacement_scope));
                 break;
             case AST_MACRO_BLOCK_ARG_EXPAND:
-                REPLACE_NODE(expand_arg, copy_tree(call->block, call->scope));
+                REPLACE_NODE(expand_arg, copy_tree(call->block, ((ast_macro_arg_expand_t*)expand_arg)->replacement_scope));
                 break;
 
             default:
@@ -842,6 +874,9 @@ block:;
     array_free(macro_calls);
 
     pop_breadcrumb();
+
+    new_node->loc        = call_loc;
+    new_node->macro_decl = found_node;
 
     REPLACE_NODE(ASTP(call), new_node);
 
@@ -928,12 +963,14 @@ block:;
     }
 
     ASTP(call)->macro_decl = found_node;
+
+#if 0
     push_macro_breadcrumb(ASTP(call));
 
     if (expected_kind == MACRO_DECL) {
-        switch (cxt.scope->kind) {
+        switch (expand_scope->kind) {
             case AST_DECL_MACRO:
-                array_push(((ast_module_t*)(((ast_decl_t*)cxt.scope->node)->val_expr))->children, new_node);
+                array_push(((ast_module_t*)(((ast_decl_t*)expand_scope->node)->val_expr))->children, new_node);
                 goto install;
                 break;
             case AST_DECL_STRUCT:
@@ -941,19 +978,20 @@ block:;
                 &&  new_node->flags & AST_FLAG_CONSTANT) {
 
                     new_node->kind = AST_DECL_STRUCT_FIELD;
-                    array_push(((ast_struct_t*)(((ast_decl_t*)cxt.scope->node)->val_expr))->fields, new_node);
+                    array_push(((ast_struct_t*)(((ast_decl_t*)expand_scope->node)->val_expr))->fields, new_node);
                 } else {
-                    array_push(((ast_struct_t*)(((ast_decl_t*)cxt.scope->node)->val_expr))->children, new_node);
+                    array_push(((ast_struct_t*)(((ast_decl_t*)expand_scope->node)->val_expr))->children, new_node);
                     goto install;
                 }
                 break;
             default:
 install:;
-                add_symbol(cxt.scope, ((ast_decl_t*)new_node)->name, new_node);
+                add_symbol(expand_scope, ((ast_decl_t*)new_node)->name, new_node);
         }
     }
-
     pop_breadcrumb();
+
+#endif
 
     array_free(macro_expand_args);
 
@@ -1060,9 +1098,9 @@ string_id value_to_string_id(value_t val, u32 type) {
         case TY_TYPE:
             ret = get_type_string_id(val.t);
             break;
-        case TY_MODULE: ast_kind = AST_MODULE; decl = ((ast_module_t*)val.a)->parent_decl; goto ast;
-        case TY_PROC:   ast_kind = AST_PROC;   decl = ((ast_proc_t*)val.a)->parent_decl;   goto ast;
-        case TY_STRUCT: ast_kind = AST_STRUCT; decl = ((ast_struct_t*)val.a)->parent_decl; goto ast;
+        case TY_MODULE: if (val.a == NULL) { goto unknown; } ast_kind = AST_MODULE; decl = ((ast_module_t*)val.a)->parent_decl; goto ast;
+        case TY_PROC:   if (val.a == NULL) { goto unknown; } ast_kind = AST_PROC;   decl = ((ast_proc_t*)val.a)->parent_decl;   goto ast;
+        case TY_STRUCT: if (val.a == NULL) { goto unknown; } ast_kind = AST_STRUCT; decl = ((ast_struct_t*)val.a)->parent_decl; goto ast;
 ast:;
 /*             snprintf(buff, sizeof(buff), "%s at %p", ast_get_kind_str(ast_kind), val.a); */
             (void)ast_kind;
@@ -1270,6 +1308,10 @@ void check_tag_extern(check_context_t cxt, ast_decl_t *decl, ast_t *tag, ast_arg
     }
 }
 
+void check_tag_macro_public(check_context_t cxt, ast_decl_t *decl, ast_t *tag, ast_arg_list_t *arg_list) {
+    ASSERT(ASTP(decl)->flags & AST_FLAG_MACRO_PUBLIC, "node not flagged as MACRO_PUBLIC at parse time");
+}
+
 void check_tag_specialization(check_context_t cxt, ast_decl_t *decl, ast_t *tag, ast_arg_list_t *arg_list) {
     ast_t         *arg;
     ast_ident_t   *arg_ident;
@@ -1475,6 +1517,7 @@ void init_tags(void) {
 
     ADD_TAG_INFO(PROGRAM_ENTRY_ID,   check_tag_program_entry,   0, TAG_IDENT);
     ADD_TAG_INFO(EXTERN_ID,          check_tag_extern,          0, TAG_IDENT);
+    ADD_TAG_INFO(MACRO_PUBLIC_ID,    check_tag_macro_public,    0, TAG_IDENT);
     ADD_TAG_INFO(SPECIALIZATION_ID,  check_tag_specialization,  1, TAG_CALL);
     ADD_TAG_INFO(BITFIELD_STRUCT_ID, check_tag_bitfield_struct, 1, TAG_CALL);
     ADD_TAG_INFO(BITFIELD_ID,        check_tag_bitfield,        2, TAG_CALL);
@@ -1789,6 +1832,16 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
         }
     }
 
+    if (ASTP(decl)->kind == AST_DECL_VAR
+    &&  decl->val_expr != NULL
+    &&  !(decl->val_expr->flags & AST_FLAG_CONSTANT)
+    &&  !decl->containing_scope->in_proc) {
+
+        report_range_err(&decl->val_expr->loc,
+                         "initialization of '%s' must be constant since it is declared at global scope",
+                         get_string(decl->name));
+    }
+
     ASTP(decl)->type = decl_t;
 
     if (!(ASTP(decl)->flags & AST_FLAG_CONSTANT)) {
@@ -1822,7 +1875,11 @@ static void check_decl(check_context_t cxt, ast_decl_t *decl) {
     }
 
     if (decl->containing_scope->in_proc) {
-        add_symbol(decl->containing_scope, decl->name, ASTP(decl));
+        if (decl->containing_scope->in_macro && (ASTP(decl)->flags & AST_FLAG_MACRO_PUBLIC)) {
+            add_symbol(decl->containing_scope->parent, decl->name, ASTP(decl));
+        } else {
+            add_symbol(decl->containing_scope, decl->name, ASTP(decl));
+        }
     }
 }
 
@@ -1863,6 +1920,9 @@ static void check_proc(check_context_t cxt, ast_proc_t *proc) {
     cxt.unit_decl = cxt.parent_decl;
 
     cxt.scope = new_scope;
+
+
+    cxt.flags &= ~(CHECK_FLAG_IN_DEFER | CHECK_FLAG_IN_LOOP | CHECK_FLAG_IN_PARAM | CHECK_FLAG_IN_VARGS);
 
     n_params = array_len(proc->params);
 
@@ -3173,23 +3233,19 @@ static void check_expr_unsatisfied_poly(check_context_t cxt, ast_t *expr) {
     }
 }
 
+static void undeclared_error(ast_ident_t *ident) {
+    report_range_err(&ASTP(ident)->loc,
+                     "use of undeclared identifier '%s'", get_string(ident->str_rep));
+}
+
 static void check_ident(check_context_t cxt, ast_ident_t *ident) {
     scope_t *resolved_node_scope;
-
-#if 0
-    if (ident->str_rep == UNDERSCORE_ID) {
-        report_range_err_no_exit(&ASTP(ident)->loc, "'_' can be assigned to, but not referenced");
-        report_simple_info("'_' acts as an assignment sink for values meant to be unreferenceable");
-        return;
-    }
-#endif
 
     if (ident->resolved_node == NULL) {
         ident->resolved_node = search_up_scopes_return_scope(cxt.scope, ident->str_rep, &resolved_node_scope);
 
         if (ident->resolved_node == NULL) {
-            report_range_err(&ASTP(ident)->loc,
-                            "use of undeclared identifier '%s'", get_string(ident->str_rep));
+            undeclared_error(ident);
             return;
         }
 
@@ -4356,12 +4412,12 @@ static void check_unary_expr(check_context_t cxt, ast_unary_expr_t *expr) {
                 });
             }
             ASTP(expr)->type     = TY_S64;
-            ASTP(expr)->flags   |= expr->child->flags & AST_FLAG_CONSTANT;
+            ASTP(expr)->flags   |= AST_FLAG_CONSTANT;
             ASTP(expr)->value.s  = (i64)type_size(expr->child->value.t, NULL);
             break;
         case OP_TYPEOF:
             ASTP(expr)->type     = TY_TYPE;
-            ASTP(expr)->flags   |= expr->child->flags & AST_FLAG_CONSTANT;
+            ASTP(expr)->flags   |= AST_FLAG_CONSTANT;
             ASTP(expr)->value.t  = expr->child->type;
             break;
         case OP_LENOF:
@@ -4465,13 +4521,14 @@ static void check_struct(check_context_t cxt, ast_struct_t *st) {
         check_node(cxt, *it);
     }
 
-    ASTP(st)->flags |= AST_FLAG_CHECKED;
+    if (!(ASTP(cxt.parent_decl)->flags & AST_FLAG_POLYMORPH)
+    ||  (cxt.flags & CHECK_FLAG_MONOMORPH)) {
 
-    if (!(ASTP(cxt.parent_decl)->flags & AST_FLAG_POLYMORPH)) {
         array_push(all_types, cxt.parent_decl);
     }
 
 skip_children:;
+    ASTP(st)->flags |= AST_FLAG_CHECKED;
 }
 
 static void check_block(check_context_t cxt, ast_block_t *block) {

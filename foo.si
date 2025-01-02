@@ -1,10 +1,3 @@
-
-
-# my_macro :: macro[] {
-#     ${}
-# }
-
-
 Hash_Table :: struct(%key_type: type, %val_type: type) {
     KEY_TYPE :: key_type;
     VAL_TYPE :: val_type;
@@ -19,6 +12,8 @@ Hash_Table :: struct(%key_type: type, %val_type: type) {
 
 [[ program_entry ]]
 main :: proc() {
+    defer { exit(0); }
+
     ht: Hash_Table(s64, f64);
     buff: 1024*u8;
 
@@ -28,10 +23,4 @@ main :: proc() {
     ht3 := Hash_Table(f64, f64).new(*mem);
 
     printf("Hello, hash tables\n");
-
-#     my_macro![] {
-#         x := 123;
-#     }
-
-#     printf("{}\n", x);
 }

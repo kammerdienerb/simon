@@ -165,7 +165,7 @@ enum {
     AST_FLAG_POLY_VARARGS               = (1 <<  3),
     AST_FLAG_CF_MUST_RETURN             = (1 <<  4),
     AST_FLAG_CF_MUST_SKIP_LOOP_BODY     = (1 <<  5),
-    AST_FLAG_VISITED                    = (1 <<  6),
+    AST_FLAG_MACRO_PUBLIC               = (1 <<  6),
     AST_FLAG_IS_EXTERN                  = (1 <<  7),
     AST_FLAG_EXPR_TOP                   = (1 <<  8),
     AST_FLAG_EXPR_CAN_BE_LVAL           = (1 <<  9),
@@ -386,8 +386,9 @@ AST_DEFINE(macro_call,
 );
 
 AST_DEFINE(macro_arg_expand,
-    string_id name;
-    char      _padding[sizeof(ast_decl_t) - sizeof(ast_t) - sizeof(string_id)];
+    string_id  name;
+    scope_t   *replacement_scope;
+    char       _padding[sizeof(ast_decl_t) - sizeof(ast_t) - sizeof(string_id) - sizeof(scope_t*)];
 );
 
 AST_DEFINE(compile_error,

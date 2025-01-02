@@ -9,8 +9,8 @@ TODO:
 ✓✓✓ u64 -> s64?
 ✓✓✓ Polymorphic expressions solving with slices.
 ✓✓✓ sizeof, typeof
--   Block macros?
--   Macro export
+✓✓✓ Block macros?
+✓✓✓ Macro export
 -   Sum types
 -   match statement
 -   "did you mean...?"

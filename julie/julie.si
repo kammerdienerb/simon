@@ -1,76 +1,26 @@
-
-Error :: struct {
-    which: s64;
-}
-
-
-[[ specialization(Format.to_formatted_str) ]]
-error_to_formatted_str :: proc(sb: *String_Builder, arg: Error, f: Format.Format_Info): s64 {
-    if        arg.which == SUCCESS {
-        return string_builder_append(sb, "No error.");
-    } else if arg.which == ERR_TOO_SMALL {
-        return string_builder_append(sb, "Too small.");
-    } else if arg.which == ERR_BAD_ALLOC {
-        return string_builder_append(sb, "Failed to allocate.");
-    }
-
-    return string_builder_append(sb, "Unknown error.");
-}
-
-
-try :: macro(expr) {
-    {
-        foo := $expr;
-        if foo.which == ERR_BAD_ALLOC {
-            printf("Got an error! code = {}\n", foo);
-            return foo;
-        }
-        foo;
-    }
-}
-
-error :: macro(which) {
-    {
-        tmp: Error;
-        tmp.which = $which;
-        tmp;
-    }
-}
-
 [[ program_entry ]]
-main :: proc(): Error {
+main :: proc() {
     defer { exit(0); }
 
-    tmp: s64;
+    array := array_new(s64);
+        defer { array_free(*array); }
 
+    iter_range![i, 100] { array_push(*array, i); }
 
-    result := try!(error!(ERR_BAD_ALLOC));
+    iter_slice![it, array_as_slice(*array)] {
+        printf("{} ", @it);
+    } printf("\n");
 
-    # Read command line arguments
-    bp   := _builtin_base_pointer();
-    argc := @cast(*u32, bp + 16);
-    argv := cast(**u8, bp + 24);
+    printf("{}\n", @array_elem(*array, 45));
 
-    if argc != 2 {
+    args := cmdline_args_linux(_builtin_base_pointer());
+
+    if lenof(args) != 2 {
         printf("expected one argument: a julie file path\n");
         exit(1);
     }
 
-    x := {
-        defer { printf("what does this do?\n"); }
-        printf("hello, world!\n");
-
-        foo := 0;
-
-        if argc {
-            foo = 123;
-        } else {
-            foo = 456;
-        }
-
-        foo;
-    };
-    debug_print!(x);
-
-    return error!(SUCCESS);
+    iter_slice![arg, args] {
+        printf("arg {}\n", @arg);
+    }
 }

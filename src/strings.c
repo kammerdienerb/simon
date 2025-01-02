@@ -6,7 +6,6 @@
 #include "ui.h"
 
 
-string_id UNDERSCORE_ID;
 string_id ELLIPSIS_ID;
 string_id _BUILTIN_PRINTS_ID;
 string_id _BUILTIN_PRINTP_ID;
@@ -17,6 +16,7 @@ string_id _BUILTIN_SLICE_FROM_ID;
 string_id CAST_ID;
 string_id EXTERN_ID;
 string_id PROGRAM_ENTRY_ID;
+string_id MACRO_PUBLIC_ID;
 string_id BITFIELD_STRUCT_ID;
 string_id BITFIELD_ID;
 string_id SPECIALIZATION_ID;
@@ -106,7 +106,6 @@ void init_strings(void) {
         array_push(kwd_ids, kwd_id);
     }
 
-    UNDERSCORE_ID           = get_string_id("_");
     ELLIPSIS_ID             = get_string_id("...");
     _BUILTIN_PRINTS_ID      = get_string_id("_builtin_prints");
     _BUILTIN_PRINTP_ID      = get_string_id("_builtin_printp");
@@ -117,6 +116,7 @@ void init_strings(void) {
     CAST_ID                 = get_string_id("cast");
     EXTERN_ID               = get_string_id("extern");
     PROGRAM_ENTRY_ID        = get_string_id("program_entry");
+    MACRO_PUBLIC_ID         = get_string_id("macro_public");
     BITFIELD_STRUCT_ID      = get_string_id("bitfield_struct");
     BITFIELD_ID             = get_string_id("bitfield");
     SPECIALIZATION_ID       = get_string_id("specialization");

@@ -151,7 +151,7 @@ static void _emit_name(ast_t *node, i32 mono_idx, int asm_name) {
         decl = (ast_decl_t*)node;
         if (!(ASTP(decl)->flags & AST_FLAG_IS_EXTERN) && !decl->containing_scope->in_proc) { goto long_name; }
 
-        if (decl->containing_scope->kind == AST_MACRO_EXPAND_SCOPE) {
+        if (decl->containing_scope->in_macro && !(node->flags & AST_FLAG_MACRO_PUBLIC)) {
             EMIT_STRING_F("__si_macro_%"PRIu64"_", decl->containing_scope->macro_scope_id);
         }
 
@@ -160,7 +160,7 @@ static void _emit_name(ast_t *node, i32 mono_idx, int asm_name) {
 long_name:;
         decl = (ast_decl_t*)node;
 
-        if (decl->containing_scope->kind == AST_MACRO_EXPAND_SCOPE) {
+        if (decl->containing_scope->in_macro && !(node->flags & AST_FLAG_MACRO_PUBLIC)) {
             EMIT_STRING_F("__si_macro_%"PRIu64"_", decl->containing_scope->macro_scope_id);
         }
 
@@ -169,7 +169,8 @@ long_name:;
 
         if (scope         != NULL
         &&  scope->parent != NULL
-        &&  scope->kind   != AST_GLOBAL_SCOPE) {
+        &&  scope->kind   != AST_GLOBAL_SCOPE
+        &&  !scope->in_macro) {
 
             parent_node     = scope->node;
             parent_mono_idx = -1;
@@ -364,9 +365,9 @@ static void emit_struct(ast_decl_t *decl, ast_struct_t *st, i32 mono_idx) {
     ast_decl_t    *field_type_decl;
     ast_struct_t  *field_type_st;
 
-    ASSERT(!(ASTP(st)->flags & AST_FLAG_VISITED), "cycle in struct dep graph!");
+    ASSERT(!(ASTP(st)->flags & AST_FLAG_CHECKED), "cycle in struct dep graph!");
 
-    ASTP(st)->flags |= AST_FLAG_VISITED;
+    ASTP(st)->flags |= AST_FLAG_CHECKED;
 
     if (st->bitfield_struct_bits != 0) { goto out; }
 
@@ -427,12 +428,12 @@ static void emit_structs(void) {
             mono_idx = 0;
             array_traverse(st->monomorphs, mit) {
                 if (mit->specialization == NULL) {
-                    mit->node->flags &= ~(AST_FLAG_VISITED | AST_FLAG_VISIT_WORK_DONE);
+                    mit->node->flags &= ~(AST_FLAG_CHECKED | AST_FLAG_VISIT_WORK_DONE);
                 }
                 mono_idx += 1;
             }
         } else {
-            ASTP(st)->flags &= ~(AST_FLAG_VISITED | AST_FLAG_VISIT_WORK_DONE);
+            ASTP(st)->flags &= ~(AST_FLAG_CHECKED | AST_FLAG_VISIT_WORK_DONE);
         }
     }
 
@@ -444,14 +445,14 @@ static void emit_structs(void) {
             mono_idx = 0;
             array_traverse(st->monomorphs, mit) {
                 if (mit->specialization == NULL) {
-                    if (!(mit->node->flags & AST_FLAG_VISITED)) {
+                    if (!(mit->node->flags & AST_FLAG_CHECKED)) {
                         emit_struct(decl, (ast_struct_t*)mit->node, mono_idx);
                     }
                 }
                 mono_idx += 1;
             }
         } else {
-            if (!(ASTP(st)->flags & AST_FLAG_VISITED)) {
+            if (!(ASTP(st)->flags & AST_FLAG_CHECKED)) {
                 emit_struct(decl, st, -1);
             }
         }
@@ -605,7 +606,8 @@ static void emit_sizeof_assertions(void) {
         tk = type_kind(ty);
         if (ty != TY_STRUCT
         &&  ty != TY_STRUCT_MONO
-        &&  (tk == TY_STRUCT || tk == TY_STRUCT_MONO)) {
+        &&  (tk == TY_STRUCT || tk == TY_STRUCT_MONO)
+        &&  !type_is_poly(ty)) {
 
             EMIT_STRING("_Static_assert(sizeof(");
             emit_name(ASTP(struct_type_to_decl(ty)), -1);
@@ -1236,10 +1238,10 @@ static void emit_stmt(ast_t *stmt, int lvl, int fmt_flags, int block_kind) {
                 EMIT_STRING("__si_ret = ");
                 emit_expr(((ast_return_t*)stmt)->expr, lvl);
                 EMIT_STRING(";\n");
-                INDENT(lvl);
             }
             emit_all_defers_except_return(lvl);
             emit_line(&stmt->loc.beg);
+            INDENT(lvl);
             EMIT_STRING_F("goto __si_scope_%"PRIu64"_exit;\n", BOTTOM_DEFER_LABEL());
             break;
 

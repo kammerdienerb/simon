@@ -16,7 +16,6 @@ typedef const char *string_t;
 typedef u64         string_id;
 
 #define STRING_ID_NULL (0)
-extern string_id UNDERSCORE_ID;
 extern string_id ELLIPSIS_ID;
 extern string_id _BUILTIN_PRINTS_ID;
 extern string_id _BUILTIN_PRINTP_ID;
@@ -27,6 +26,7 @@ extern string_id _BUILTIN_SLICE_FROM_ID;
 extern string_id CAST_ID;
 extern string_id EXTERN_ID;
 extern string_id PROGRAM_ENTRY_ID;
+extern string_id MACRO_PUBLIC_ID;
 extern string_id BITFIELD_STRUCT_ID;
 extern string_id BITFIELD_ID;
 extern string_id SPECIALIZATION_ID;

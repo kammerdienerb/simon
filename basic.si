@@ -6,6 +6,43 @@ SUCCESS       ::  0;
 ERR_TOO_SMALL :: -1;
 ERR_BAD_ALLOC :: -2;
 
+Error :: struct {
+    which: s64;
+}
+
+error :: macro(which) {
+    {
+        err: Error;
+        err.which = $which;
+        err;
+    }
+}
+
+try :: macro(expr) {
+    {
+        expr := $expr;
+        if expr.which == ERR_BAD_ALLOC {
+            printf("Got an error! {} (code {}: {})\n", code_to_string!($expr), expr.which, expr);
+            return expr;
+        }
+        expr;
+    }
+}
+
+[[ specialization(Format.to_formatted_str) ]]
+error_to_formatted_str :: proc(sb: *String_Builder, arg: Error, f: Format.Format_Info): s64 {
+    if        arg.which == SUCCESS {
+        return string_builder_append(sb, "No error.");
+    } else if arg.which == ERR_TOO_SMALL {
+        return string_builder_append(sb, "Too small.");
+    } else if arg.which == ERR_BAD_ALLOC {
+        return string_builder_append(sb, "Failed to allocate.");
+    }
+
+    return string_builder_append(sb, "Unknown error.");
+}
+
+
 Allocator :: module {
     Bundle :: struct {
         self:    *u8;
@@ -132,6 +169,103 @@ singleton_bundle :: proc(allocator: *Singleton_Allocator): Allocator.Bundle {
 }
 
 
+iter_range :: macro[iter_name, lim_expr] {
+    lim := $lim_expr;
+    loop [[ macro_public ]] $iter_name := 0; $iter_name < lim; $iter_name += 1 {
+        ${}
+    }
+}
+
+iter_slice :: macro[iter_name, slice_expr] {
+    slice := $slice_expr;
+    loop idx := 0; idx < lenof(slice); idx += 1 {
+        [[ macro_public ]] $iter_name := *slice[idx];
+        ${}
+    }
+}
+
+
+Array_Metadata :: struct {
+    allocator: Allocator.Bundle;
+    count:     s64;
+    capacity:  s64;
+}
+
+Array :: struct(%T: type) {
+    Elem_Type :: T;
+
+    buff: *u8;
+}
+
+array_get_metadata_ptr :: macro(array_ptr) {
+    cast(*Array_Metadata, $array_ptr.buff);
+}
+
+array_get_elem_ptr :: macro(array_ptr, idx) {
+    cast(*(typeof @$array_ptr).Elem_Type, $array_ptr.buff + sizeof(Array_Metadata)) + $idx;
+}
+
+array_buff_size :: macro(array_ptr, capacity) {
+    sizeof(Array_Metadata) + ($capacity * sizeof((typeof @$array_ptr).Elem_Type));
+}
+
+array_new_with_allocator :: proc(%T: type, allocator: *%allocator_type): Array(T) {
+    meta: Array_Metadata;
+    meta.allocator = Allocator.bundle(allocator);
+    meta.count     = 0;
+    meta.capacity  = 8;
+
+    array: Array(T);
+    buff_size := array_buff_size!(*array, meta.capacity);
+    array.buff = Allocator.bundle_alloc(*meta.allocator, buff_size);
+
+    @cast(*(typeof meta), array.buff) = meta;
+
+    return array;
+}
+
+array_new:: proc(%T: type): Array(T) {
+    return array_new_with_allocator(T, *heap_allocator);
+}
+
+array_free :: proc(array: *%Array_Type) {
+    meta := array_get_metadata_ptr!(array);
+    Allocator.bundle_free(*meta.allocator, array.buff);
+    array.buff = NULL;
+}
+
+array_count :: proc(array: *%Array_Type): s64 {
+    meta := array_get_metadata_ptr!(array);
+    return meta.count;
+}
+
+array_as_slice :: proc(array: *%Array_Type): [Array_Type.Elem_Type] {
+    meta := array_get_metadata_ptr!(array);
+    return _builtin_slice_from(array_get_elem_ptr!(array, 0), meta.count);
+}
+
+array_push :: proc(array: *%Array_Type, val: Array_Type.Elem_Type): *Array_Type.Elem_Type {
+    meta := array_get_metadata_ptr!(array);
+
+    if meta.count == meta.capacity {
+        new_cap := 2 * meta.capacity;
+        array.buff = Allocator.bundle_realloc(*meta.allocator, array.buff, array_buff_size!(array, 2 * new_cap));
+
+        # invalidated after realloc
+        meta := array_get_metadata_ptr!(array);
+
+        meta.capacity = new_cap;
+    }
+
+    addr := array_get_elem_ptr!(array, meta.count);
+    @addr = val;
+    meta.count += 1;
+    return addr;
+}
+
+array_elem :: proc(array: *%Array_Type, idx: s64): *Array_Type.Elem_Type {
+    return array_get_elem_ptr!(array, idx);
+}
 
 [[ extern ]] open    :: proc(path: *u8, oflag: s32): s32;
 [[ extern ]] read    :: proc(fd: s32, bytes: *u8, len: u64): s32;
@@ -141,8 +275,6 @@ singleton_bundle :: proc(allocator: *Singleton_Allocator): Allocator.Bundle {
 [[ extern ]] malloc  :: proc(size: u64): *u8;
 [[ extern ]] realloc :: proc(ptr: *u8, size: u64): *u8;
 [[ extern ]] free    :: proc(ptr: *u8);
-
-[[ extern ]] __argv: **u8;
 
 write_string :: proc(s: [u8]) {
     write(1, *s[0], lenof s);
@@ -550,4 +682,23 @@ printf :: proc(fmt: [u8], args: %...): s64 {
 
 debug_print :: macro(expr) {
     printf("{} = {}\n", code_to_string!($expr), $expr);
+}
+
+cmdline_args_linux_with_allocator :: proc(allocator: *%allocator_type, base_pointer: *u8): [[u8]] {
+    argc      := cast(s64, @cast(*u32, base_pointer + 16));
+    slice_mem := cast(*[u8], Allocator.alloc(allocator, argc * sizeof([u8])));
+    argv      := cast(**u8, base_pointer + 24);
+
+    iter_range![i, argc] {
+        s := @(argv + i);
+        l := cstr_len(s);
+
+        @(slice_mem + i) = _builtin_slice_from(s, l);
+    }
+
+    return _builtin_slice_from(slice_mem, argc);
+}
+
+cmdline_args_linux :: proc(base_pointer: *u8): [[u8]] {
+    return cmdline_args_linux_with_allocator(*heap_allocator, base_pointer);
 }
